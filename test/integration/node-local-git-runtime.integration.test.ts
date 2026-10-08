@@ -30,8 +30,8 @@ const commit = ${JSON.stringify(commitObjectId)};
 const blob = ${JSON.stringify(blobObjectId)};
 if (args.join(" ") === "rev-parse --verify --quiet " + commit + "^{commit}") {
   process.stdout.write(commit + "\\n");
-} else if (args.join(" ") === "rev-parse --verify --quiet " + commit + ":fixture.txt") {
-  process.stdout.write(blob + "\\n");
+} else if (args.join(" ") === "ls-tree --full-tree -z " + commit + " -- :(literal)fixture.txt") {
+  process.stdout.write("100644 blob " + blob + "\\tfixture.txt\\0");
 } else if (args.join(" ") === "cat-file blob " + blob) {
   process.stdout.write("portable content\\n");
 } else {
@@ -67,10 +67,12 @@ if (args.join(" ") === "rev-parse --verify --quiet " + commit + "^{commit}") {
     assert.deepEqual(invocations, [
       ["rev-parse", "--verify", "--quiet", `${commitObjectId}^{commit}`],
       [
-        "rev-parse",
-        "--verify",
-        "--quiet",
-        `${commitObjectId}:fixture.txt`
+        "ls-tree",
+        "--full-tree",
+        "-z",
+        commitObjectId,
+        "--",
+        ":(literal)fixture.txt"
       ],
       ["cat-file", "blob", blobObjectId]
     ]);

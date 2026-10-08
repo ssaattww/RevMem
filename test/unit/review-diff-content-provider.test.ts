@@ -68,6 +68,11 @@ const failure = (exitCode: number, stderr: string): GitCommandResult => ({
   stderr
 });
 
+const lsTreeBlob = (revision: string, filePath: string): readonly string[] =>
+  ["ls-tree", "--full-tree", "-z", revision, "--", `:(literal)${filePath}`];
+const lsTreeBlobResult = (filePath: string): GitCommandResult =>
+  success(`100644 blob ${blobObjectId}\t${filePath}\0`);
+
 interface PlannedCommand {
   readonly invocation: GitCommandInvocation;
   readonly result: GitCommandResult;
@@ -252,8 +257,8 @@ test("local Git adapter reads exact streamed text content at a commit", async ()
   );
   executor.queue(
     repositoryRoot,
-    ["rev-parse", "--verify", "--quiet", `${originalRevision}:src/file.ts`],
-    success(`${blobObjectId}\n`)
+    lsTreeBlob(originalRevision, "src/file.ts"),
+    lsTreeBlobResult("src/file.ts")
   );
 
   const result = await new LocalGitAdapter(
@@ -285,8 +290,8 @@ test("local Git adapter accepts an opened Shift-JIS hint only through the VS Cod
   );
   executor.queue(
     repositoryRoot,
-    ["rev-parse", "--verify", "--quiet", `${originalRevision}:src/shift-jis.txt`],
-    success(`${blobObjectId}\n`)
+    lsTreeBlob(originalRevision, "src/shift-jis.txt"),
+    lsTreeBlobResult("src/shift-jis.txt")
   );
   const decodes: Array<readonly [Uint8Array, string]> = [];
   const adapter = new LocalGitAdapter(executor, blobReader, async (bytes, encoding) => {
@@ -319,8 +324,8 @@ test("local Git adapter isolates unsupported opened encoding instead of acceptin
   );
   executor.queue(
     repositoryRoot,
-    ["rev-parse", "--verify", "--quiet", `${originalRevision}:src/unsupported.txt`],
-    success(`${blobObjectId}\n`)
+    lsTreeBlob(originalRevision, "src/unsupported.txt"),
+    lsTreeBlobResult("src/unsupported.txt")
   );
   const adapter = new LocalGitAdapter(executor, blobReader, async () => "\uFFFD");
 
@@ -366,8 +371,8 @@ test("local Git adapter distinguishes missing commits and missing files", async 
   );
   missingFileExecutor.queue(
     repositoryRoot,
-    ["rev-parse", "--verify", "--quiet", `${originalRevision}:src/missing.ts`],
-    failure(1, "")
+    lsTreeBlob(originalRevision, "src/missing.ts"),
+    success()
   );
 
   assert.deepEqual(

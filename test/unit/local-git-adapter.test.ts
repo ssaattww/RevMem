@@ -100,8 +100,10 @@ test("immutable text reads verify one commit once and resolve later paths direct
   const blobReader: GitBlobReader = { readBlob: async () => new TextEncoder().encode("source\n") };
   const adapter = new LocalGitAdapter(executor, blobReader);
   executor.queue(repositoryRoot, ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`], success(`${commit}\n`));
-  executor.queue(repositoryRoot, ["rev-parse", "--verify", "--quiet", `${commit}:file.ts`], success(`${blob}\n`));
-  executor.queue(repositoryRoot, ["rev-parse", "--verify", "--quiet", `${commit}:missing.ts`], failure(1, ""));
+  const fileLookup = ["ls-tree", "--full-tree", "-z", commit, "--", ":(literal)file.ts"];
+  const missingFileLookup = ["ls-tree", "--full-tree", "-z", commit, "--", ":(literal)missing.ts"];
+  executor.queue(repositoryRoot, fileLookup, success(`100644 blob ${blob}\tfile.ts\0`));
+  executor.queue(repositoryRoot, missingFileLookup, success());
 
   assert.deepEqual(await adapter.readTextFileAtRevision(repositoryRoot, commit, "file.ts", "posix"), {
     kind: "found", content: "source\n"
@@ -112,8 +114,8 @@ test("immutable text reads verify one commit once and resolve later paths direct
   executor.assertExhausted();
   assert.deepEqual(executor.invocations.map((entry) => entry.argumentsList), [
     ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`],
-    ["rev-parse", "--verify", "--quiet", `${commit}:file.ts`],
-    ["rev-parse", "--verify", "--quiet", `${commit}:missing.ts`]
+    fileLookup,
+    missingFileLookup
   ]);
 });
 

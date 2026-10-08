@@ -204,18 +204,24 @@ test("revision path lookup preserves blob-only behavior for directories, gitlink
 
   try {
     await mkdir(path.join(repository.path, "nested"), { recursive: true });
+    await writeFile(path.join(repository.path, "nested", "tracked.txt"), "nested file\n", "utf8");
     await writeFile(path.join(repository.path, "colon:name.txt"), "colon path\n", "utf8");
     await symlink("fixture.txt", path.join(repository.path, "fixture-link"));
     await repository.runGit(["add", "--all"]);
     await repository.runGit(["commit", "--message", "add path edge cases"]);
     const commit = await repository.runGit(["rev-parse", "HEAD"]);
+    const nestedTree = await repository.runGit(["ls-tree", "-d", commit, "--", ":(literal)nested"]);
+    assert.match(nestedTree, /^040000 tree [0-9a-f]{40}\tnested$/u);
 
+    const missingSubmodule = "f".repeat(40);
+    await assert.rejects(repository.runGit(["cat-file", "-e", `${missingSubmodule}^{commit}`]));
     await mkdir(path.join(repository.path, "vendor"), { recursive: true });
-    await repository.runGit(["update-index", "--add", "--cacheinfo", `160000,${repository.baseCommit},vendor/submodule`]);
+    await repository.runGit(["update-index", "--add", "--cacheinfo", `160000,${missingSubmodule},vendor/submodule`]);
     await repository.runGit(["commit", "--message", "add gitlink"]);
     const gitlinkCommit = await repository.runGit(["rev-parse", "HEAD"]);
 
     assert.deepEqual(await adapter.readTextFileAtRevision(repository.path, commit, "nested", "posix"), { kind: "missing-file" });
+    assert.deepEqual(await adapter.readTextFileAtRevision(repository.path, commit, "nested/tracked.txt", "posix"), { kind: "found", content: "nested file\n" });
     assert.deepEqual(await adapter.readTextFileAtRevision(repository.path, gitlinkCommit, "vendor/submodule", "posix"), { kind: "missing-file" });
     assert.deepEqual(await adapter.readTextFileAtRevision(repository.path, commit, "fixture-link", "posix"), { kind: "found", content: "fixture.txt" });
     assert.deepEqual(await adapter.readTextFileAtRevision(repository.path, commit, "colon:name.txt", "posix"), { kind: "found", content: "colon path\n" });

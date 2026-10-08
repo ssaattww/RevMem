@@ -21,6 +21,7 @@ import { normalizeGitRemoteUrl } from "./git-remote-normalization";
 import type { LocalGitRevisionTextReadResult } from "./revision-text-content";
 
 const FULL_OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
+const LS_TREE_ENTRY_PATTERN = /^([0-7]{6}) (blob|tree|commit) ([0-9a-f]{40}|[0-9a-f]{64})$/u;
 const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
 /** VS Code境界でopened documentのencoding hintを適用するdecoder。 */
@@ -72,6 +73,23 @@ const firstOutputLine = (output: string, name: string): string => {
   }
 
   return line;
+};
+
+const parseLsTreeBlobObjectId = (output: string, expectedPath: string): string | undefined => {
+  if (output.length === 0) return undefined;
+  if (!output.endsWith("\0")) throw new Error("git ls-tree output is not NUL terminated");
+
+  const records = output.slice(0, -1).split("\0");
+  if (records.length !== 1) throw new Error("git ls-tree returned an ambiguous exact-path result");
+  const separator = records[0]!.indexOf("\t");
+  if (separator < 0) throw new Error("git ls-tree output is missing its path separator");
+  const metadata = records[0]!.slice(0, separator);
+  const returnedPath = records[0]!.slice(separator + 1);
+  const match = LS_TREE_ENTRY_PATTERN.exec(metadata);
+  if (match === null || returnedPath !== expectedPath) {
+    throw new Error("git ls-tree output does not match the requested exact path");
+  }
+  return match[2] === "blob" ? match[3] : undefined;
 };
 
 const parseGitVersion = (stdout: string): string => {
@@ -339,19 +357,13 @@ export class LocalGitAdapter {
     // commit had already been validated above.
     const fileInvocation: GitCommandInvocation = {
       cwd: rootPath,
-      argumentsList: [
-        "rev-parse",
-        "--verify",
-        "--quiet",
-        `${object}:${filePath}`
-      ]
+      argumentsList: ["ls-tree", "--full-tree", "-z", object, "--", `:(literal)${filePath}`]
     };
     const fileResult = await this.commandExecutor.execute(fileInvocation, feedbackContext, signal);
-    if (fileResult.exitCode === 1) {
-      if (!commitWasCached) return { kind: "missing-file" };
+    if (fileResult.exitCode === 1 || fileResult.exitCode === 128) {
       // A cached commit may have been pruned after an earlier successful read.
-      // Recheck only on a failed path lookup so stale cache entries cannot turn
-      // a missing revision into a missing-file result.
+      // Recheck after an object lookup failure so stale cache entries cannot
+      // turn a missing revision into an unrelated Git error.
       this.verifiedCommits.delete(commitKey);
       const revisionInvocation: GitCommandInvocation = {
         cwd: rootPath,
@@ -364,29 +376,14 @@ export class LocalGitAdapter {
         return { kind: "missing-revision" };
       }
       this.verifiedCommits.set(commitKey, true);
-      return { kind: "missing-file" };
+      if (fileResult.exitCode === 1) return { kind: "missing-file" };
+      this.requireSuccess(fileInvocation, fileResult);
     }
     this.requireSuccess(fileInvocation, fileResult);
-    const blobObjectId = firstOutputLine(fileResult.stdout, "immutable file object");
-    if (!FULL_OBJECT_ID_PATTERN.test(blobObjectId)) throw new Error("git rev-parse returned an invalid file object ID");
+    const blobObjectId = parseLsTreeBlobObjectId(fileResult.stdout, filePath);
+    if (blobObjectId === undefined) return { kind: "missing-file" };
 
-    let bytes: Uint8Array;
-    try {
-      bytes = await this.blobReader.readBlob(rootPath, blobObjectId, feedbackContext, signal);
-    } catch (error) {
-      if (error instanceof GitCommandFailedError) {
-        const typeInvocation: GitCommandInvocation = {
-          cwd: rootPath,
-          argumentsList: ["cat-file", "-t", blobObjectId]
-        };
-        const typeResult = await this.commandExecutor.execute(typeInvocation, feedbackContext, signal);
-        if (typeResult.exitCode === 0) {
-          const objectType = typeResult.stdout.trim();
-          if (objectType === "tree" || objectType === "commit") return { kind: "missing-file" };
-        }
-      }
-      throw error;
-    }
+    const bytes = await this.blobReader.readBlob(rootPath, blobObjectId, feedbackContext, signal);
     if (signal?.aborted) throw new DOMException("Git revision content read was superseded.", "AbortError");
     try {
       return {

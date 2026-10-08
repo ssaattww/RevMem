@@ -1853,6 +1853,21 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     assert.ok(sameDocumentRedetect);
     const firstGeneration = Promise.resolve(sameDocumentRedetect());
     await oldSearchStarted;
+    const searchesBeforeCoalescedTrigger = prSearchRequestHeads.length;
+    const inspectionsBeforeCoalescedTrigger = repositoryInspections;
+    const coalescedGeneration = Promise.resolve(sameDocumentRedetect());
+    const coalescedTriggerInspected = await Promise.race([
+      new Promise<boolean>((resolve) => {
+        const check = (): void => {
+          if (repositoryInspections > inspectionsBeforeCoalescedTrigger) resolve(true);
+          else setTimeout(check, 5);
+        };
+        check();
+      }),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1_000)),
+    ]);
+    assert.equal(coalescedTriggerInspected, true, "a repeated same-generation trigger verifies the active owner before joining");
+    assert.equal(prSearchRequestHeads.length, searchesBeforeCoalescedTrigger, "the joined generation must not repeat PR discovery");
     const searchCountBeforeHeadChange = prSearchRequestHeads.length;
     await writeFile(sourcePath, "keep\nnewer generation", "utf8");
     await runGit(repositoryRoot, ["add", FILE_ID]);
@@ -1871,9 +1886,10 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1_000)),
     ]);
     releaseOldSearch();
-    await Promise.allSettled([firstGeneration, secondGeneration]);
+    const commandOutcomes = await Promise.allSettled([firstGeneration, coalescedGeneration, secondGeneration]);
     localGit.inspectRepository = inspectRepository;
     fakeVscode.window.activeTextEditor = priorEditor;
+    assert.deepEqual(commandOutcomes.map((outcome) => outcome.status), ["fulfilled", "fulfilled", "fulfilled"]);
     assert.equal(replacementInspected, true, "same document version must reach repository-generation inspection");
     assert.ok(
       prSearchRequestHeads.slice(searchCountBeforeHeadChange).includes(remoteHeadSha),
