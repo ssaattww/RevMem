@@ -6,6 +6,7 @@ import test from "node:test";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 
 import {
+  GitBlobBatchObjectTooLargeError,
   NodeGitBlobBatchTransport,
   type NodeGitBlobBatchTransportOptions,
 } from "../../src/adapters/local-git/node-git-blob-batch-transport.js";
@@ -46,6 +47,8 @@ interface FakeChildOptions {
   readonly closeOnTerm?: boolean;
   readonly closeOnKill?: boolean;
   readonly exitCode?: number | null;
+  readonly syncWriteReturnsFalse?: boolean;
+  readonly deferWriteCallback?: boolean;
 }
 
 class FakeChild extends EventEmitter {
@@ -56,21 +59,13 @@ class FakeChild extends EventEmitter {
   public readonly stdin: Writable;
   public unrefCalled = false;
   private lineBuffer = "";
+  private pendingWriteCallback: ((error?: Error | null) => void) | undefined;
 
   public constructor(private readonly options: FakeChildOptions) {
     super();
     this.stdin = new Writable({
       write: (chunk, _encoding, callback) => {
-        this.lineBuffer += chunk.toString("ascii");
-        while (this.lineBuffer.includes("\n")) {
-          const newline = this.lineBuffer.indexOf("\n");
-          const objectId = this.lineBuffer.slice(0, newline);
-          this.lineBuffer = this.lineBuffer.slice(newline + 1);
-          if (objectId.length > 0) {
-            this.objectIds.push(objectId);
-            this.options.onObject(objectId, this);
-          }
-        }
+        this.consumeInput(chunk.toString("ascii"));
         callback();
       },
       final: (callback) => {
@@ -81,6 +76,32 @@ class FakeChild extends EventEmitter {
         callback();
       },
     });
+    if (options.syncWriteReturnsFalse === true) {
+      this.stdin.write = ((chunk: Uint8Array | string, callback?: (error?: Error | null) => void): boolean => {
+        this.consumeInput(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("ascii"));
+        callback?.();
+        return false;
+      }) as typeof this.stdin.write;
+    } else if (options.deferWriteCallback === true) {
+      this.stdin.write = ((chunk: Uint8Array | string, callback?: (error?: Error | null) => void): boolean => {
+        this.consumeInput(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("ascii"));
+        this.pendingWriteCallback = callback;
+        return true;
+      }) as typeof this.stdin.write;
+    }
+  }
+
+  private consumeInput(input: string): void {
+    this.lineBuffer += input;
+    while (this.lineBuffer.includes("\n")) {
+      const newline = this.lineBuffer.indexOf("\n");
+      const objectId = this.lineBuffer.slice(0, newline);
+      this.lineBuffer = this.lineBuffer.slice(newline + 1);
+      if (objectId.length > 0) {
+        this.objectIds.push(objectId);
+        this.options.onObject(objectId, this);
+      }
+    }
   }
 
   public kill(signal = "SIGTERM"): boolean {
@@ -111,6 +132,12 @@ class FakeChild extends EventEmitter {
 
   public failInput(error: Error): void {
     this.stdin.emit("error", error);
+  }
+
+  public releaseWriteCallback(error?: Error | null): void {
+    const callback = this.pendingWriteCallback;
+    this.pendingWriteCallback = undefined;
+    callback?.(error);
   }
 
   public close(code: number | null, signal: NodeJS.Signals | null): void {
@@ -266,7 +293,7 @@ test("batch transport rejects missing, non-blob, and oversized frames", async ()
   const cases = [
     { frame: (fake: FakeChild) => fake.sendRaw(Buffer.from(`${firstOid} missing\n`, "ascii")), expected: /is missing/u },
     { frame: (fake: FakeChild) => fake.sendRaw(Buffer.from(`${firstOid} tree 0\n\n`, "ascii")), expected: /has type tree/u },
-    { frame: (fake: FakeChild) => fake.sendBlob(firstOid, Buffer.from("large")), expected: /exceeds the 2-byte/u, maxBlobBytes: 2 },
+    { frame: (fake: FakeChild) => fake.sendBlob(firstOid, Buffer.from("large")), expected: /5 bytes; batch limit is 2 bytes/u, maxBlobBytes: 2 },
   ];
 
   for (const item of cases) {
@@ -274,7 +301,16 @@ test("batch transport rejects missing, non-blob, and oversized frames", async ()
       onObject: (_objectId, fake) => item.frame(fake),
       closeOnTerm: true,
     }), { maxBlobBytes: item.maxBlobBytes ?? 16 });
-    await assert.rejects(transport.readBlobs("/repo", [firstOid], async () => undefined), item.expected);
+    await assert.rejects(transport.readBlobs("/repo", [firstOid], async () => undefined), (error: unknown) => {
+      assert.match(String(error), item.expected);
+      if (item.maxBlobBytes !== undefined) {
+        assert.ok(error instanceof GitBlobBatchObjectTooLargeError);
+        assert.equal(error.objectId, firstOid);
+        assert.equal(error.limitBytes, 2);
+        assert.equal(error.objectSize, 5);
+      }
+      return true;
+    });
     assert.deepEqual(child.signals, ["SIGTERM"]);
   }
 });
@@ -341,6 +377,8 @@ test("batch transport aborts an outstanding object request and reaps the process
   clock.fireNext();
 
   await assert.rejects(running, { name: "AbortError" });
+  child.sendBlob(firstOid, Buffer.from("late"));
+  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(callbackCount, 0);
   assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
 });
@@ -363,6 +401,77 @@ test("batch transport coalesces input-error and abort races into one cleanup", a
   await assert.rejects(running, /input won the race/u);
   assert.equal(callbackCount, 0);
   assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
+});
+
+test("batch transport rechecks abort after callback before sending the next OID", async () => {
+  const { transport, child } = setup(() => new FakeChild({
+    onObject: (objectId, fake) => fake.sendBlob(objectId, Buffer.from("payload")),
+    closeOnTerm: true,
+  }));
+  const controller = new AbortController();
+
+  await assert.rejects(
+    transport.readBlobs("/repo", [firstOid, secondOid], () => { controller.abort(); }, controller.signal),
+    { name: "AbortError" },
+  );
+
+  assert.deepEqual(child.objectIds, [firstOid]);
+  assert.deepEqual(child.signals, ["SIGTERM"]);
+});
+
+test("batch transport keeps late process and stream errors handled after bounded destroy", async () => {
+  const { transport, child, clock } = setup(() => new FakeChild({
+    onObject: (objectId, fake) => fake.sendBlob(objectId, Buffer.from("payload")),
+  }));
+  const running = transport.readBlobs("/repo", [firstOid], () => { throw new Error("callback failed"); });
+
+  while (child.signals.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  clock.fireNext();
+  while (child.signals.length < 2) await new Promise((resolve) => setImmediate(resolve));
+  clock.fireNext();
+  await assert.rejects(running, /callback failed/u);
+
+  assert.doesNotThrow(() => child.emit("error", new Error("late child error")));
+  assert.doesNotThrow(() => child.stdin.emit("error", new Error("late stdin error")));
+  assert.doesNotThrow(() => child.stdout.emit("error", new Error("late stdout error")));
+  assert.doesNotThrow(() => child.stderr.emit("error", new Error("late stderr error")));
+});
+
+test("batch transport waits for drain when write callback fires synchronously before a false return", async () => {
+  const { transport, child } = setup(() => new FakeChild({
+    onObject: (objectId, fake) => fake.sendBlob(objectId, Buffer.from("payload")),
+    closeOnStdinEnd: true,
+    syncWriteReturnsFalse: true,
+  }));
+  let callbackCount = 0;
+  const running = transport.readBlobs("/repo", [firstOid], () => { callbackCount += 1; });
+
+  while (child.objectIds.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(callbackCount, 0);
+  child.stdin.emit("drain");
+  await running;
+  assert.equal(callbackCount, 1);
+});
+
+test("batch transport does not resume after a write callback arrives after timeout cleanup", async () => {
+  const { transport, child, clock } = setup(() => new FakeChild({
+    onObject: () => undefined,
+    closeOnKill: true,
+    deferWriteCallback: true,
+  }));
+  let callbackCount = 0;
+  const running = transport.readBlobs("/repo", [firstOid, secondOid], () => { callbackCount += 1; });
+
+  while (child.objectIds.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  clock.fireNext();
+  while (child.signals.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  clock.fireNext();
+  await assert.rejects(running, /request timed out/u);
+
+  child.releaseWriteCallback();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(child.objectIds, [firstOid]);
+  assert.equal(callbackCount, 0);
 });
 
 test("batch transport destroys streams and unreferences after bounded reap expires", async () => {

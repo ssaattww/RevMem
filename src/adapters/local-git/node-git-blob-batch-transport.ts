@@ -41,6 +41,18 @@ interface CloseInfo {
   readonly signal: NodeJS.Signals | null;
 }
 
+/** Identifies the one transport outcome eligible for a later single-object fallback. */
+export class GitBlobBatchObjectTooLargeError extends Error {
+  public constructor(
+    public readonly objectId: string,
+    public readonly objectSize: number,
+    public readonly limitBytes: number,
+  ) {
+    super(`Git cat-file batch object ${objectId} is ${objectSize} bytes; batch limit is ${limitBytes} bytes`);
+    this.name = "GitBlobBatchObjectTooLargeError";
+  }
+}
+
 const deferred = <T>(): Deferred<T> => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((complete) => { resolve = complete; });
@@ -107,7 +119,10 @@ export class NodeGitBlobBatchTransport {
     this.clearTimer = options.clearTimer ?? ((timer) => clearTimeout(timer));
   }
 
-  /** Sends each OID only after the prior frame callback has completed. */
+  /**
+   * Sends each OID only after the prior frame callback has completed.
+   * An already-running callback cannot be cancelled; stage its results and expose them only after this promise resolves.
+   */
   public async readBlobs(
     repositoryRoot: string,
     inputObjectIds: readonly string[],
@@ -133,6 +148,7 @@ export class NodeGitBlobBatchTransport {
     let stdinEnded = false;
     let processFailed = false;
     let failureReason: Error | undefined;
+    let methodSettled = false;
 
     const fail = (error: Error): void => {
       if (processFailed) return;
@@ -143,11 +159,23 @@ export class NodeGitBlobBatchTransport {
     const onAbort = (): void => fail(new DOMException("Git blob batch was superseded.", "AbortError"));
     const onProcessError = (error: Error): void => fail(error);
     const onInputError = (error: Error): void => fail(error);
+    const onOutputError = (error: Error): void => fail(error);
+    const onStderrError = (error: Error): void => fail(error);
+    const removeErrorListeners = (): void => {
+      child.removeListener("error", onProcessError);
+      child.stdin.removeListener("error", onInputError);
+      child.stdout.removeListener("error", onOutputError);
+      child.stderr.removeListener("error", onStderrError);
+    };
     const onClose = (code: number | null, childSignal: NodeJS.Signals | null): void => {
       closeInfo = { code, signal: childSignal };
       close.resolve(closeInfo);
       if (!stdinEnded) {
         fail(new Error(`Git cat-file batch process closed before protocol completion (exit ${code ?? "signal"})`));
+      }
+      if (methodSettled) {
+        removeErrorListeners();
+        child.removeListener("close", onClose);
       }
     };
     const onStderr = (chunk: Buffer | Uint8Array): void => {
@@ -161,6 +189,8 @@ export class NodeGitBlobBatchTransport {
     child.on("error", onProcessError);
     child.on("close", onClose);
     child.stdin.on("error", onInputError);
+    child.stdout.on("error", onOutputError);
+    child.stderr.on("error", onStderrError);
     child.stderr.on("data", onStderr);
     signal?.addEventListener("abort", onAbort, { once: true });
     if (signal !== undefined && readSignalAborted(signal)) onAbort();
@@ -196,12 +226,31 @@ export class NodeGitBlobBatchTransport {
       }
     };
 
-    const writeObjectId = (objectId: string): Promise<void> => new Promise((resolve, reject) => {
+    const assertActive = (): void => {
+      if (failureReason !== undefined) throw failureReason;
+      if (signal?.aborted === true) {
+        const error = new DOMException("Git blob batch was superseded.", "AbortError");
+        fail(error);
+        throw error;
+      }
+    };
+
+    const writeObjectId = (objectId: string): Promise<void> => {
+      assertActive();
+      return new Promise((resolve, reject) => {
       let writeFinished = false;
+      let writeReturned = false;
       let needsDrain = false;
       let drained = false;
       let settled = false;
       const cleanup = (): void => { child.stdin.removeListener("drain", onDrain); };
+      const completeIfReady = (): void => {
+        if (!settled && writeReturned && writeFinished && (!needsDrain || drained)) {
+          settled = true;
+          cleanup();
+          resolve();
+        }
+      };
       const finish = (error?: Error | null): void => {
         if (settled) return;
         if (error != null) {
@@ -211,30 +260,25 @@ export class NodeGitBlobBatchTransport {
           return;
         }
         writeFinished = true;
-        if (!needsDrain || drained) {
-          settled = true;
-          cleanup();
-          resolve();
-        }
+        completeIfReady();
       };
       const onDrain = (): void => {
         drained = true;
-        if (writeFinished && !settled) {
-          settled = true;
-          cleanup();
-          resolve();
-        }
+        completeIfReady();
       };
       child.stdin.once("drain", onDrain);
       try {
+        assertActive();
         needsDrain = !child.stdin.write(`${objectId}\n`, finish);
-        if (!needsDrain) child.stdin.removeListener("drain", onDrain);
+        writeReturned = true;
+        completeIfReady();
       } catch (error) {
         settled = true;
         cleanup();
         reject(error);
       }
-    });
+      });
+    };
 
     const terminateAndReap = async (): Promise<void> => {
       if (closeInfo === undefined) {
@@ -258,11 +302,14 @@ export class NodeGitBlobBatchTransport {
 
     try {
       for (const objectId of objectIds) {
+        assertActive();
         const parser = new CatFileBatchResponseParser([objectId], this.maxBlobBytes);
         const frame = await withControl((async (): Promise<CatFileBatchFrame> => {
           await writeObjectId(objectId);
+          assertActive();
           while (true) {
             const next = await output.next();
+            assertActive();
             if (next.done) {
               parser.finish();
               throw new Error("Git cat-file batch ended before returning the requested object");
@@ -273,16 +320,16 @@ export class NodeGitBlobBatchTransport {
         })(), this.timeoutMs, `Git cat-file batch request timed out after ${this.timeoutMs} ms`);
 
         if (frame.kind !== "blob") {
-          throw new Error(frame.kind === "missing"
-            ? `Git cat-file batch object ${objectId} is missing`
-            : frame.kind === "wrong-type"
-              ? `Git cat-file batch object ${objectId} has type ${frame.type}, not blob`
-              : `Git cat-file batch object ${objectId} exceeds the ${this.maxBlobBytes}-byte batch limit`);
+          if (frame.kind === "missing") throw new Error(`Git cat-file batch object ${objectId} is missing`);
+          if (frame.kind === "wrong-type") throw new Error(`Git cat-file batch object ${objectId} has type ${frame.type}, not blob`);
+          throw new GitBlobBatchObjectTooLargeError(objectId, frame.size, this.maxBlobBytes);
         }
+        assertActive();
         await withControl(Promise.resolve().then(() => {
-          if (failureReason !== undefined) throw failureReason;
+          assertActive();
           return onBlob(objectId, frame.bytes);
         }), undefined, "");
+        assertActive();
       }
 
       stdinEnded = true;
@@ -290,6 +337,7 @@ export class NodeGitBlobBatchTransport {
       while (true) {
         const next = await withControl(output.next(), this.eofTimeoutMs,
           `Git cat-file batch timed out waiting for stdout EOF after ${this.eofTimeoutMs} ms`);
+        assertActive();
         if (next.done) break;
         throw new Error("Git cat-file batch produced extra output after all requested objects");
       }
@@ -304,11 +352,13 @@ export class NodeGitBlobBatchTransport {
       await terminateAndReap();
       throw error;
     } finally {
+      methodSettled = true;
       signal?.removeEventListener("abort", onAbort);
-      child.removeListener("error", onProcessError);
-      child.removeListener("close", onClose);
-      child.stdin.removeListener("error", onInputError);
       child.stderr.removeListener("data", onStderr);
+      if (closeInfo !== undefined) {
+        removeErrorListeners();
+        child.removeListener("close", onClose);
+      }
     }
   }
 }
