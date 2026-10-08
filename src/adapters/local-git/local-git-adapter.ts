@@ -330,7 +330,10 @@ export class LocalGitAdapter {
       }
     };
     try {
-      if (readBlobs !== undefined) {
+      // Starting a batch subprocess for one unique object is more expensive than
+      // the existing single-object reader. Keep duplicate paths in the single
+      // path separate for hint-aware decoding while reading the OID only once.
+      if (readBlobs !== undefined && pathsByObjectId.size > 1) {
         const objectIds = [...pathsByObjectId.keys()];
         for (let start = 0; start < objectIds.length; start += MAX_GIT_BLOB_BATCH_OBJECTS) {
           assertActive();
