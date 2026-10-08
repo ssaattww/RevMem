@@ -78,7 +78,9 @@ const fetchPullRequestLifecycle = async (
   const key = JSON.stringify([identity.host.toLowerCase(), identity.owner.toLowerCase(), identity.repository.toLowerCase(), number, "pull-request-lifecycle-v1"]);
   let read = operationCache?.lifecycleReads.get(key);
   if (read === undefined) {
-    read = Promise.resolve().then(() => createPullRequestLifecycle(identity, token, operationCache?.mergeBaseReads, operationCache?.mergeBaseResults)
+    read = Promise.resolve().then(() => createPullRequestLifecycle(
+      identity, token, operationCache?.mergeBaseReads, operationCache?.mergeBaseResults, operationCache?.mergeBaseGeneration,
+    )
       .fetchCurrent(identity, number, feedbackContext, signal));
     operationCache?.lifecycleReads.set(key, read);
   }
@@ -305,11 +307,12 @@ const createPullRequestSearch = (
   onDiagnostic?: ConstructorParameters<typeof FetchGitHubPullRequestAdapter>[0]["onDiagnostic"],
   mergeBaseReads?: PullRequestLifecycleOperationCache["mergeBaseReads"],
   mergeBaseResults?: PullRequestLifecycleOperationCache["mergeBaseResults"],
+  mergeBaseGeneration?: PullRequestLifecycleOperationCache["mergeBaseGeneration"],
 ): FetchGitHubPullRequestAdapter => {
   const apiBaseUrl = gitHubApiBaseUrl(identity.host);
   return token === undefined
-    ? new FetchGitHubPullRequestAdapter({ apiBaseUrl, ...(onDiagnostic === undefined ? {} : { onDiagnostic }), ...(mergeBaseReads === undefined ? {} : { mergeBaseReads }), ...(mergeBaseResults === undefined ? {} : { mergeBaseResults }) })
-    : new FetchGitHubPullRequestAdapter({ apiBaseUrl, token, ...(onDiagnostic === undefined ? {} : { onDiagnostic }), ...(mergeBaseReads === undefined ? {} : { mergeBaseReads }), ...(mergeBaseResults === undefined ? {} : { mergeBaseResults }) });
+    ? new FetchGitHubPullRequestAdapter({ apiBaseUrl, ...(onDiagnostic === undefined ? {} : { onDiagnostic }), ...(mergeBaseReads === undefined ? {} : { mergeBaseReads }), ...(mergeBaseResults === undefined ? {} : { mergeBaseResults }), ...(mergeBaseGeneration === undefined ? {} : { mergeBaseGeneration }) })
+    : new FetchGitHubPullRequestAdapter({ apiBaseUrl, token, ...(onDiagnostic === undefined ? {} : { onDiagnostic }), ...(mergeBaseReads === undefined ? {} : { mergeBaseReads }), ...(mergeBaseResults === undefined ? {} : { mergeBaseResults }), ...(mergeBaseGeneration === undefined ? {} : { mergeBaseGeneration }) });
 };
 
 const createPullRequestRemote = (
@@ -327,11 +330,12 @@ const createPullRequestLifecycle = (
   token: string | undefined,
   mergeBaseReads?: Map<string, Promise<Awaited<ReturnType<typeof fetchGitHubPullRequestMergeBase>>>>,
   mergeBaseResults?: PullRequestLifecycleOperationCache["mergeBaseResults"],
+  mergeBaseGeneration?: PullRequestLifecycleOperationCache["mergeBaseGeneration"],
 ): FetchGitHubPullRequestLifecycleAdapter => {
   const apiBaseUrl = gitHubApiBaseUrl(identity.host);
   return token === undefined
-    ? new FetchGitHubPullRequestLifecycleAdapter({ apiBaseUrl, ...(mergeBaseReads === undefined ? {} : { mergeBaseReads }), ...(mergeBaseResults === undefined ? {} : { mergeBaseResults }) })
-    : new FetchGitHubPullRequestLifecycleAdapter({ apiBaseUrl, token, ...(mergeBaseReads === undefined ? {} : { mergeBaseReads }), ...(mergeBaseResults === undefined ? {} : { mergeBaseResults }) });
+    ? new FetchGitHubPullRequestLifecycleAdapter({ apiBaseUrl, ...(mergeBaseReads === undefined ? {} : { mergeBaseReads }), ...(mergeBaseResults === undefined ? {} : { mergeBaseResults }), ...(mergeBaseGeneration === undefined ? {} : { mergeBaseGeneration }) })
+    : new FetchGitHubPullRequestLifecycleAdapter({ apiBaseUrl, token, ...(mergeBaseReads === undefined ? {} : { mergeBaseReads }), ...(mergeBaseResults === undefined ? {} : { mergeBaseResults }), ...(mergeBaseGeneration === undefined ? {} : { mergeBaseGeneration }) });
 };
 
 const localOwner = (snapshot: CurrentContextUiSnapshot): LocalRepositoryOwner | undefined => {
@@ -1455,7 +1459,7 @@ export function registerT405ReviewContextsRuntime(
         ...(event.reasonCode === undefined ? {} : { reasonCode: event.reasonCode }),
       });
     };
-    let search = await createPullRequestSearch(identity, token, searchDiagnostic, lifecycleCache.mergeBaseReads, lifecycleCache.mergeBaseResults).findOpenByHead(identity, pullRequestSynchronizationRevision, signal);
+    let search = await createPullRequestSearch(identity, token, searchDiagnostic, lifecycleCache.mergeBaseReads, lifecycleCache.mergeBaseResults, lifecycleCache.mergeBaseGeneration).findOpenByHead(identity, pullRequestSynchronizationRevision, signal);
     assertDetectionCurrent();
     if (
       token !== undefined &&
@@ -1467,7 +1471,7 @@ export function registerT405ReviewContextsRuntime(
       assertDetectionCurrent();
       if (reselectedToken !== undefined) {
         clearPullRequestLifecycleOperationCache(lifecycleCache);
-        search = await createPullRequestSearch(identity, reselectedToken, searchDiagnostic, lifecycleCache.mergeBaseReads, lifecycleCache.mergeBaseResults).findOpenByHead(identity, pullRequestSynchronizationRevision, signal);
+        search = await createPullRequestSearch(identity, reselectedToken, searchDiagnostic, lifecycleCache.mergeBaseReads, lifecycleCache.mergeBaseResults, lifecycleCache.mergeBaseGeneration).findOpenByHead(identity, pullRequestSynchronizationRevision, signal);
         assertDetectionCurrent();
       }
     }

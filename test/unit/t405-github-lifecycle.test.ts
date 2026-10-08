@@ -14,6 +14,10 @@ import {
   readGitHubPullRequestMergeBase,
 } from "../../src/adapters/github/fetch-github-pull-request-merge-base.js";
 import {
+  clearPullRequestLifecycleOperationCache,
+  type PullRequestLifecycleOperationCache,
+} from "../../src/composition/review-contexts/pull-request-lifecycle-operation-cache.js";
+import {
   GitHubPullRequestContextStateService,
   createImmutablePullRequestRevisionMapper,
   isPullRequestDecorationEnabled,
@@ -204,6 +208,64 @@ test("R405 completed merge-base results reuse only the same repository and base/
     githubPullRequestMergeBaseResultKey("https://api.github.com", identity, C, B));
   assert.notEqual(githubPullRequestMergeBaseResultKey("https://api.github.com", identity, A, B),
     githubPullRequestMergeBaseResultKey("https://api.github.com", identity, A, C));
+});
+
+test("R405 auth cache clear fences delayed old success and preserves new-generation reads", async () => {
+  const deferred = <T,>() => {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((complete) => { resolve = complete; });
+    return { promise, resolve };
+  };
+  const runRace = async (oldResponse: Response): Promise<void> => {
+    const oldGate = deferred<Response>();
+    const newGate = deferred<Response>();
+    const oldStarted = deferred<void>();
+    const newStarted = deferred<void>();
+    let fetchCount = 0;
+    const fetch: typeof globalThis.fetch = async () => {
+      const index = fetchCount++;
+      if (index === 0) {
+        oldStarted.resolve();
+        return oldGate.promise;
+      }
+      newStarted.resolve();
+      return newGate.promise;
+    };
+    const cache: PullRequestLifecycleOperationCache = {
+      lifecycleReads: new Map(),
+      mergeBaseReads: new Map(),
+      mergeBaseResults: new Map(),
+      mergeBaseGeneration: { value: 0 },
+    };
+    const options = { apiBaseUrl: "https://api.github.com", fetch };
+    const signal = new AbortController().signal;
+    const args = (cacheValue: PullRequestLifecycleOperationCache) => [
+      options, identity, A, B, signal, cacheValue.mergeBaseReads, cacheValue.mergeBaseResults,
+      cacheValue.mergeBaseGeneration,
+    ] as const;
+
+    const oldRead = readGitHubPullRequestMergeBase(...args(cache));
+    await oldStarted.promise;
+    clearPullRequestLifecycleOperationCache(cache);
+    const newRead = readGitHubPullRequestMergeBase(...args(cache));
+    await newStarted.promise;
+    const key = githubPullRequestMergeBaseReadKey("https://api.github.com", identity, A, B, undefined, signal);
+    const currentRead = cache.mergeBaseReads.get(key);
+    assert.ok(currentRead, "the new generation owns a pending read under the same operation signal");
+
+    oldGate.resolve(oldResponse);
+    await assert.rejects(oldRead, { name: "AbortError" }, "a cleared generation cannot return an old result to its caller");
+    assert.equal(cache.mergeBaseResults.size, 0, "late old success/unavailable results cannot repopulate the new result map");
+    assert.equal(cache.mergeBaseReads.get(key), currentRead, "old cleanup cannot delete the new generation's in-flight read");
+
+    newGate.resolve(jsonResponse({ merge_base_commit: { sha: C } }));
+    assert.deepEqual(await newRead, { kind: "available", mergeBaseSha: C });
+    assert.equal(cache.mergeBaseResults.get(githubPullRequestMergeBaseResultKey("https://api.github.com", identity, A, B))?.mergeBaseSha, C);
+    assert.equal(fetchCount, 2, "the new generation performs its own comparison and then caches it");
+  };
+
+  await runRace(jsonResponse({ merge_base_commit: { sha: B } }));
+  await runRace(jsonResponse({ message: "old auth unavailable" }, 503));
 });
 
 test("R405 one cancelled consumer cannot abort another signal's identical merge-base read", async () => {

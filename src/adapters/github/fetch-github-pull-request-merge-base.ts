@@ -28,6 +28,10 @@ export type GitHubPullRequestMergeBaseAvailable = Extract<
 export type GitHubPullRequestMergeBaseReadMap = Map<string, Promise<GitHubPullRequestMergeBaseResult>>;
 export type GitHubPullRequestMergeBaseResultMap = Map<string, GitHubPullRequestMergeBaseAvailable>;
 
+export interface GitHubPullRequestMergeBaseCacheGeneration {
+  value: number;
+}
+
 const abortSignalIds = new WeakMap<AbortSignal, number>();
 let nextAbortSignalId = 0;
 const abortSignalScope = (signal?: AbortSignal): number => {
@@ -170,14 +174,22 @@ export const readGitHubPullRequestMergeBase = async (
   signal: AbortSignal | undefined,
   reads?: GitHubPullRequestMergeBaseReadMap,
   results?: GitHubPullRequestMergeBaseResultMap,
+  generation?: GitHubPullRequestMergeBaseCacheGeneration,
 ): Promise<GitHubPullRequestMergeBaseResult> => {
-  if (signal?.aborted) throw new DOMException("GitHub merge-base fetch was superseded.", "AbortError");
+  const expectedGeneration = generation?.value;
+  const isCurrentGeneration = (): boolean => generation === undefined || generation.value === expectedGeneration;
+  const assertCurrent = (): void => {
+    if (signal?.aborted || !isCurrentGeneration()) {
+      throw new DOMException("GitHub merge-base fetch was superseded.", "AbortError");
+    }
+  };
+  assertCurrent();
   const completedKey = githubPullRequestMergeBaseResultKey(
     options.apiBaseUrl, repository, currentBaseSha, headSha, options.requestTimeoutMs,
   );
   const completed = results?.get(completedKey);
   if (completed !== undefined) {
-    if (signal?.aborted) throw new DOMException("GitHub merge-base fetch was superseded.", "AbortError");
+    assertCurrent();
     return completed;
   }
   const readKey = githubPullRequestMergeBaseReadKey(
@@ -190,7 +202,7 @@ export const readGitHubPullRequestMergeBase = async (
   }
   try {
     const result = await read;
-    if (signal?.aborted) throw new DOMException("GitHub merge-base fetch was superseded.", "AbortError");
+    assertCurrent();
     if (result.kind === "available") results?.set(completedKey, result);
     else if (reads?.get(readKey) === read) reads.delete(readKey);
     return result;

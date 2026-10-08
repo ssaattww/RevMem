@@ -4,6 +4,7 @@ import type { OperationFeedbackContext } from "../../application/operation-feedb
 import {
   fetchGitHubPullRequestMergeBase,
   readGitHubPullRequestMergeBase,
+  type GitHubPullRequestMergeBaseCacheGeneration,
   type GitHubPullRequestMergeBaseResultMap,
 } from "./fetch-github-pull-request-merge-base";
 
@@ -25,6 +26,8 @@ export interface FetchGitHubPullRequestLifecycleAdapterOptions {
   readonly mergeBaseReads?: Map<string, Promise<Awaited<ReturnType<typeof fetchGitHubPullRequestMergeBase>>>>;
   /** Completed immutable results shared across linked refresh signals. */
   readonly mergeBaseResults?: GitHubPullRequestMergeBaseResultMap;
+  /** Invalidates old consumers when account/operation cache scope changes. */
+  readonly mergeBaseGeneration?: GitHubPullRequestMergeBaseCacheGeneration;
 }
 
 interface PullRequestPayload {
@@ -67,6 +70,7 @@ export class FetchGitHubPullRequestLifecycleAdapter {
   private readonly fetchImplementation: typeof globalThis.fetch;
   private readonly mergeBaseReads: FetchGitHubPullRequestLifecycleAdapterOptions["mergeBaseReads"];
   private readonly mergeBaseResults: FetchGitHubPullRequestLifecycleAdapterOptions["mergeBaseResults"];
+  private readonly mergeBaseGeneration: FetchGitHubPullRequestLifecycleAdapterOptions["mergeBaseGeneration"];
 
   public constructor(options: FetchGitHubPullRequestLifecycleAdapterOptions) {
     this.apiBaseUrl = options.apiBaseUrl.replace(/\/+$/u, "");
@@ -74,6 +78,7 @@ export class FetchGitHubPullRequestLifecycleAdapter {
     this.fetchImplementation = options.fetch ?? globalThis.fetch;
     this.mergeBaseReads = options.mergeBaseReads;
     this.mergeBaseResults = options.mergeBaseResults;
+    this.mergeBaseGeneration = options.mergeBaseGeneration;
   }
 
   public async fetchCurrent(
@@ -129,6 +134,7 @@ export class FetchGitHubPullRequestLifecycleAdapter {
         signal,
         this.mergeBaseReads,
         this.mergeBaseResults,
+        this.mergeBaseGeneration,
       );
       if (mergeBase.kind === "unavailable") return mergeBase.reason === "timeout" ? { kind: "unavailable", reason: "network" } : mergeBase;
       baseSha = mergeBase.mergeBaseSha;

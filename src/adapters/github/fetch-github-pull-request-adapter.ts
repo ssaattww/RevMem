@@ -7,6 +7,7 @@ import type {
 import {
   fetchGitHubPullRequestMergeBase,
   readGitHubPullRequestMergeBase,
+  type GitHubPullRequestMergeBaseCacheGeneration,
   type GitHubPullRequestMergeBaseResultMap,
 } from "./fetch-github-pull-request-merge-base";
 import { GITHUB_REQUEST_TIMEOUT_MS, GitHubRequestTimeoutError, runGitHubRequestWithTimeout } from "./github-request-timeout";
@@ -33,6 +34,8 @@ export interface FetchGitHubPullRequestAdapterOptions {
   readonly mergeBaseReads?: Map<string, Promise<Awaited<ReturnType<typeof fetchGitHubPullRequestMergeBase>>>>;
   /** Completed immutable results shared across linked refresh signals. */
   readonly mergeBaseResults?: GitHubPullRequestMergeBaseResultMap;
+  /** Invalidates old consumers when account/operation cache scope changes. */
+  readonly mergeBaseGeneration?: GitHubPullRequestMergeBaseCacheGeneration;
   /** Emits allowlisted phase, ordinal, count, status, and duration only. */
   readonly onDiagnostic?: (event: GitHubPullRequestSearchPhaseDiagnostic) => void;
 }
@@ -147,6 +150,7 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
   private readonly onDiagnostic: FetchGitHubPullRequestAdapterOptions["onDiagnostic"];
   private readonly mergeBaseReads: FetchGitHubPullRequestAdapterOptions["mergeBaseReads"];
   private readonly mergeBaseResults: FetchGitHubPullRequestAdapterOptions["mergeBaseResults"];
+  private readonly mergeBaseGeneration: FetchGitHubPullRequestAdapterOptions["mergeBaseGeneration"];
 
   public constructor(options: FetchGitHubPullRequestAdapterOptions) {
     this.apiBaseUrl = options.apiBaseUrl.replace(/\/+$/u, "");
@@ -156,6 +160,7 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
     this.onDiagnostic = options.onDiagnostic;
     this.mergeBaseReads = options.mergeBaseReads;
     this.mergeBaseResults = options.mergeBaseResults;
+    this.mergeBaseGeneration = options.mergeBaseGeneration;
     if (!Number.isSafeInteger(this.requestTimeoutMs) || this.requestTimeoutMs < 1) {
       throw new RangeError("GitHub request timeout must be a positive safe integer");
     }
@@ -296,6 +301,7 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
           signal,
           this.mergeBaseReads,
           this.mergeBaseResults,
+          this.mergeBaseGeneration,
         );
       } catch (error) {
         if (isSignalAborted(signal) || (error instanceof DOMException && error.name === "AbortError")) {
