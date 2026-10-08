@@ -44,19 +44,30 @@ const REPOSITORY_ID = "github.com/ssaattww/revmem";
 const CONTEXT_ID = `github-pr:${REPOSITORY_ID}#52`;
 const FILE_ID = "file-1";
 const contentHash = (content: string): string => createHash("sha256").update(content, "utf8").digest("hex");
-const withTestTimeout = async <T>(promise: Promise<T>, message: string): Promise<T> => {
+const withTestTimeout = async <T>(promise: Promise<T>, message: string, timeoutMs = 5_000): Promise<T> => {
   let timer: NodeJS.Timeout | undefined;
   try {
     return await Promise.race([
       promise,
       new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(message)), 5_000);
+        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
       }),
     ]);
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
 };
+
+test("remote fallback test deadlines bound missing-start and unsettled-reader waits", async () => {
+  await assert.rejects(
+    withTestTimeout(new Promise<void>(() => {}), "remote fallback did not start", 10),
+    /remote fallback did not start/,
+  );
+  await assert.rejects(
+    withTestTimeout(new Promise<void>(() => {}), "remote reader did not settle", 10),
+    /remote reader did not settle/,
+  );
+});
 
 const contextState = (): ReviewContextState => ({
   schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
@@ -208,18 +219,37 @@ test("PR remote content fallback stops before the next descriptor after cancella
     await remoteGate;
     return { kind: "found", content: "remote" };
   }, controller.signal);
+  const outcome = read.then(
+    (value) => ({ kind: "fulfilled" as const, value }),
+    (error: unknown) => ({ kind: "rejected" as const, error }),
+  );
+  let failed = false;
+  let failure: unknown;
   try {
     await withTestTimeout(remoteStarted, "remote fallback did not start");
     controller.abort();
     resolveRemote();
 
-    await withTestTimeout(assert.rejects(read, { name: "AbortError" }), "cancelled remote fallback did not settle");
+    const result = await withTestTimeout(outcome, "cancelled remote fallback did not settle");
+    assert.equal(result.kind, "rejected");
+    if (result.kind === "rejected") assert.equal((result.error as Error).name, "AbortError");
     assert.deepEqual(calls, ["first.ts"]);
+  } catch (error) {
+    failed = true;
+    failure = error;
   } finally {
     controller.abort();
     resolveRemote();
-    await read.catch(() => undefined);
+    try {
+      await withTestTimeout(outcome, "remote reader cleanup timed out");
+    } catch (cleanupError) {
+      if (!failed) {
+        failed = true;
+        failure = cleanupError;
+      }
+    }
   }
+  if (failed) throw failure;
 });
 
 const globalState = (): RepositoryGlobalState => ({
