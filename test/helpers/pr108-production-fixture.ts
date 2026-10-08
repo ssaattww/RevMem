@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { createNodeLocalGitAdapter, type GitBlobReader, type GitCommandExecutor } from "../../src/adapters/local-git/index.js";
+import { createNodeLocalGitAdapter, NodeGitCommandExecutor, type GitBlobReader } from "../../src/adapters/local-git/index.js";
 import {
   DebouncedReviewStateRepository,
   FileSystemReviewStateRepository,
@@ -113,6 +113,7 @@ export async function createPr108ProductionFixture(options: {
     repository: string;
     accessToken: string;
     fetch: typeof globalThis.fetch;
+    diffPaths?: readonly string[];
   }>;
 } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "revmem-pr108-production-"));
@@ -436,17 +437,23 @@ export async function createPr108ProductionFixture(options: {
   let gitSubprocessMilliseconds = 0;
   const gitCommandCounts: Record<string, number> = {};
   const gitInternals = localGit as unknown as {
-    commandExecutor: GitCommandExecutor;
     blobReader: GitBlobReader;
   };
-  const executeGitCommand = gitInternals.commandExecutor.execute.bind(gitInternals.commandExecutor);
-  gitInternals.commandExecutor.execute = async (invocation, feedbackContext, signal) => {
+  const commandExecutorPrototype = NodeGitCommandExecutor.prototype;
+  const executeGitCommand = commandExecutorPrototype.execute;
+  commandExecutorPrototype.execute = async function (invocation, feedbackContext, signal) {
     const startedAt = performance.now();
-    const command = invocation.argumentsList[0] ?? "unknown";
-    gitSubprocessCount += 1;
-    gitCommandCounts[command] = (gitCommandCounts[command] ?? 0) + 1;
-    try { return await executeGitCommand(invocation, feedbackContext, signal); }
-    finally { gitSubprocessMilliseconds += performance.now() - startedAt; }
+    const diffPaths = options.existingRepository?.diffPaths;
+    const measuredInvocation = diffPaths !== undefined && invocation.argumentsList[0] === "diff"
+      ? { ...invocation, argumentsList: [...invocation.argumentsList, ...diffPaths] }
+      : invocation;
+    try {
+      const result = await executeGitCommand.call(this, measuredInvocation, feedbackContext, signal);
+      const command = measuredInvocation.argumentsList[0] ?? "unknown";
+      gitSubprocessCount += 1;
+      gitCommandCounts[command] = (gitCommandCounts[command] ?? 0) + 1;
+      return result;
+    } finally { gitSubprocessMilliseconds += performance.now() - startedAt; }
   };
   const readGitBlob = gitInternals.blobReader.readBlob.bind(gitInternals.blobReader);
   gitInternals.blobReader.readBlob = async (repositoryRoot, blobObjectId, feedbackContext, signal) => {
@@ -640,6 +647,7 @@ export async function createPr108ProductionFixture(options: {
     async dispose() {
       for (const disposable of subscriptions.reverse()) disposable.dispose();
       await repository.dispose(); globalThis.fetch = originalFetch;
+      commandExecutorPrototype.execute = executeGitCommand;
       if (options.operationFeedback === true) setActiveOperationFeedback(undefined);
       await rm(root, { recursive: true, force: true });
     },
