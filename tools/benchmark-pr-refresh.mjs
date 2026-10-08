@@ -8,9 +8,10 @@ import { createPr108ProductionFixture } from "../test-dist/test/helpers/pr108-pr
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const runCount = Number(process.env.BENCH_ITERATIONS ?? "3");
-if (!Number.isSafeInteger(runCount) || runCount < 3) {
-  throw new RangeError("BENCH_ITERATIONS must be an integer of at least 3");
+if (!Number.isSafeInteger(runCount) || runCount < 1) {
+  throw new RangeError("BENCH_ITERATIONS must be a positive integer");
 }
+const selectedScenario = process.env.BENCH_SCENARIO;
 const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
 const summarize = (rows, key) => {
   const values = rows.map((row) => row[key]).sort((left, right) => left - right);
@@ -35,11 +36,20 @@ const environment = {
 };
 console.log(JSON.stringify({ environment }));
 
+const gitMetricsDelta = (before, after) => ({
+  processCount: after.gitSubprocessCount - before.gitSubprocessCount,
+  processMilliseconds: after.gitSubprocessMilliseconds - before.gitSubprocessMilliseconds,
+  commandCounts: Object.fromEntries(Object.entries(after.gitCommandCounts).map(([command, count]) => [
+    command,
+    count - (before.gitCommandCounts[command] ?? 0),
+  ]).filter(([, count]) => count > 0)),
+});
+
 const scenarioSummaries = {};
 for (const scenario of [
   { name: "all-files-changed", changedFileCount: 1000 },
   { name: "one-file-changed", changedFileCount: 1 },
-]) {
+].filter((candidate) => selectedScenario === undefined || candidate.name === selectedScenario)) {
   const rows = [];
   for (let iteration = 1; iteration <= runCount; iteration += 1) {
     const fixture = await createPr108ProductionFixture({
@@ -57,23 +67,29 @@ for (const scenario of [
       const sourceDirectory = path.join(fixture.root, "repository", "src");
       const syntheticBytes = readdirSync(sourceDirectory)
         .reduce((total, entry) => total + statSync(path.join(sourceDirectory, entry)).size, 0);
+      const beforeDetection = fixture.metrics();
       let startedAt = performance.now();
       await fixture.invoke("reviewRange.redetectPullRequest");
       const detectionMs = performance.now() - startedAt;
+      const detectionGit = gitMetricsDelta(beforeDetection, fixture.metrics());
       const registration = fixture.registrations[0];
       if (registration === undefined) throw new Error("Production PR redetection did not register a context");
       const snapshot = fixture.review.snapshotForContext(registration.contextId);
       const afterDetection = fixture.metrics();
 
+      const beforeColdProgress = fixture.metrics();
       startedAt = performance.now();
       await fixture.review.activateProgress(registration.contextId);
       const coldProgressMs = performance.now() - startedAt;
+      const coldProgressGit = gitMetricsDelta(beforeColdProgress, fixture.metrics());
       const treeItems = fixture.review.progress.getChildren()
         .reduce((sum, category) => sum + fixture.review.progress.getChildren(category).length, 0);
 
+      const beforeWarmProgress = fixture.metrics();
       startedAt = performance.now();
       await fixture.review.activateProgress(registration.contextId);
       const warmProgressMs = performance.now() - startedAt;
+      const warmProgressGit = gitMetricsDelta(beforeWarmProgress, fixture.metrics());
       const metrics = fixture.metrics();
       if (snapshot?.files.length !== scenario.changedFileCount || treeItems !== scenario.changedFileCount) {
         throw new Error(`PR snapshot/tree size mismatch: ${JSON.stringify({ files: snapshot?.files.length, treeItems })}`);
@@ -88,6 +104,9 @@ for (const scenario of [
         additions: scenario.changedFileCount,
         deletions: scenario.changedFileCount,
         detectionMs,
+        detectionGitProcesses: detectionGit.processCount,
+        detectionGitProcessMs: detectionGit.processMilliseconds,
+        detectionGitCommandCounts: detectionGit.commandCounts,
         diffAcquisitionMs: afterDetection.diffAcquisitionMilliseconds,
         diffAcquisitionCount: afterDetection.diffAcquisitionCount,
         stateCreateCount: afterDetection.stateCreateCount,
@@ -96,7 +115,13 @@ for (const scenario of [
         localContentReadCountAfterProgress: metrics.revisionContentReadCount,
         localContentReadMsAfterProgress: metrics.revisionContentReadMilliseconds,
         coldProgressMs,
+        coldProgressGitProcesses: coldProgressGit.processCount,
+        coldProgressGitProcessMs: coldProgressGit.processMilliseconds,
+        coldProgressGitCommandCounts: coldProgressGit.commandCounts,
         warmProgressMs,
+        warmProgressGitProcesses: warmProgressGit.processCount,
+        warmProgressGitProcessMs: warmProgressGit.processMilliseconds,
+        warmProgressGitCommandCounts: warmProgressGit.commandCounts,
         githubFixtureRequests: afterDetection.githubFetchRequests,
         reviewContextsTreeNotifications: afterDetection.providerTreeChangeEvents,
         snapshotFiles: snapshot.files.length,

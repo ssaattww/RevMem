@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index.js";
+import { createNodeLocalGitAdapter, type GitBlobReader, type GitCommandExecutor } from "../../src/adapters/local-git/index.js";
 import {
   DebouncedReviewStateRepository,
   FileSystemReviewStateRepository,
@@ -99,6 +99,8 @@ export async function createPr108ProductionFixture(options: {
     changedLinesPerFile: number;
     changedFileCount?: number;
   }>;
+  /** Deterministic delay for each mocked GitHub HTTP request in lifecycle scaling checks. */
+  readonly githubResponseDelayMilliseconds?: number;
   readonly existingRepository?: Readonly<{
     root: string;
     baseRevision: string;
@@ -254,8 +256,11 @@ export async function createPr108ProductionFixture(options: {
         ...("revisionId" in event ? { revisionId: event.revisionId } : {}) });
     } },
   });
+  const remoteNumbers = [...new Set(options.contexts !== undefined && options.contexts.length > 0
+    ? options.contexts
+    : [52, 53])];
   const remote = new Map<number, { base: FixtureRevision; head: FixtureRevision; state: "open" | "closed" }>(
-    [52, 53].map((number) => [number, { base: "A", head: contextHead, state: "open" }]),
+    remoteNumbers.map((number) => [number, { base: "A", head: contextHead, state: "open" }]),
   );
   const unavailable = new Set<number>();
   let ownerHead = options.ownerHead ?? contextHead;
@@ -267,32 +272,43 @@ export async function createPr108ProductionFixture(options: {
     status, headers: { "content-type": "application/json" },
   });
   const fetchRequests: string[] = [];
+  let githubFetchMilliseconds = 0;
+  const githubFetchRequestCountsByPath: Record<string, number> = {};
   globalThis.fetch = options.existingRepository?.fetch ?? (async (input, init) => {
     const url = new URL(String(input));
+    const fetchStartedAt = performance.now();
     fetchRequests.push(`${url.pathname}?${url.searchParams.get("state") ?? ""}`);
-    if (control.requireAuthentication && new Headers(init?.headers).get("authorization") === null) {
-      return response({ message: "Not Found" }, 404);
+    githubFetchRequestCountsByPath[url.pathname] = (githubFetchRequestCountsByPath[url.pathname] ?? 0) + 1;
+    try {
+      if ((options.githubResponseDelayMilliseconds ?? 0) > 0) {
+        await new Promise((resolve) => setTimeout(resolve, options.githubResponseDelayMilliseconds));
+      }
+      if (control.requireAuthentication && new Headers(init?.headers).get("authorization") === null) {
+        return response({ message: "Not Found" }, 404);
+      }
+      const metadata = (number: number) => {
+        const value = remote.get(number); assert.ok(value);
+        return { number, title: `PR ${number}`, html_url: `https://github.com/ssaattww/revmem/pull/${number}`,
+          state: value.state, merged_at: null, changed_files: 1,
+          base: { ref: "main", sha: revisions[value.base] }, head: { sha: revisions[value.head] } };
+      };
+      if (url.pathname === "/repos/ssaattww/revmem/pulls") {
+        return response([...remote.keys()].map(metadata));
+      }
+      const match = /\/pulls\/(\d+)$/u.exec(url.pathname);
+      if (match !== null) {
+        const number = Number(match[1]);
+        if (unavailable.has(number)) throw new Error("fixture lifecycle unavailable");
+        return response(metadata(number));
+      }
+      const compare = /\/compare\/([0-9a-f]{40})\.\.\.([0-9a-f]{40})$/u.exec(url.pathname);
+      if (compare !== null) {
+        return response({ merge_base_commit: { sha: compare[1] } });
+      }
+      throw new Error(`Unexpected request in PR108 production fixture: ${url.pathname}`);
+    } finally {
+      githubFetchMilliseconds += performance.now() - fetchStartedAt;
     }
-    const metadata = (number: number) => {
-      const value = remote.get(number); assert.ok(value);
-      return { number, title: `PR ${number}`, html_url: `https://github.com/ssaattww/revmem/pull/${number}`,
-        state: value.state, merged_at: null, changed_files: 1,
-        base: { ref: "main", sha: revisions[value.base] }, head: { sha: revisions[value.head] } };
-    };
-    if (url.pathname === "/repos/ssaattww/revmem/pulls") {
-      return response([...remote.keys()].map(metadata));
-    }
-    const match = /\/pulls\/(\d+)$/u.exec(url.pathname);
-    if (match !== null) {
-      const number = Number(match[1]);
-      if (unavailable.has(number)) throw new Error("fixture lifecycle unavailable");
-      return response(metadata(number));
-    }
-    const compare = /\/compare\/([0-9a-f]{40})\.\.\.([0-9a-f]{40})$/u.exec(url.pathname);
-    if (compare !== null) {
-      return response({ merge_base_commit: { sha: compare[1] } });
-    }
-    throw new Error(`Unexpected request in PR108 production fixture: ${url.pathname}`);
   });
   const commands = new Map<string, (...args: unknown[]) => unknown>();
   const errors: string[] = [];
@@ -363,6 +379,30 @@ export async function createPr108ProductionFixture(options: {
     runtimeModule = runtimeRequire("../../src/composition/review-contexts/review-contexts-runtime.js") as typeof runtimeModule;
   } finally { loader._load = originalLoad; }
   const localGit = createNodeLocalGitAdapter();
+  let gitSubprocessCount = 0;
+  let gitSubprocessMilliseconds = 0;
+  const gitCommandCounts: Record<string, number> = {};
+  const gitInternals = localGit as unknown as {
+    commandExecutor: GitCommandExecutor;
+    blobReader: GitBlobReader;
+  };
+  const executeGitCommand = gitInternals.commandExecutor.execute.bind(gitInternals.commandExecutor);
+  gitInternals.commandExecutor.execute = async (invocation, feedbackContext, signal) => {
+    const startedAt = performance.now();
+    const command = invocation.argumentsList[0] ?? "unknown";
+    gitSubprocessCount += 1;
+    gitCommandCounts[command] = (gitCommandCounts[command] ?? 0) + 1;
+    try { return await executeGitCommand(invocation, feedbackContext, signal); }
+    finally { gitSubprocessMilliseconds += performance.now() - startedAt; }
+  };
+  const readGitBlob = gitInternals.blobReader.readBlob.bind(gitInternals.blobReader);
+  gitInternals.blobReader.readBlob = async (repositoryRoot, blobObjectId, feedbackContext, signal) => {
+    const startedAt = performance.now();
+    gitSubprocessCount += 1;
+    gitCommandCounts["cat-file"] = (gitCommandCounts["cat-file"] ?? 0) + 1;
+    try { return await readGitBlob(repositoryRoot, blobObjectId, feedbackContext, signal); }
+    finally { gitSubprocessMilliseconds += performance.now() - startedAt; }
+  };
   let revisionContentReadCount = 0;
   let revisionContentReadMilliseconds = 0;
   const readRevisionContent = localGit.readTextFileAtRevision.bind(localGit);
@@ -449,6 +489,9 @@ export async function createPr108ProductionFixture(options: {
     metrics: () => ({
       revisionContentReadCount,
       revisionContentReadMilliseconds,
+      gitSubprocessCount,
+      gitSubprocessMilliseconds,
+      gitCommandCounts: { ...gitCommandCounts },
       diffAcquisitionCount,
       diffAcquisitionMilliseconds,
       diffSnapshotFileCount,
@@ -460,6 +503,8 @@ export async function createPr108ProductionFixture(options: {
       stateSaveMilliseconds,
       providerTreeChangeEvents,
       githubFetchRequests: fetchRequests.length,
+      githubFetchMilliseconds,
+      githubFetchRequestCountsByPath: { ...githubFetchRequestCountsByPath },
     }),
     async owner(revision: FixtureRevision) { ownerHead = revision; await git("checkout", "--detach", revisions[revision]); },
     async invoke(id: string, ...args: unknown[]): Promise<readonly string[]> {

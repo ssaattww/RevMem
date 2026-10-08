@@ -146,6 +146,7 @@
     "validate:architecture:negative": "node tools/validate-architecture.mjs --source-root type-fixtures/architecture-invalid --layer-root src --expect-violations 11",
     "compile:test": "tsc -p tsconfig.test.json",
     "benchmark:pr-refresh": "npm run compile:test && node tools/benchmark-pr-refresh.mjs",
+    "benchmark:pr-owner-sync": "npm run compile:test && node tools/benchmark-pr-owner-sync.mjs",
     "test:tooling": "npm run compile:test && node --test test/tooling/*.test.mjs",
     "test:document-line-contract": "npm run compile:test && node --test test-dist/test/unit/document-line-contract.test.js",
     "test:change-blocks": "npm run compile:test && node --test test-dist/test/unit/change-blocks.test.js",
