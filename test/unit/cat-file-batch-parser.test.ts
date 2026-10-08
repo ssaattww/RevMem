@@ -82,6 +82,7 @@ test("cat-file batch parser rejects incomplete, malformed, mismatched, and extra
     { label: "leading-zero size", wire: Buffer.from(`${expectedOid} blob 01\n`, "ascii") },
     { label: "OID mismatch", wire: Buffer.from(`${anotherOid} blob 0\n\n`, "ascii") },
     { label: "unknown type syntax", wire: Buffer.from(`${expectedOid} BLOB 0\n\n`, "ascii") },
+    { label: "unknown object type", wire: Buffer.from(`${expectedOid} blobish 0\n\n`, "ascii") },
     { label: "truncated payload", wire: Buffer.from(`${expectedOid} blob 2\nx`, "ascii") },
     { label: "missing payload LF", wire: Buffer.from(`${expectedOid} blob 1\nx`, "ascii") },
     { label: "extra frame", wire: Buffer.from(`${expectedOid} blob 0\n\n${anotherOid} missing\n`, "ascii") },
@@ -94,6 +95,26 @@ test("cat-file batch parser rejects incomplete, malformed, mismatched, and extra
       parser.finish();
     }, invalid.label);
   }
+});
+
+test("cat-file batch parser is poisoned after a push protocol error", () => {
+  const expectedOid = oid("a");
+  const parser = new CatFileBatchResponseParser([expectedOid], 16);
+
+  assert.throws(() => parser.push(Buffer.from(`${expectedOid} blobish 0\n\n`, "ascii")), /unknown object type/u);
+  assert.throws(() => parser.push(Buffer.from(`${expectedOid} blob 0\n\n`, "ascii")), /poisoned/u);
+  assert.throws(() => parser.finish(), /poisoned/u);
+});
+
+test("cat-file batch parser is poisoned after finish detects a truncated frame", () => {
+  const expectedOid = oid("a");
+  const parser = new CatFileBatchResponseParser([expectedOid], 16);
+
+  parser.push(Buffer.from(`${expectedOid} blob 2\nx`, "ascii"));
+
+  assert.throws(() => parser.finish(), /Truncated/u);
+  assert.throws(() => parser.push(Buffer.from("y\n", "ascii")), /poisoned/u);
+  assert.throws(() => parser.finish(), /poisoned/u);
 });
 
 test("cat-file batch parser rejects a response that omits requested objects", () => {

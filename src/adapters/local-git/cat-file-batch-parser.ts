@@ -2,6 +2,7 @@ const OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const MISSING_FRAME_PATTERN = /^([0-9a-f]{40}|[0-9a-f]{64}) missing$/u;
 const OBJECT_FRAME_PATTERN = /^([0-9a-f]{40}|[0-9a-f]{64}) ([a-z][a-z0-9-]*) (0|[1-9][0-9]*)$/u;
 const MAX_HEADER_BYTES = 128;
+const OBJECT_TYPES = new Set(["blob", "tree", "commit", "tag"]);
 
 export const MAX_GIT_BLOB_BATCH_OBJECTS = 128;
 
@@ -27,6 +28,7 @@ export class CatFileBatchResponseParser {
   private headerLength = 0;
   private nextObjectIndex = 0;
   private pendingObject: PendingObjectFrame | undefined;
+  private failure: Error | undefined;
 
   public constructor(objectIds: readonly string[], maxBlobBytes: number) {
     if (objectIds.length > MAX_GIT_BLOB_BATCH_OBJECTS) {
@@ -46,6 +48,16 @@ export class CatFileBatchResponseParser {
 
   /** Consumes one arbitrary stdout chunk and returns only complete response frames. */
   public push(chunk: Uint8Array): readonly CatFileBatchFrame[] {
+    this.assertUsable();
+    try {
+      return this.pushChunk(chunk);
+    } catch (error) {
+      this.failure = error instanceof Error ? error : new Error(String(error));
+      throw this.failure;
+    }
+  }
+
+  private pushChunk(chunk: Uint8Array): readonly CatFileBatchFrame[] {
     const frames: CatFileBatchFrame[] = [];
     let offset = 0;
     while (offset < chunk.byteLength) {
@@ -71,15 +83,17 @@ export class CatFileBatchResponseParser {
         if (header === null) throw new Error("Malformed cat-file batch object header");
         const objectId = header[1]!;
         this.assertExpectedObjectId(objectId);
+        const type = header[2]!;
+        if (!OBJECT_TYPES.has(type)) throw new Error("Cat-file batch response has an unknown object type");
         const size = Number(header[3]);
         if (!Number.isSafeInteger(size) || size < 0) {
           throw new Error("Cat-file batch object size is outside the safe integer range");
         }
         this.pendingObject = {
           objectId,
-          type: header[2]!,
+          type,
           size,
-          ...(header[2] === "blob" && size <= this.maxBlobBytes ? { bytes: Buffer.alloc(size) } : {}),
+          ...(type === "blob" && size <= this.maxBlobBytes ? { bytes: Buffer.alloc(size) } : {}),
           bytesRead: 0,
         };
         continue;
@@ -111,11 +125,23 @@ export class CatFileBatchResponseParser {
 
   /** Verifies EOF landed exactly after the final requested response frame. */
   public finish(): void {
-    if (this.pendingObject !== undefined || this.headerLength !== 0) {
-      throw new Error("Truncated cat-file batch response frame");
+    this.assertUsable();
+    try {
+      if (this.pendingObject !== undefined || this.headerLength !== 0) {
+        throw new Error("Truncated cat-file batch response frame");
+      }
+      if (this.nextObjectIndex !== this.objectIds.length) {
+        throw new Error(`Cat-file batch response expected ${this.objectIds.length} response frames, received ${this.nextObjectIndex}`);
+      }
+    } catch (error) {
+      this.failure = error instanceof Error ? error : new Error(String(error));
+      throw this.failure;
     }
-    if (this.nextObjectIndex !== this.objectIds.length) {
-      throw new Error(`Cat-file batch response expected ${this.objectIds.length} response frames, received ${this.nextObjectIndex}`);
+  }
+
+  private assertUsable(): void {
+    if (this.failure !== undefined) {
+      throw new Error("Cat-file batch parser is poisoned after a previous protocol error", { cause: this.failure });
     }
   }
 
