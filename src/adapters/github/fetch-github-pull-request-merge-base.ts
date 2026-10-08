@@ -20,6 +20,24 @@ export interface FetchGitHubPullRequestMergeBaseOptions {
   readonly requestTimeoutMs?: number;
 }
 
+/** Stable key for one operation-local immutable branch-point comparison. */
+export const githubPullRequestMergeBaseReadKey = (
+  apiBaseUrl: string,
+  repository: GitHubRepositoryIdentity,
+  baseSha: string,
+  headSha: string,
+  requestTimeoutMs = GITHUB_REQUEST_TIMEOUT_MS,
+): string => JSON.stringify([
+  "merge-base-v1",
+  apiBaseUrl.replace(/\/+$/u, "").toLowerCase(),
+  repository.host.toLowerCase(),
+  repository.owner.toLowerCase(),
+  repository.repository.toLowerCase(),
+  baseSha,
+  headSha,
+  requestTimeoutMs,
+]);
+
 const isObject = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 

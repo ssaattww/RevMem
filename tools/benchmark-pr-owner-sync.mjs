@@ -8,9 +8,15 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
 const iterations = Number(process.env.BENCH_ITERATIONS ?? "3");
 const responseDelayMilliseconds = Number(process.env.BENCH_GITHUB_DELAY_MS ?? "5");
+const headMode = process.env.BENCH_HEAD_MODE ?? "same";
+const contextCounts = (process.env.BENCH_CONTEXT_COUNTS ?? "1,10,40").split(",").map(Number);
 if (!Number.isSafeInteger(iterations) || iterations < 1) throw new RangeError("BENCH_ITERATIONS must be positive");
 if (!Number.isSafeInteger(responseDelayMilliseconds) || responseDelayMilliseconds < 0) {
   throw new RangeError("BENCH_GITHUB_DELAY_MS must be a non-negative integer");
+}
+if (headMode !== "same" && headMode !== "distinct") throw new RangeError("BENCH_HEAD_MODE must be same or distinct");
+if (contextCounts.length === 0 || contextCounts.some((count) => !Number.isSafeInteger(count) || count < 1)) {
+  throw new RangeError("BENCH_CONTEXT_COUNTS must be a comma-separated list of positive integers");
 }
 const summary = (values) => {
   const sorted = [...values].sort((left, right) => left - right);
@@ -30,11 +36,12 @@ console.log(JSON.stringify({
     git: git("--version"),
     githubApi: "mocked GET fixtures",
     perHttpResponseDelayMs: responseDelayMilliseconds,
+    headMode,
     cache: "fresh fixture and Review State per run; OS cache not cleared",
   },
 }));
 
-for (const contextCount of [1, 10, 40]) {
+for (const contextCount of contextCounts) {
   const rows = [];
   for (let iteration = 1; iteration <= iterations; iteration += 1) {
     const contexts = Array.from({ length: contextCount }, (_, index) => 52 + index);
@@ -42,6 +49,8 @@ for (const contextCount of [1, 10, 40]) {
       contexts,
       contextHead: "D",
       ownerHead: "D",
+      distinctRemoteHeads: headMode === "distinct",
+      operationFeedback: true,
       githubResponseDelayMilliseconds: responseDelayMilliseconds,
       syntheticRepository: { fileCount: 1, linesPerFile: 1000, changedLinesPerFile: 1 },
     });

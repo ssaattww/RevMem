@@ -12,6 +12,8 @@ import {
   gitHubApiBaseUrl,
   parseGitHubRemote,
 } from "../../adapters/github/index";
+import type { GitHubPullRequestLifecycleResult } from "../../adapters/github/fetch-github-pull-request-lifecycle-adapter";
+import { fetchGitHubPullRequestMergeBase } from "../../adapters/github/fetch-github-pull-request-merge-base";
 import {
   LocalGitPullRequestDiffAdapter,
   NodeGitCommandExecutor,
@@ -59,6 +61,66 @@ import {
 } from "../../application/operation-feedback/index";
 
 let pullRequestDetectionGeneration = 0;
+interface PullRequestLifecycleOperationCache {
+  readonly lifecycleReads: Map<string, Promise<GitHubPullRequestLifecycleResult>>;
+  readonly mergeBaseReads: Map<string, Promise<Awaited<ReturnType<typeof fetchGitHubPullRequestMergeBase>>>>;
+}
+const pullRequestLifecycleOperationCaches = new WeakMap<
+  OperationFeedbackContext["owner"],
+  Map<number, PullRequestLifecycleOperationCache>
+>();
+const lifecycleOperationCacheFor = (feedbackContext?: OperationFeedbackContext): PullRequestLifecycleOperationCache => {
+  if (feedbackContext === undefined) return { lifecycleReads: new Map(), mergeBaseReads: new Map() };
+  let operationCaches = pullRequestLifecycleOperationCaches.get(feedbackContext.owner);
+  if (operationCaches === undefined) {
+    operationCaches = new Map();
+    pullRequestLifecycleOperationCaches.set(feedbackContext.owner, operationCaches);
+  }
+  for (const operationId of operationCaches.keys()) {
+    if (operationId !== feedbackContext.id) operationCaches.delete(operationId);
+  }
+  let cache = operationCaches.get(feedbackContext.id);
+  if (cache === undefined) {
+    cache = { lifecycleReads: new Map(), mergeBaseReads: new Map() };
+    operationCaches.set(feedbackContext.id, cache);
+  }
+  return cache;
+};
+const releaseLifecycleOperationCache = (
+  feedbackContext: OperationFeedbackContext | undefined,
+  cache: PullRequestLifecycleOperationCache,
+): void => {
+  if (feedbackContext === undefined) return;
+  const operationCaches = pullRequestLifecycleOperationCaches.get(feedbackContext.owner);
+  if (operationCaches?.get(feedbackContext.id) !== cache) return;
+  operationCaches.delete(feedbackContext.id);
+  if (operationCaches.size === 0) pullRequestLifecycleOperationCaches.delete(feedbackContext.owner);
+};
+const fetchPullRequestLifecycle = async (
+  identity: GitHubRepositoryIdentity,
+  token: string | undefined,
+  number: number,
+  feedbackContext: OperationFeedbackContext | undefined,
+  signal: AbortSignal | undefined,
+  operationCache?: PullRequestLifecycleOperationCache,
+): Promise<GitHubPullRequestLifecycleResult> => {
+  const key = JSON.stringify([identity.host.toLowerCase(), identity.owner.toLowerCase(), identity.repository.toLowerCase(), number, "pull-request-lifecycle-v1"]);
+  let read = operationCache?.lifecycleReads.get(key);
+  if (read === undefined) {
+    read = Promise.resolve().then(() => createPullRequestLifecycle(identity, token, operationCache?.mergeBaseReads)
+      .fetchCurrent(identity, number, feedbackContext, signal));
+    operationCache?.lifecycleReads.set(key, read);
+  }
+  try {
+    const result = await read;
+    if (signal?.aborted === true) throw new DOMException("PR lifecycle read was superseded.", "AbortError");
+    if (result.kind !== "available" && operationCache?.lifecycleReads.get(key) === read) operationCache.lifecycleReads.delete(key);
+    return result;
+  } catch (error) {
+    if (operationCache?.lifecycleReads.get(key) === read) operationCache.lifecycleReads.delete(key);
+    throw error;
+  }
+};
 import {
   OperationDiagnosticError,
   reportActiveOperationFailure,
@@ -268,11 +330,12 @@ const createPullRequestSearch = (
   identity: GitHubRepositoryIdentity,
   token: string | undefined,
   onDiagnostic?: ConstructorParameters<typeof FetchGitHubPullRequestAdapter>[0]["onDiagnostic"],
+  mergeBaseReads?: PullRequestLifecycleOperationCache["mergeBaseReads"],
 ): FetchGitHubPullRequestAdapter => {
   const apiBaseUrl = gitHubApiBaseUrl(identity.host);
   return token === undefined
-    ? new FetchGitHubPullRequestAdapter({ apiBaseUrl, ...(onDiagnostic === undefined ? {} : { onDiagnostic }) })
-    : new FetchGitHubPullRequestAdapter({ apiBaseUrl, token, ...(onDiagnostic === undefined ? {} : { onDiagnostic }) });
+    ? new FetchGitHubPullRequestAdapter({ apiBaseUrl, ...(onDiagnostic === undefined ? {} : { onDiagnostic }), ...(mergeBaseReads === undefined ? {} : { mergeBaseReads }) })
+    : new FetchGitHubPullRequestAdapter({ apiBaseUrl, token, ...(onDiagnostic === undefined ? {} : { onDiagnostic }), ...(mergeBaseReads === undefined ? {} : { mergeBaseReads }) });
 };
 
 const createPullRequestRemote = (
@@ -288,11 +351,12 @@ const createPullRequestRemote = (
 const createPullRequestLifecycle = (
   identity: GitHubRepositoryIdentity,
   token: string | undefined,
+  mergeBaseReads?: Map<string, Promise<Awaited<ReturnType<typeof fetchGitHubPullRequestMergeBase>>>>,
 ): FetchGitHubPullRequestLifecycleAdapter => {
   const apiBaseUrl = gitHubApiBaseUrl(identity.host);
   return token === undefined
-    ? new FetchGitHubPullRequestLifecycleAdapter({ apiBaseUrl })
-    : new FetchGitHubPullRequestLifecycleAdapter({ apiBaseUrl, token });
+    ? new FetchGitHubPullRequestLifecycleAdapter({ apiBaseUrl, ...(mergeBaseReads === undefined ? {} : { mergeBaseReads }) })
+    : new FetchGitHubPullRequestLifecycleAdapter({ apiBaseUrl, token, ...(mergeBaseReads === undefined ? {} : { mergeBaseReads }) });
 };
 
 const localOwner = (snapshot: CurrentContextUiSnapshot): LocalRepositoryOwner | undefined => {
@@ -341,6 +405,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       persisted: readonly ReviewContextState[],
       signal?: AbortSignal,
       feedbackContext?: OperationFeedbackContext,
+      operationCache?: PullRequestLifecycleOperationCache,
     ) => Promise<boolean>,
     /** Acquires a current projection without mutating persisted Review State. */
     private readonly readSynchronizedRepository: (
@@ -349,6 +414,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       signal?: AbortSignal,
       feedbackContext?: OperationFeedbackContext,
       onPullRequestContextSynchronized?: (contextId: string) => void,
+      operationCache?: PullRequestLifecycleOperationCache,
     ) => Promise<readonly ReviewContextState[]>,
   private readonly progressFor: (
     context: ReviewContextState,
@@ -409,9 +475,10 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     persisted: readonly ReviewContextState[],
     signal?: AbortSignal,
     feedbackContext?: OperationFeedbackContext,
+    operationCache?: PullRequestLifecycleOperationCache,
   ): Promise<readonly ReviewContextState[]> {
     if (owner.pullRequestSynchronizationRevision === owner.headRevision) return persisted;
-    const completed = await this.synchronizeRepository(owner, persisted, signal, feedbackContext);
+    const completed = await this.synchronizeRepository(owner, persisted, signal, feedbackContext, operationCache);
     if (!completed) return persisted;
     return this.repository.listRepositoryContexts(owner.repositoryId);
   }
@@ -431,6 +498,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       if (signal?.aborted === true) throw new DOMException("Review Contexts refresh was superseded.", "AbortError");
     };
     const work = this.createWork(signal);
+    const operationCache = lifecycleOperationCacheFor(feedbackContext);
     const checkpoint = (kind = "source-context"): Promise<void> => work.item(kind);
     const current: ReviewContextState[] = [];
     const saved = new Map<string, ReviewContextState>();
@@ -478,7 +546,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
           ? await (async () => {
               let persisted: readonly ReviewContextState[] = await this.repository.listRepositoryContexts(owner.repositoryId);
               assertCurrent();
-              persisted = await this.synchronizeTrackingTarget(owner, persisted, signal, feedbackContext);
+              persisted = await this.synchronizeTrackingTarget(owner, persisted, signal, feedbackContext, operationCache);
               assertCurrent();
               return this.readSynchronizedRepository(
                 owner,
@@ -486,6 +554,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
                 signal,
                 feedbackContext,
                 reportPullRequestContext,
+                operationCache,
               );
             })()
           : preparedForOwner.synchronized;
@@ -558,6 +627,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
         total: completed,
       }, feedbackContext);
     }
+    releaseLifecycleOperationCache(feedbackContext, operationCache);
     return projected;
   }
 
@@ -586,6 +656,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       if (signal?.aborted === true) throw new DOMException("Current Context refresh was superseded.", "AbortError");
     };
     const work = this.createWork(signal);
+    const operationCache = lifecycleOperationCacheFor(feedbackContext);
     const candidates = new Map<string, CurrentContextUiSnapshot>();
     for (const candidate of localCandidates) {
       assertCurrent();
@@ -602,9 +673,9 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       this.rememberRoot(owner.repositoryId, owner.repositoryRoot);
       let persisted: readonly ReviewContextState[] = await this.repository.listRepositoryContexts(owner.repositoryId);
       assertCurrent();
-      persisted = await this.synchronizeTrackingTarget(owner, persisted, signal, feedbackContext);
+      persisted = await this.synchronizeTrackingTarget(owner, persisted, signal, feedbackContext, operationCache);
       assertCurrent();
-      const synchronized = await this.readSynchronizedRepository(owner, persisted, signal, feedbackContext);
+      const synchronized = await this.readSynchronizedRepository(owner, persisted, signal, feedbackContext, undefined, operationCache);
       assertCurrent();
       const preferredContextId = this.currentPullRequestSelection.read(
         owner.repositoryId,
@@ -1072,6 +1143,7 @@ export function registerT405ReviewContextsRuntime(
     persisted: readonly ReviewContextState[],
     signal?: AbortSignal,
     feedbackContext?: OperationFeedbackContext,
+    operationCache?: PullRequestLifecycleOperationCache,
   ): Promise<boolean> => {
     const assertCurrent = (): void => {
       if (signal?.aborted === true) {
@@ -1088,12 +1160,7 @@ export function registerT405ReviewContextsRuntime(
         const identity = repositoryIdentity(context);
         const token = await auth.getAccessToken(identity.host, signal);
         assertCurrent();
-        const latest = await createPullRequestLifecycle(identity, token).fetchCurrent(
-          identity,
-          context.pullRequest.number,
-          feedbackContext,
-          signal,
-        );
+        const latest = await fetchPullRequestLifecycle(identity, token, context.pullRequest.number, feedbackContext, signal, operationCache);
         assertCurrent();
         if (latest.kind !== "available") return false;
         if (
@@ -1145,12 +1212,7 @@ export function registerT405ReviewContextsRuntime(
           if (context.kind !== "pull-request" || context.pullRequest === undefined) return undefined;
           const identity = repositoryIdentity(context);
           const token = await auth.getAccessToken(identity.host, operationSignal);
-          const latest = await createPullRequestLifecycle(identity, token).fetchCurrent(
-            identity,
-            context.pullRequest.number,
-            feedbackContext,
-            operationSignal,
-          );
+          const latest = await fetchPullRequestLifecycle(identity, token, context.pullRequest.number, feedbackContext, operationSignal, operationCache);
           if (latest.kind !== "available") return undefined;
           return {
             repositoryId: context.repositoryId,
@@ -1209,6 +1271,7 @@ export function registerT405ReviewContextsRuntime(
     signal?: AbortSignal,
     feedbackContext?: OperationFeedbackContext,
     onPullRequestContextSynchronized?: (contextId: string) => void,
+    operationCache?: PullRequestLifecycleOperationCache,
   ): Promise<readonly ReviewContextState[]> => {
     const assertCurrent = (): void => {
       if (signal?.aborted === true) throw new DOMException("Review Contexts refresh was superseded.", "AbortError");
@@ -1223,12 +1286,7 @@ export function registerT405ReviewContextsRuntime(
       const identity = repositoryIdentity(context);
       const token = await auth.getAccessToken(identity.host, signal);
       assertCurrent();
-      const latest = await createPullRequestLifecycle(identity, token).fetchCurrent(
-        identity,
-        context.pullRequest.number,
-        feedbackContext,
-        signal,
-      );
+      const latest = await fetchPullRequestLifecycle(identity, token, context.pullRequest.number, feedbackContext, signal, operationCache);
       assertCurrent();
       if (latest.kind !== "available") {
         throw new OperationDiagnosticError({
@@ -1275,6 +1333,7 @@ export function registerT405ReviewContextsRuntime(
     signal?: AbortSignal,
     synchronizeBeforeSearch = true,
   ): Promise<void> => {
+    const lifecycleCache = lifecycleOperationCacheFor(feedbackContext);
     const detectionGeneration = ++pullRequestDetectionGeneration;
     const reportDetection = (
       stage: PullRequestRefreshStage,
@@ -1333,7 +1392,7 @@ export function registerT405ReviewContextsRuntime(
           context: { kind: "branch", label: "active", headRevision: localHead },
           progress: undefined,
         },
-      }, persistedBefore, signal, feedbackContext));
+      }, persistedBefore, signal, feedbackContext, lifecycleCache));
       assertDetectionCurrent();
     }
 
@@ -1384,7 +1443,7 @@ export function registerT405ReviewContextsRuntime(
         ...(event.reasonCode === undefined ? {} : { reasonCode: event.reasonCode }),
       });
     };
-    let search = await createPullRequestSearch(identity, token, searchDiagnostic).findOpenByHead(identity, pullRequestSynchronizationRevision, signal);
+    let search = await createPullRequestSearch(identity, token, searchDiagnostic, lifecycleCache.mergeBaseReads).findOpenByHead(identity, pullRequestSynchronizationRevision, signal);
     assertDetectionCurrent();
     if (
       token !== undefined &&
@@ -1395,7 +1454,7 @@ export function registerT405ReviewContextsRuntime(
       const reselectedToken = await timed("authentication", () => auth.getAccessToken(identity.host, signal, true, true));
       assertDetectionCurrent();
       if (reselectedToken !== undefined) {
-        search = await createPullRequestSearch(identity, reselectedToken, searchDiagnostic).findOpenByHead(identity, pullRequestSynchronizationRevision, signal);
+        search = await createPullRequestSearch(identity, reselectedToken, searchDiagnostic, lifecycleCache.mergeBaseReads).findOpenByHead(identity, pullRequestSynchronizationRevision, signal);
         assertDetectionCurrent();
       }
     }
@@ -1424,7 +1483,7 @@ export function registerT405ReviewContextsRuntime(
               context: { kind: "branch", label: "active", headRevision: localHead },
               progress: undefined,
             },
-          }, persistedBefore, signal, feedbackContext));
+          }, persistedBefore, signal, feedbackContext, lifecycleCache));
           assertDetectionCurrent();
           existing = await timed("context-save", () => contextStateService.load(local.repositoryId, pullRequestIdentity(state)));
           assertDetectionCurrent();
@@ -1454,7 +1513,7 @@ export function registerT405ReviewContextsRuntime(
               context: { kind: "branch", label: "active", headRevision: localHead },
               progress: undefined,
             },
-          }, persistedBefore, signal, feedbackContext));
+          }, persistedBefore, signal, feedbackContext, lifecycleCache));
           assertDetectionCurrent();
         }
         if (!synchronizationCompleted) {

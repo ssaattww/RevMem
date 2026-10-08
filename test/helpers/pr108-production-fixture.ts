@@ -14,6 +14,7 @@ import {
   JsonlReviewHistoryStore,
 } from "../../src/adapters/state-repository/index.js";
 import { ReviewHistoryRecorder } from "../../src/application/review-history/index.js";
+import { OperationFeedback, setActiveOperationFeedback } from "../../src/application/operation-feedback/index.js";
 import { PullRequestDiffAcquisitionService } from "../../src/application/github-pr-diff/index.js";
 import type { ReviewContextListItem } from "../../src/application/review-contexts/index.js";
 import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState, type ReviewContextState } from "../../src/core/contracts/index.js";
@@ -92,6 +93,9 @@ export async function createPr108ProductionFixture(options: {
   readonly contextHead?: FixtureRevision;
   readonly globalHead?: FixtureRevision;
   readonly ownerHead?: FixtureRevision;
+  readonly ownerSynchronizationRevision?: FixtureRevision;
+  readonly operationFeedback?: boolean;
+  readonly distinctRemoteHeads?: boolean;
   readonly preserveSourceSnapshot?: boolean;
   readonly syntheticRepository?: Readonly<{
     fileCount: number;
@@ -259,11 +263,35 @@ export async function createPr108ProductionFixture(options: {
   const remoteNumbers = [...new Set(options.contexts !== undefined && options.contexts.length > 0
     ? options.contexts
     : [52, 53])];
-  const remote = new Map<number, { base: FixtureRevision; head: FixtureRevision; state: "open" | "closed" }>(
+  const dynamicRevisions = new Map<string, string>();
+  const revisionSha = (revision: string): string => {
+    const dynamic = dynamicRevisions.get(revision);
+    if (dynamic !== undefined) return dynamic;
+    const fixed = revisions[revision as FixtureRevision];
+    assert.ok(fixed, `Unknown fixture revision: ${revision}`);
+    return fixed;
+  };
+  const remote = new Map<number, { base: string; head: string; state: "open" | "closed" }>(
     remoteNumbers.map((number) => [number, { base: "A", head: contextHead, state: "open" }]),
   );
+  if (options.distinctRemoteHeads === true) {
+    assert.equal(options.existingRepository, undefined, "distinct synthetic heads require a generated local fixture repository");
+    for (const number of remoteNumbers) {
+      const name = `PR-${number}`;
+      await git("commit", "--allow-empty", "-m", `${name}: distinct synthetic PR head`);
+      dynamicRevisions.set(name, await git("rev-parse", "HEAD"));
+      remote.set(number, { base: "A", head: name, state: "open" });
+    }
+  }
   const unavailable = new Set<number>();
   let ownerHead = options.ownerHead ?? contextHead;
+  let ownerSynchronizationRevision = options.ownerSynchronizationRevision;
+  if (options.operationFeedback === true) setActiveOperationFeedback(new OperationFeedback({
+    showBusy: () => undefined,
+    clearBusy: () => undefined,
+    appendLog: () => undefined,
+    revealLog: () => undefined,
+  }));
   await git("checkout", "--detach", revisions[ownerHead]);
   const control = { selected: options.existingRepository === undefined ? 52 : 2, requireAuthentication: false, authenticated: false };
   const authenticationCalls: Array<{ interactive: boolean }> = [];
@@ -290,7 +318,7 @@ export async function createPr108ProductionFixture(options: {
         const value = remote.get(number); assert.ok(value);
         return { number, title: `PR ${number}`, html_url: `https://github.com/ssaattww/revmem/pull/${number}`,
           state: value.state, merged_at: null, changed_files: 1,
-          base: { ref: "main", sha: revisions[value.base] }, head: { sha: revisions[value.head] } };
+          base: { ref: "main", sha: revisionSha(value.base) }, head: { sha: revisionSha(value.head) } };
       };
       if (url.pathname === "/repos/ssaattww/revmem/pulls") {
         return response([...remote.keys()].map(metadata));
@@ -429,9 +457,11 @@ export async function createPr108ProductionFixture(options: {
   const start = async (): Promise<void> => {
     let enumerating = false;
     const enumerateCurrentContexts = async (): Promise<readonly CurrentContextUiSnapshot[]> => enumerating ? [{ context: {
-      kind: "branch", label: "fixture", headRevision: revisions[ownerHead], selection: {
-        kind: "detached", repositoryId, repositoryRoot, headRevision: revisions[ownerHead],
-      },
+      kind: "branch", label: "fixture", headRevision: revisions[ownerHead],
+      ...(ownerSynchronizationRevision === undefined ? {} : { pullRequestSynchronizationRevision: revisions[ownerSynchronizationRevision] }),
+      selection: ownerSynchronizationRevision === undefined
+        ? { kind: "detached", repositoryId, repositoryRoot, headRevision: revisions[ownerHead] }
+        : { kind: "branch", repositoryId, repositoryRoot, branchRef: "refs/heads/main" },
     }, progress: undefined }] : [];
     const composition = new CurrentContextRuntimeComposition(new CurrentContextCandidateSelection(), {
       enumerateCandidates: async (signal, feedbackContext) =>
@@ -507,6 +537,7 @@ export async function createPr108ProductionFixture(options: {
       githubFetchRequestCountsByPath: { ...githubFetchRequestCountsByPath },
     }),
     async owner(revision: FixtureRevision) { ownerHead = revision; await git("checkout", "--detach", revisions[revision]); },
+    ownerSynchronizationRevision(revision: FixtureRevision | undefined) { ownerSynchronizationRevision = revision; },
     async invoke(id: string, ...args: unknown[]): Promise<readonly string[]> {
       errors.length = 0; const command = commands.get(id); assert.ok(command, `${id} must be registered`);
       await command(...args); return [...errors];
@@ -535,6 +566,7 @@ export async function createPr108ProductionFixture(options: {
     async dispose() {
       for (const disposable of subscriptions.reverse()) disposable.dispose();
       await repository.dispose(); globalThis.fetch = originalFetch;
+      if (options.operationFeedback === true) setActiveOperationFeedback(undefined);
       await rm(root, { recursive: true, force: true });
     },
   };

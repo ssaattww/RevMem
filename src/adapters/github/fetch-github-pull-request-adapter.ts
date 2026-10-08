@@ -4,7 +4,7 @@ import type {
   GitHubPullRequestSearchResult,
   GitHubRepositoryIdentity
 } from "../../application/github-pr-context/index";
-import { fetchGitHubPullRequestMergeBase } from "./fetch-github-pull-request-merge-base";
+import { fetchGitHubPullRequestMergeBase, githubPullRequestMergeBaseReadKey } from "./fetch-github-pull-request-merge-base";
 import { GITHUB_REQUEST_TIMEOUT_MS, GitHubRequestTimeoutError, runGitHubRequestWithTimeout } from "./github-request-timeout";
 
 interface GitHubPullRequestResponse {
@@ -25,6 +25,8 @@ export interface FetchGitHubPullRequestAdapterOptions {
   readonly fetch?: typeof globalThis.fetch;
   /** Per-page and per-merge-base deadline. */
   readonly requestTimeoutMs?: number;
+  /** Operation-local memo shared with lifecycle reads for identical merge bases. */
+  readonly mergeBaseReads?: Map<string, Promise<Awaited<ReturnType<typeof fetchGitHubPullRequestMergeBase>>>>;
   /** Emits allowlisted phase, ordinal, count, status, and duration only. */
   readonly onDiagnostic?: (event: GitHubPullRequestSearchPhaseDiagnostic) => void;
 }
@@ -137,6 +139,7 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
   private readonly fetchImplementation: typeof globalThis.fetch;
   private readonly requestTimeoutMs: number;
   private readonly onDiagnostic: FetchGitHubPullRequestAdapterOptions["onDiagnostic"];
+  private readonly mergeBaseReads: FetchGitHubPullRequestAdapterOptions["mergeBaseReads"];
 
   public constructor(options: FetchGitHubPullRequestAdapterOptions) {
     this.apiBaseUrl = options.apiBaseUrl.replace(/\/+$/u, "");
@@ -144,6 +147,7 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
     this.fetchImplementation = options.fetch ?? globalThis.fetch;
     this.requestTimeoutMs = options.requestTimeoutMs ?? GITHUB_REQUEST_TIMEOUT_MS;
     this.onDiagnostic = options.onDiagnostic;
+    this.mergeBaseReads = options.mergeBaseReads;
     if (!Number.isSafeInteger(this.requestTimeoutMs) || this.requestTimeoutMs < 1) {
       throw new RangeError("GitHub request timeout must be a positive safe integer");
     }
@@ -269,9 +273,12 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
       candidateOrdinal += 1;
       const mergeBaseStartedAt = Date.now();
       this.emit({ stage: "merge-base", status: "started", ordinal: candidateOrdinal });
-      let mergeBase: Awaited<ReturnType<typeof fetchGitHubPullRequestMergeBase>>;
-      try {
-        mergeBase = await fetchGitHubPullRequestMergeBase(
+      const mergeBaseKey = githubPullRequestMergeBaseReadKey(
+        this.apiBaseUrl, repository, candidate.baseSha, candidate.headSha, this.requestTimeoutMs,
+      );
+      let mergeBasePromise = this.mergeBaseReads?.get(mergeBaseKey);
+      if (mergeBasePromise === undefined) {
+        mergeBasePromise = fetchGitHubPullRequestMergeBase(
           {
             apiBaseUrl: this.apiBaseUrl,
             ...(this.token === undefined ? {} : { token: this.token }),
@@ -283,13 +290,22 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
           candidate.headSha,
           signal,
         );
+        this.mergeBaseReads?.set(mergeBaseKey, mergeBasePromise);
+      }
+      let mergeBase: Awaited<ReturnType<typeof fetchGitHubPullRequestMergeBase>>;
+      try {
+        mergeBase = await mergeBasePromise;
       } catch (error) {
+        if (this.mergeBaseReads?.get(mergeBaseKey) === mergeBasePromise) this.mergeBaseReads.delete(mergeBaseKey);
         if (isSignalAborted(signal) || (error instanceof DOMException && error.name === "AbortError")) {
           this.emit({ stage: "merge-base", status: "cancelled", ordinal: candidateOrdinal, durationMs: Math.max(0, Date.now() - mergeBaseStartedAt), reasonCode: "superseded-by-newer-generation" });
         } else {
           this.emit({ stage: "merge-base", status: "failed", ordinal: candidateOrdinal, durationMs: Math.max(0, Date.now() - mergeBaseStartedAt), reasonCode: "api-failure" });
         }
         throw error;
+      }
+      if (mergeBase.kind === "unavailable" && this.mergeBaseReads?.get(mergeBaseKey) === mergeBasePromise) {
+        this.mergeBaseReads.delete(mergeBaseKey);
       }
       if (mergeBase.kind === "unavailable") {
         this.emit({
