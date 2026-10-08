@@ -456,6 +456,26 @@ export async function createPr108ProductionFixture(options: {
     try { return await readGitBlob(repositoryRoot, blobObjectId, feedbackContext, signal); }
     finally { gitSubprocessMilliseconds += performance.now() - startedAt; }
   };
+  const batchBlobReader = gitInternals.blobReader as GitBlobReader & {
+    readBlobs?: (
+      repositoryRoot: string,
+      blobObjectIds: readonly string[],
+      onBlob: (blobObjectId: string, bytes: Uint8Array) => void | Promise<void>,
+      feedbackContext?: import("../../src/application/operation-feedback/index.js").OperationFeedbackContext,
+      signal?: AbortSignal,
+    ) => Promise<void>;
+  };
+  const readGitBlobs = batchBlobReader.readBlobs?.bind(batchBlobReader);
+  if (readGitBlobs !== undefined) {
+    batchBlobReader.readBlobs = async (repositoryRoot, blobObjectIds, onBlob, feedbackContext, signal) => {
+      if (blobObjectIds.length === 0) return readGitBlobs(repositoryRoot, blobObjectIds, onBlob, feedbackContext, signal);
+      const startedAt = performance.now();
+      gitSubprocessCount += 1;
+      gitCommandCounts["cat-file --batch"] = (gitCommandCounts["cat-file --batch"] ?? 0) + 1;
+      try { return await readGitBlobs(repositoryRoot, blobObjectIds, onBlob, feedbackContext, signal); }
+      finally { gitSubprocessMilliseconds += performance.now() - startedAt; }
+    };
+  }
   let revisionContentReadCount = 0;
   let revisionContentReadMilliseconds = 0;
   const readRevisionContent = localGit.readTextFileAtRevision.bind(localGit);

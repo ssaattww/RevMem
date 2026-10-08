@@ -85,7 +85,7 @@ const requireObjectIds = (objectIds: readonly string[]): readonly string[] => {
   return [...objectIds];
 };
 
-/** Runs a sequential, bounded `git cat-file --batch` request without connecting it to a reader. */
+/** Runs a sequential, bounded `git cat-file --batch` request for immutable blob bytes. */
 export class NodeGitBlobBatchTransport {
   private readonly executable: string;
   private readonly timeoutMs: number;

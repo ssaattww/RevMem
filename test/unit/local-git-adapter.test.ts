@@ -208,6 +208,77 @@ test("batch blob reads deduplicate OIDs while decoding each path with its own en
   executor.assertExhausted();
 });
 
+test("batch blob callbacks decode each object before the next raw object is delivered", async () => {
+  const commit = "a".repeat(40);
+  const first = "b".repeat(40);
+  const second = "c".repeat(40);
+  const executor = new RecordingGitCommandExecutor();
+  const decoded: string[] = [];
+  const callbackBoundaries: string[][] = [];
+  const paths = ["first-a.txt", "first-b.txt", "second.txt"];
+  const blobReader: GitBlobReader = {
+    readBlob: async () => { throw new Error("single reads must not be used"); },
+    readBlobs: async (_root, objectIds, onBlob) => {
+      for (const objectId of objectIds) {
+        await onBlob(objectId, new TextEncoder().encode(objectId));
+        callbackBoundaries.push([...decoded]);
+      }
+    },
+  };
+  const adapter = new LocalGitAdapter(executor, blobReader, async (_bytes, encoding) => {
+    decoded.push(encoding);
+    return encoding;
+  });
+  executor.queue(repositoryRoot, ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`], success(`${commit}\n`));
+  executor.queue(repositoryRoot, ["ls-tree", "--full-tree", "-z", commit, "--", ...paths.map((entry) => `:(literal)${entry}`)], success([
+    `100644 blob ${first}\t${paths[0]}`,
+    `100644 blob ${first}\t${paths[1]}`,
+    `100644 blob ${second}\t${paths[2]}`,
+  ].join("\0") + "\0"));
+
+  const results = await adapter.readTextFilesAtRevision(repositoryRoot, commit, paths, "posix", undefined, undefined,
+    new Map([[paths[0]!, "hint-a"], [paths[1]!, "hint-b"], [paths[2]!, "hint-c"]]));
+
+  assert.deepEqual(callbackBoundaries, [["hint-a", "hint-b"], ["hint-a", "hint-b", "hint-c"]]);
+  assert.equal(results.size, paths.length);
+  executor.assertExhausted();
+});
+
+test("aborted batch invalidates a delayed decoder callback before it can stage a result", async () => {
+  const commit = "a".repeat(40);
+  const blob = "b".repeat(40);
+  const executor = new RecordingGitCommandExecutor();
+  const controller = new AbortController();
+  let callbackStarted!: () => void;
+  const started = new Promise<void>((resolve) => { callbackStarted = resolve; });
+  let finishDecode!: (value: string) => void;
+  let callbackPromise!: Promise<void>;
+  const blobReader: GitBlobReader = {
+    readBlob: async () => { throw new Error("single reads must not be used"); },
+    readBlobs: async (_root, objectIds, onBlob, _feedback, signal) => {
+      callbackPromise = Promise.resolve(onBlob(objectIds[0]!, new TextEncoder().encode("raw")));
+      callbackStarted();
+      await new Promise<void>((_resolve, reject) => {
+        signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+      });
+    },
+  };
+  const adapter = new LocalGitAdapter(executor, blobReader, async () =>
+    new Promise<string>((resolve) => { finishDecode = resolve; }));
+  const filePath = "file.txt";
+  executor.queue(repositoryRoot, ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`], success(`${commit}\n`));
+  executor.queue(repositoryRoot, ["ls-tree", "--full-tree", "-z", commit, "--", `:(literal)${filePath}`], success(`100644 blob ${blob}\t${filePath}\0`));
+
+  const resultPromise = adapter.readTextFilesAtRevision(repositoryRoot, commit, [filePath], "posix", undefined, controller.signal,
+    new Map([[filePath, "test-encoding"]]));
+  await started;
+  controller.abort();
+  await assert.rejects(resultPromise, (error: unknown) => error instanceof Error && error.name === "AbortError");
+  finishDecode("late text");
+  await assert.rejects(callbackPromise, (error: unknown) => error instanceof Error && error.name === "AbortError");
+  executor.assertExhausted();
+});
+
 test("oversized batch discards partial frames and rereads the whole group sequentially", async () => {
   const commit = "a".repeat(40);
   const first = "b".repeat(40);
