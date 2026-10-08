@@ -128,7 +128,9 @@ export class NodeGitBlobBatchTransport {
     inputObjectIds: readonly string[],
     onBlob: (objectId: string, bytes: Uint8Array) => void | Promise<void>,
     signal?: AbortSignal,
+    feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
   ): Promise<void> {
+    void feedbackContext;
     const root = requirePath(repositoryRoot);
     const objectIds = requireObjectIds(inputObjectIds);
     if (objectIds.length === 0) return;

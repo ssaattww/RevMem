@@ -11,6 +11,7 @@ import {
   type GitCommandResult,
   type GitBlobReader
 } from "../../src/adapters/local-git/index";
+import { GitBlobBatchObjectTooLargeError } from "../../src/adapters/local-git/node-git-blob-batch-transport";
 import {
   normalizeInspectionStartPath,
   resolveCanonicalInspectionIdentity
@@ -170,6 +171,97 @@ test("batch immutable text reads resolve literal NUL-delimited paths and preserv
     lookup,
   ]);
   await assert.rejects(bulkReader.call(adapter, repositoryRoot, commit, ["nul\0path.ts"], "posix"), TypeError);
+});
+
+test("batch blob reads deduplicate OIDs while decoding each path with its own encoding hint", async () => {
+  const commit = "a".repeat(40);
+  const blob = "b".repeat(40);
+  const executor = new RecordingGitCommandExecutor();
+  const batchCalls: string[][] = [];
+  const blobReader: GitBlobReader = {
+    readBlob: async () => { throw new Error("single reads must not be used"); },
+    readBlobs: async (_root, objectIds, onBlob) => {
+      batchCalls.push([...objectIds]);
+      for (const objectId of objectIds) await onBlob(objectId, new TextEncoder().encode("raw"));
+    },
+  };
+  const decodeHints: string[] = [];
+  const adapter = new LocalGitAdapter(executor, blobReader, async (_bytes, encoding) => {
+    decodeHints.push(encoding);
+    return `decoded:${encoding}`;
+  });
+  const paths = ["first.txt", "second.txt"];
+  executor.queue(repositoryRoot, ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`], success(`${commit}\n`));
+  executor.queue(repositoryRoot, ["ls-tree", "--full-tree", "-z", commit, "--", ...paths.map((entry) => `:(literal)${entry}`)], success([
+    `100644 blob ${blob}\t${paths[0]}`,
+    `100644 blob ${blob}\t${paths[1]}`,
+  ].join("\0") + "\0"));
+
+  const results = await adapter.readTextFilesAtRevision(repositoryRoot, commit, paths, "posix", undefined, undefined,
+    new Map([[paths[0]!, "utf-16le"], [paths[1]!, "windows-1252"]]));
+
+  assert.deepEqual(batchCalls, [[blob]]);
+  assert.deepEqual(decodeHints, ["utf-16le", "windows-1252"]);
+  assert.deepEqual([...results], paths.map((filePath) => [filePath, {
+    kind: "found", content: `decoded:${filePath === paths[0] ? "utf-16le" : "windows-1252"}`
+  }]));
+  executor.assertExhausted();
+});
+
+test("oversized batch discards partial frames and rereads the whole group sequentially", async () => {
+  const commit = "a".repeat(40);
+  const first = "b".repeat(40);
+  const second = "c".repeat(40);
+  const executor = new RecordingGitCommandExecutor();
+  const singleReads: string[] = [];
+  let batchCalls = 0;
+  const blobReader: GitBlobReader = {
+    readBlob: async (_root, objectId) => {
+      singleReads.push(objectId);
+      return new TextEncoder().encode(`fallback:${objectId}`);
+    },
+    readBlobs: async (_root, objectIds, onBlob) => {
+      batchCalls += 1;
+      await onBlob(objectIds[0]!, new TextEncoder().encode("partial"));
+      throw new GitBlobBatchObjectTooLargeError(objectIds[1]!, 99, 10);
+    },
+  };
+  const adapter = new LocalGitAdapter(executor, blobReader);
+  const paths = ["first.txt", "second.txt"];
+  executor.queue(repositoryRoot, ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`], success(`${commit}\n`));
+  executor.queue(repositoryRoot, ["ls-tree", "--full-tree", "-z", commit, "--", ...paths.map((entry) => `:(literal)${entry}`)], success([
+    `100644 blob ${first}\t${paths[0]}`,
+    `100644 blob ${second}\t${paths[1]}`,
+  ].join("\0") + "\0"));
+
+  const results = await adapter.readTextFilesAtRevision(repositoryRoot, commit, paths, "posix");
+
+  assert.equal(batchCalls, 1);
+  assert.deepEqual(singleReads, [first, second]);
+  assert.deepEqual([...results], paths.map((filePath, index) => [filePath, {
+    kind: "found", content: `fallback:${index === 0 ? first : second}`
+  }]));
+  executor.assertExhausted();
+});
+
+test("non-size batch failures propagate without sequential fallback", async () => {
+  const commit = "a".repeat(40);
+  const blob = "b".repeat(40);
+  const executor = new RecordingGitCommandExecutor();
+  let singleReads = 0;
+  const expectedError = new Error("batch protocol failure");
+  const blobReader: GitBlobReader = {
+    readBlob: async () => { singleReads += 1; return new TextEncoder().encode("unexpected"); },
+    readBlobs: async () => { throw expectedError; },
+  };
+  const adapter = new LocalGitAdapter(executor, blobReader);
+  const filePath = "file.txt";
+  executor.queue(repositoryRoot, ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`], success(`${commit}\n`));
+  executor.queue(repositoryRoot, ["ls-tree", "--full-tree", "-z", commit, "--", `:(literal)${filePath}`], success(`100644 blob ${blob}\t${filePath}\0`));
+
+  await assert.rejects(adapter.readTextFilesAtRevision(repositoryRoot, commit, [filePath], "posix"), expectedError);
+  assert.equal(singleReads, 0);
+  executor.assertExhausted();
 });
 
 test("batch immutable text reads chunk literal pathspecs below Windows command limits", async () => {

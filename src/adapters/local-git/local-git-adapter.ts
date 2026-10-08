@@ -17,7 +17,9 @@ import {
   type LocalGitRepositoryInspection
 } from "./contracts";
 import type { GitBlobReader } from "./git-blob-reader";
+import { GitBlobBatchObjectTooLargeError } from "./node-git-blob-batch-transport.js";
 import { normalizeGitRemoteUrl } from "./git-remote-normalization";
+import { MAX_GIT_BLOB_BATCH_OBJECTS } from "./cat-file-batch-parser.js";
 import type { LocalGitRevisionTextReadResult } from "./revision-text-content";
 
 const FULL_OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
@@ -292,27 +294,83 @@ export class LocalGitAdapter {
     }
 
     const output = new Map<string, LocalGitRevisionTextReadResult>();
-    for (const filePath of paths) {
-      assertActive();
-      const entry = entries.get(filePath);
-      if (entry === undefined || entry.type !== "blob") {
-        output.set(filePath, { kind: "missing-file" });
-        continue;
+    const readBlobs = this.blobReader.readBlobs;
+    const bytesByObjectId = new Map<string, Uint8Array>();
+    try {
+      if (readBlobs !== undefined) {
+        const objectIds = [...new Set(paths.flatMap((filePath) => {
+          const entry = entries.get(filePath);
+          return entry?.type === "blob" ? [entry.objectId] : [];
+        }))];
+        for (let start = 0; start < objectIds.length; start += MAX_GIT_BLOB_BATCH_OBJECTS) {
+          assertActive();
+          const group = objectIds.slice(start, start + MAX_GIT_BLOB_BATCH_OBJECTS);
+          const groupObjectIds = new Set(group);
+          const groupBytes = new Map<string, Uint8Array>();
+          try {
+            await readBlobs.call(this.blobReader, rootPath, group, (blobObjectId, bytes) => {
+              assertActive();
+              if (!groupObjectIds.has(blobObjectId) || groupBytes.has(blobObjectId)) {
+                throw new Error("Git blob batch reader returned an unexpected or duplicate object");
+              }
+              groupBytes.set(blobObjectId, bytes);
+            }, feedbackContext, signal);
+            assertActive();
+            if (groupBytes.size !== group.length) {
+              throw new Error("Git blob batch reader completed without returning every requested object");
+            }
+          } catch (error) {
+            groupBytes.clear();
+            assertActive();
+            if (!(error instanceof GitBlobBatchObjectTooLargeError)) throw error;
+
+            // The batch reader may already have consumed earlier frames; discard them and reread this group sequentially.
+            try {
+              for (const blobObjectId of group) {
+                assertActive();
+                const bytes = await this.blobReader.readBlob(rootPath, blobObjectId, feedbackContext, signal);
+                assertActive();
+                groupBytes.set(blobObjectId, bytes);
+              }
+            } catch (fallbackError) {
+              groupBytes.clear();
+              throw fallbackError;
+            }
+          }
+          assertActive();
+          for (const [blobObjectId, bytes] of groupBytes) bytesByObjectId.set(blobObjectId, bytes);
+        }
       }
-      const bytes = await this.blobReader.readBlob(rootPath, entry.objectId, feedbackContext, signal);
-      assertActive();
-      try {
-        const hint = encodingHintsByPath?.get(filePath);
-        output.set(filePath, {
-          kind: "found",
-          content: hint === undefined ? utf8Decoder.decode(bytes) : await this.decodeWithHintOrReject(bytes, hint),
-        });
-      } catch {
-        output.set(filePath, { kind: "invalid-encoding", encoding: "utf-8" });
+
+      for (const filePath of paths) {
+        assertActive();
+        const entry = entries.get(filePath);
+        if (entry === undefined || entry.type !== "blob") {
+          output.set(filePath, { kind: "missing-file" });
+          continue;
+        }
+        const bytes = readBlobs === undefined
+          ? await this.blobReader.readBlob(rootPath, entry.objectId, feedbackContext, signal)
+          : bytesByObjectId.get(entry.objectId);
+        if (bytes === undefined) throw new Error("Git blob content was not available for decoding");
+        assertActive();
+        try {
+          const hint = encodingHintsByPath?.get(filePath);
+          const content = hint === undefined ? utf8Decoder.decode(bytes) : await this.decodeWithHintOrReject(bytes, hint);
+          assertActive();
+          output.set(filePath, { kind: "found", content });
+        } catch {
+          assertActive();
+          output.set(filePath, { kind: "invalid-encoding", encoding: "utf-8" });
+        }
       }
+      assertActive();
+      return output;
+    } catch (error) {
+      bytesByObjectId.clear();
+      output.clear();
+      throw error;
     }
-    assertActive();
-    return output;
   }
 
   /**

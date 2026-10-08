@@ -4,6 +4,8 @@ import path from "node:path";
 import test from "node:test";
 
 import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index";
+import { NodeGitBlobReader } from "../../src/adapters/local-git/node-git-blob-reader.js";
+import { NodeGitBlobBatchTransport } from "../../src/adapters/local-git/node-git-blob-batch-transport.js";
 import { resolveCurrentContextRepositories } from "../../src/application/review-context/repository-resolution";
 import { createTemporaryGitRepository, type TemporaryGitRepository } from "../support/temporary-git-repository";
 
@@ -171,6 +173,26 @@ test("real Git revision content returns exact original and modified text", async
       ),
       { kind: "missing-revision" }
     );
+  } finally {
+    await repository.cleanup();
+  }
+});
+
+test("real cat-file batch transport returns the same raw bytes as single-object reads", async () => {
+  const repository = await createTemporaryGitRepository();
+
+  try {
+    const blobObjectId = await repository.runGit(["rev-parse", `${repository.headCommit}:fixture.txt`]);
+    const single = await new NodeGitBlobReader().readBlob(repository.path, blobObjectId);
+    let batched: Uint8Array | undefined;
+
+    await new NodeGitBlobBatchTransport().readBlobs(repository.path, [blobObjectId], (_objectId, bytes) => {
+      batched = bytes;
+    });
+
+    assert.ok(batched);
+    assert.deepEqual(Buffer.from(batched), Buffer.from(single));
+    assert.equal(Buffer.from(batched).toString("utf8"), "base\nhead\n");
   } finally {
     await repository.cleanup();
   }

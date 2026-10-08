@@ -7,6 +7,7 @@ import {
   type GitCommandResult
 } from "./contracts";
 import type { GitBlobReader } from "./git-blob-reader";
+import { NodeGitBlobBatchTransport } from "./node-git-blob-batch-transport.js";
 
 const OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 
@@ -59,6 +60,7 @@ export class NodeGitBlobReader implements GitBlobReader {
   public readonly executable: string;
   private readonly timeoutMs: number;
   private readonly terminationGraceMs: number;
+  private readonly batchTransport: NodeGitBlobBatchTransport;
 
   public constructor(options: NodeGitBlobReaderOptions = {}) {
     const executable = options.executable ?? "git";
@@ -74,6 +76,11 @@ export class NodeGitBlobReader implements GitBlobReader {
       options.terminationGraceMs ?? 250,
       "terminationGraceMs"
     );
+    this.batchTransport = new NodeGitBlobBatchTransport({
+      executable: this.executable,
+      timeoutMs: this.timeoutMs,
+      terminationGraceMs: this.terminationGraceMs,
+    });
   }
 
   public readBlob(
@@ -248,5 +255,15 @@ export class NodeGitBlobReader implements GitBlobReader {
         });
       });
     });
+  }
+
+  public readBlobs(
+    repositoryRoot: string,
+    blobObjectIds: readonly string[],
+    onBlob: (blobObjectId: string, bytes: Uint8Array) => void | Promise<void>,
+    feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    return this.batchTransport.readBlobs(repositoryRoot, blobObjectIds, onBlob, signal, feedbackContext);
   }
 }
