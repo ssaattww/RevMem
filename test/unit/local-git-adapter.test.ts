@@ -208,6 +208,41 @@ test("batch blob reads deduplicate OIDs while decoding each path with its own en
   executor.assertExhausted();
 });
 
+test("single-blob fallback reads a duplicate OID once and decodes each path once with its own hint", async () => {
+  const commit = "a".repeat(40);
+  const blob = "b".repeat(40);
+  const executor = new RecordingGitCommandExecutor();
+  const readObjectIds: string[] = [];
+  const decodedHints: string[] = [];
+  const paths = ["first.txt", "second.txt"];
+  const blobReader: GitBlobReader = {
+    readBlob: async (_root, objectId) => {
+      readObjectIds.push(objectId);
+      return new TextEncoder().encode("raw");
+    },
+  };
+  const adapter = new LocalGitAdapter(executor, blobReader, async (_bytes, encoding) => {
+    decodedHints.push(encoding);
+    return `decoded:${encoding}`;
+  });
+  executor.queue(repositoryRoot, ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`], success(`${commit}\n`));
+  executor.queue(repositoryRoot, ["ls-tree", "--full-tree", "-z", commit, "--", ...paths.map((entry) => `:(literal)${entry}`)], success([
+    `100644 blob ${blob}\t${paths[0]}`,
+    `100644 blob ${blob}\t${paths[1]}`,
+  ].join("\0") + "\0"));
+
+  const results = await adapter.readTextFilesAtRevision(repositoryRoot, commit, paths, "posix", undefined, undefined,
+    new Map([[paths[0]!, "hint-a"], [paths[1]!, "hint-b"]]));
+
+  assert.deepEqual(readObjectIds, [blob]);
+  assert.deepEqual(decodedHints, ["hint-a", "hint-b"]);
+  assert.deepEqual([...results], [
+    [paths[0], { kind: "found", content: "decoded:hint-a" }],
+    [paths[1], { kind: "found", content: "decoded:hint-b" }],
+  ]);
+  executor.assertExhausted();
+});
+
 test("batch blob callbacks decode each object before the next raw object is delivered", async () => {
   const commit = "a".repeat(40);
   const first = "b".repeat(40);

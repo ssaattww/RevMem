@@ -396,13 +396,11 @@ export class LocalGitAdapter {
           groupResults.clear();
         }
       } else {
-        for (const filePath of paths) {
+        for (const objectId of pathsByObjectId.keys()) {
           assertActive();
-          const entry = entries.get(filePath);
-          if (entry?.type !== "blob") continue;
-          const bytes = await this.blobReader.readBlob(rootPath, entry.objectId, feedbackContext, signal);
+          const bytes = await this.blobReader.readBlob(rootPath, objectId, feedbackContext, signal);
           assertActive();
-          await decodeObject(entry.objectId, bytes, output, assertActive);
+          await decodeObject(objectId, bytes, output, assertActive);
         }
       }
       assertActive();
