@@ -44,6 +44,19 @@ const REPOSITORY_ID = "github.com/ssaattww/revmem";
 const CONTEXT_ID = `github-pr:${REPOSITORY_ID}#52`;
 const FILE_ID = "file-1";
 const contentHash = (content: string): string => createHash("sha256").update(content, "utf8").digest("hex");
+const withTestTimeout = async <T>(promise: Promise<T>, message: string): Promise<T> => {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), 5_000);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+};
 
 const contextState = (): ReviewContextState => ({
   schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
@@ -147,7 +160,7 @@ test("PR remote content fallbacks run sequentially and preserve local and remote
   let active = 0;
   let maximumActive = 0;
 
-  const results = await readReviewDiffContentsSequentially(descriptors, local, async (descriptor) => {
+  const read = readReviewDiffContentsSequentially(descriptors, local, async (descriptor) => {
     calls.push(descriptor.filePath);
     active += 1;
     maximumActive = Math.max(maximumActive, active);
@@ -157,6 +170,7 @@ test("PR remote content fallbacks run sequentially and preserve local and remote
       ? { kind: "found", content: "remote" }
       : { kind: "unavailable", reason: "missing-revision" };
   });
+  const results = await withTestTimeout(read, "sequential remote fallback timed out");
 
   assert.deepEqual(calls, ["first.ts", "second.ts"]);
   assert.equal(maximumActive, 1);
@@ -194,12 +208,18 @@ test("PR remote content fallback stops before the next descriptor after cancella
     await remoteGate;
     return { kind: "found", content: "remote" };
   }, controller.signal);
-  await remoteStarted;
-  controller.abort();
-  resolveRemote();
+  try {
+    await withTestTimeout(remoteStarted, "remote fallback did not start");
+    controller.abort();
+    resolveRemote();
 
-  await assert.rejects(read, { name: "AbortError" });
-  assert.deepEqual(calls, ["first.ts"]);
+    await withTestTimeout(assert.rejects(read, { name: "AbortError" }), "cancelled remote fallback did not settle");
+    assert.deepEqual(calls, ["first.ts"]);
+  } finally {
+    controller.abort();
+    resolveRemote();
+    await read.catch(() => undefined);
+  }
 });
 
 const globalState = (): RepositoryGlobalState => ({
