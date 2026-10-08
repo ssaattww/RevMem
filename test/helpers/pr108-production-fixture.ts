@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promis
 import Module, { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
+import { promisify, TextDecoder } from "node:util";
 
 import { createNodeLocalGitAdapter, NodeGitCommandExecutor, type GitBlobReader } from "../../src/adapters/local-git/index.js";
 import {
@@ -114,6 +114,7 @@ export async function createPr108ProductionFixture(options: {
     accessToken: string;
     fetch: typeof globalThis.fetch;
     diffPaths?: readonly string[];
+    detailedTiming?: boolean;
   }>;
 } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "revmem-pr108-production-"));
@@ -436,6 +437,22 @@ export async function createPr108ProductionFixture(options: {
   let gitSubprocessCount = 0;
   let gitSubprocessMilliseconds = 0;
   const gitCommandCounts: Record<string, number> = {};
+  const gitCommandMilliseconds: Record<string, number> = {};
+  let captureDetailedTiming = false;
+  let textDecodeMilliseconds = 0;
+  const addGitCommandMilliseconds = (command: string, elapsed: number): void => {
+    gitCommandMilliseconds[command] = (gitCommandMilliseconds[command] ?? 0) + elapsed;
+  };
+  const originalTextDecoderDecode = TextDecoder.prototype.decode;
+  const timingTextDecoderDecode: typeof TextDecoder.prototype.decode = function (this: TextDecoder, ...args) {
+    if (options.existingRepository?.detailedTiming !== true || !captureDetailedTiming) {
+      return Reflect.apply(originalTextDecoderDecode, this, args);
+    }
+    const startedAt = performance.now();
+    try { return Reflect.apply(originalTextDecoderDecode, this, args); }
+    finally { textDecodeMilliseconds += performance.now() - startedAt; }
+  };
+  if (options.existingRepository?.detailedTiming === true) TextDecoder.prototype.decode = timingTextDecoderDecode;
   const gitInternals = localGit as unknown as {
     blobReader: GitBlobReader;
   };
@@ -453,7 +470,11 @@ export async function createPr108ProductionFixture(options: {
       gitSubprocessCount += 1;
       gitCommandCounts[command] = (gitCommandCounts[command] ?? 0) + 1;
       return result;
-    } finally { gitSubprocessMilliseconds += performance.now() - startedAt; }
+    } finally {
+      const elapsed = performance.now() - startedAt;
+      gitSubprocessMilliseconds += elapsed;
+      addGitCommandMilliseconds(measuredInvocation.argumentsList[0] ?? "unknown", elapsed);
+    }
   };
   const readGitBlob = gitInternals.blobReader.readBlob.bind(gitInternals.blobReader);
   gitInternals.blobReader.readBlob = async (repositoryRoot, blobObjectId, feedbackContext, signal) => {
@@ -461,7 +482,11 @@ export async function createPr108ProductionFixture(options: {
     gitSubprocessCount += 1;
     gitCommandCounts["cat-file"] = (gitCommandCounts["cat-file"] ?? 0) + 1;
     try { return await readGitBlob(repositoryRoot, blobObjectId, feedbackContext, signal); }
-    finally { gitSubprocessMilliseconds += performance.now() - startedAt; }
+    finally {
+      const elapsed = performance.now() - startedAt;
+      gitSubprocessMilliseconds += elapsed;
+      addGitCommandMilliseconds("cat-file", elapsed);
+    }
   };
   const batchBlobReader = gitInternals.blobReader as GitBlobReader & {
     readBlobs?: (
@@ -497,7 +522,11 @@ export async function createPr108ProductionFixture(options: {
       if (blobObjectIds.length === 0) return readGitBlobs(repositoryRoot, blobObjectIds, onBlob, feedbackContext, signal);
       const startedAt = performance.now();
       try { return await readGitBlobs(repositoryRoot, blobObjectIds, onBlob, feedbackContext, signal); }
-      finally { gitSubprocessMilliseconds += performance.now() - startedAt; }
+      finally {
+        const elapsed = performance.now() - startedAt;
+        gitSubprocessMilliseconds += elapsed;
+        addGitCommandMilliseconds("cat-file --batch", elapsed);
+      }
     };
   }
   let revisionContentReadCount = 0;
@@ -592,12 +621,16 @@ export async function createPr108ProductionFixture(options: {
     get runtime() { return runtime; }, get review() { return review; }, get provider() { return provider; },
     get repository() { return repository; }, get atomic() { return atomic; },
     ownerPublications: () => publications,
+    beginDetailedTimingCapture() { captureDetailedTiming = true; },
+    endDetailedTimingCapture() { captureDetailedTiming = false; },
     metrics: () => ({
       revisionContentReadCount,
       revisionContentReadMilliseconds,
       gitSubprocessCount,
       gitSubprocessMilliseconds,
       gitCommandCounts: { ...gitCommandCounts },
+      gitCommandMilliseconds: { ...gitCommandMilliseconds },
+      textDecodeMilliseconds,
       diffAcquisitionCount,
       diffAcquisitionMilliseconds,
       diffSnapshotFileCount,
@@ -648,6 +681,7 @@ export async function createPr108ProductionFixture(options: {
       for (const disposable of subscriptions.reverse()) disposable.dispose();
       await repository.dispose(); globalThis.fetch = originalFetch;
       commandExecutorPrototype.execute = executeGitCommand;
+      if (options.existingRepository?.detailedTiming === true) TextDecoder.prototype.decode = originalTextDecoderDecode;
       if (options.operationFeedback === true) setActiveOperationFeedback(undefined);
       await rm(root, { recursive: true, force: true });
     },
