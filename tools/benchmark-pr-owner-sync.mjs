@@ -60,12 +60,23 @@ for (const contextCount of contextCounts) {
       await fixture.invoke("reviewRange.redetectPullRequest");
       const redetectionMs = performance.now() - startedAt;
       const after = fixture.metrics();
+      const refreshStages = after.refreshDiagnostics.slice(before.refreshDiagnostics.length);
+      const stageMilliseconds = Object.fromEntries([...new Set(refreshStages.map((event) => event.stage))].map((stage) => [
+        stage,
+        refreshStages.filter((event) => event.stage === stage && event.status === "succeeded")
+          .reduce((sum, event) => sum + (event.durationMs ?? 0), 0),
+      ]));
       const row = {
         contextCount,
         iteration,
         redetectionMs,
         githubRequests: after.githubFetchRequests - before.githubFetchRequests,
         githubRequestMs: after.githubFetchMilliseconds - before.githubFetchMilliseconds,
+        stageMilliseconds,
+        gitSubprocessMs: after.gitSubprocessMilliseconds - before.gitSubprocessMilliseconds,
+        stateSaveMs: after.stateSaveMilliseconds - before.stateSaveMilliseconds,
+        contentReadMs: after.revisionContentReadMilliseconds - before.revisionContentReadMilliseconds,
+        diffAcquisitionMs: after.diffAcquisitionMilliseconds - before.diffAcquisitionMilliseconds,
         githubRequestCountsByPath: Object.fromEntries(Object.entries(after.githubFetchRequestCountsByPath).map(([endpoint, count]) => [
           endpoint,
           count - (before.githubFetchRequestCountsByPath[endpoint] ?? 0),

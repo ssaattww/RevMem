@@ -251,6 +251,7 @@ export async function createPr108ProductionFixture(options: {
   instrumentOwner();
   let repository = new DebouncedReviewStateRepository({ delegate: atomic, debounceMilliseconds: 0 });
   const histories: Array<{ contextId: string; type: string; revisionId?: string }> = [];
+  const refreshDiagnostics: Array<{ stage: string; status: string; durationMs?: number }> = [];
   const historyStore = new JsonlReviewHistoryStore({ storageUris });
   let eventId = 0;
   const history = new ReviewHistoryRecorder({ sessionId: "pr108", createEventId: () => `pr108-${++eventId}`,
@@ -289,7 +290,14 @@ export async function createPr108ProductionFixture(options: {
   if (options.operationFeedback === true) setActiveOperationFeedback(new OperationFeedback({
     showBusy: () => undefined,
     clearBusy: () => undefined,
-    appendLog: () => undefined,
+    appendLog: (entry) => {
+      const refresh = entry.pullRequestRefresh;
+      if (refresh !== undefined) refreshDiagnostics.push({
+        stage: refresh.stage,
+        status: refresh.status,
+        ...(refresh.durationMs === undefined ? {} : { durationMs: refresh.durationMs }),
+      });
+    },
     revealLog: () => undefined,
   }));
   await git("checkout", "--detach", revisions[ownerHead]);
@@ -535,6 +543,7 @@ export async function createPr108ProductionFixture(options: {
       githubFetchRequests: fetchRequests.length,
       githubFetchMilliseconds,
       githubFetchRequestCountsByPath: { ...githubFetchRequestCountsByPath },
+      refreshDiagnostics: [...refreshDiagnostics],
     }),
     async owner(revision: FixtureRevision) { ownerHead = revision; await git("checkout", "--detach", revisions[revision]); },
     ownerSynchronizationRevision(revision: FixtureRevision | undefined) { ownerSynchronizationRevision = revision; },
