@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { OperationFeedback } from "../../src/application/operation-feedback/operation-feedback.js";
+import { GitHubPullRequestCacheService } from "../../src/application/github-pr-cache/github-pull-request-cache-service.js";
 import { PullRequestLifecycleOperationCacheRegistry } from "../../src/composition/review-contexts/pull-request-lifecycle-operation-cache.js";
 import { createPr108ProductionFixture } from "../helpers/pr108-production-fixture.js";
 
@@ -110,6 +111,47 @@ test("PR lifecycle synchronization and projection reuse one operation snapshot a
       assert.ok(fixture.item(number).cache, "published cache metadata must remain visible on the projected item");
     }
   } finally {
+    await fixture.dispose();
+  }
+});
+
+test("superseded cache publication cannot consume the newer Review Contexts projection", async () => {
+  const writeStarted = [deferred(), deferred()];
+  const releases = [deferred(), deferred()];
+  const publishSignals: Array<AbortSignal | undefined> = [];
+  const fixture = await createPr108ProductionFixture({ contexts: [240, 241] });
+  const originalPublish = GitHubPullRequestCacheService.prototype.publish;
+  GitHubPullRequestCacheService.prototype.publish = async function (request, result, feedbackContext, signal) {
+    const index = publishSignals.length;
+    if (index < 2) {
+      publishSignals.push(signal);
+      writeStarted[index]!.resolve();
+      await releases[index]!.promise;
+      // Simulate a cache adapter that completes after its owning refresh was cancelled.
+      return originalPublish.call(this, request, result, feedbackContext, index === 0 ? undefined : signal);
+    }
+    return originalPublish.call(this, request, result, feedbackContext, signal);
+  };
+  try {
+    const notificationsBefore = fixture.metrics().providerTreeChangeEvents;
+    const oldRefresh = fixture.invoke("reviewRange.refreshReviewContexts");
+    await writeStarted[0]!.promise;
+    const newRefresh = fixture.invoke("reviewRange.refreshReviewContexts");
+    await writeStarted[1]!.promise;
+    assert.notEqual(publishSignals[0], publishSignals[1], "each refresh must own a distinct cancellation signal");
+
+    releases[0]!.resolve();
+    await oldRefresh;
+    releases[1]!.resolve();
+    assert.deepEqual(await newRefresh, []);
+
+    for (const number of [240, 241]) assert.ok(fixture.item(number).cache, "the accepted projection includes its published cache status");
+    assert.equal(fixture.metrics().providerTreeChangeEvents - notificationsBefore, 1,
+      "only the latest refresh notifies the tree");
+  } finally {
+    releases[0]!.resolve();
+    releases[1]!.resolve();
+    GitHubPullRequestCacheService.prototype.publish = originalPublish;
     await fixture.dispose();
   }
 });

@@ -26,7 +26,7 @@ export interface ReviewContextsRuntimeSource {
   /** Loads read-only tree data and must stop downstream acquisition when aborted. */
   load(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<readonly ReviewContextListItem[]>;
   /** Commits a successful pure acquisition once, immediately before tree publication. */
-  publishLoaded?(): Promise<readonly ReviewContextListItem[] | undefined>;
+  publishLoaded?(signal?: AbortSignal): Promise<readonly ReviewContextListItem[] | undefined>;
 }
 
 export interface ReviewContextsRuntimeDependencies {
@@ -205,7 +205,7 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
         return;
       }
       if (generation !== this.generation) return;
-      const published = await this.source.publishLoaded?.();
+      const published = await this.source.publishLoaded?.(controller.signal);
       if (controller.signal.aborted || generation !== this.generation) return;
       // A deferred cache write can change cache status or record a terminal
       // storage failure. Never publish the pre-write projection in either case.

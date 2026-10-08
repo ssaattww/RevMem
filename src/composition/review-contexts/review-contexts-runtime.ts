@@ -354,10 +354,15 @@ const localOwner = (snapshot: CurrentContextUiSnapshot): LocalRepositoryOwner | 
   return undefined;
 };
 
+interface PendingReviewContextsPublication {
+  readonly cachePublishes: Array<() => Promise<void>>;
+  projection?: readonly ReviewContextListItem[];
+}
+
 class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
   private readonly roots = new Map<string, Set<string>>();
-  private pendingCachePublishes: Array<() => Promise<void>> = [];
-  private pendingProjection: readonly ReviewContextListItem[] | undefined;
+  private readonly pendingPublicationsBySignal = new WeakMap<AbortSignal, PendingReviewContextsPublication>();
+  private pendingUnscopedPublication: PendingReviewContextsPublication | undefined;
   private projectionGenerationCount = 0;
   private readonly preparedCurrentContexts = new Map<string, PreparedCurrentContext>();
   private readonly preparedLocalCandidates = new Map<string, readonly CurrentContextUiSnapshot[]>();
@@ -457,8 +462,9 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     signal?: AbortSignal,
     feedbackContext?: OperationFeedbackContext,
   ): Promise<readonly ReviewContextListItem[]> {
-    this.pendingCachePublishes = [];
-    this.pendingProjection = undefined;
+    const pendingPublication: PendingReviewContextsPublication = { cachePublishes: [] };
+    if (signal === undefined) this.pendingUnscopedPublication = pendingPublication;
+    else this.pendingPublicationsBySignal.set(signal, pendingPublication);
     // Preparation is consumed only by the immediately following dependent
     // refresh. An independent Tree command always performs fresh acquisition.
     const acceptedPreparation = this.acceptedCurrentContext;
@@ -590,7 +596,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       );
     };
     const projected = await project();
-    this.pendingProjection = projected;
+    pendingPublication.projection = projected;
     if (feedbackContext !== undefined) {
       const completed = observedPullRequestContextsByOperation.get(feedbackContext)?.size ?? 0;
       reportActiveOperationProgress({
@@ -603,16 +609,19 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
   }
 
   /** Commits cache entries only after the final retryable read is accepted. */
-  public async publishLoaded(): Promise<readonly ReviewContextListItem[] | undefined> {
-    const publishes = this.pendingCachePublishes;
-    this.pendingCachePublishes = [];
+  public async publishLoaded(signal?: AbortSignal): Promise<readonly ReviewContextListItem[] | undefined> {
+    const pendingPublication = signal === undefined
+      ? this.pendingUnscopedPublication
+      : this.pendingPublicationsBySignal.get(signal);
+    if (signal === undefined) this.pendingUnscopedPublication = undefined;
+    else this.pendingPublicationsBySignal.delete(signal);
+    if (pendingPublication === undefined) return undefined;
+    const publishes = pendingPublication.cachePublishes;
     if (publishes.length === 0) {
-      this.pendingProjection = undefined;
       return undefined;
     }
     for (const publish of publishes) await publish();
-    const projection = this.pendingProjection;
-    this.pendingProjection = undefined;
+    const projection = pendingPublication.projection;
     if (projection === undefined) return undefined;
     return projection.map((item) => {
       if (item.context.kind !== "pull-request") return item;
@@ -631,8 +640,14 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     return this.projectionGenerationCount;
   }
 
-  public deferCachePublish(publish: () => Promise<void>): void {
-    this.pendingCachePublishes.push(publish);
+  public deferCachePublish(publish: () => Promise<void>, signal?: AbortSignal): void {
+    const pendingPublication = signal === undefined
+      ? this.pendingUnscopedPublication
+      : this.pendingPublicationsBySignal.get(signal);
+    if (pendingPublication === undefined) {
+      throw new Error("Deferred PR cache publication has no active Review Contexts load.");
+    }
+    pendingPublication.cachePublishes.push(publish);
   }
 
   public async augmentCurrentContextCandidates(
@@ -1075,6 +1090,7 @@ export function registerT405ReviewContextsRuntime(
     }
     const publish = async (): Promise<void> => {
       result = await cache.publish(diffRequest(context), result, feedbackContext, signal);
+      assertCurrent();
       cacheStatusByContextId.set(
         context.contextId,
         result.kind === "acquired"
@@ -1086,7 +1102,7 @@ export function registerT405ReviewContextsRuntime(
           : { origin: "unavailable", freshness: "unavailable" },
       );
     };
-    if (deferCachePublish) sourceRef.current?.deferCachePublish(publish);
+    if (deferCachePublish) sourceRef.current?.deferCachePublish(publish, signal);
     else await publish();
     if (result.kind === "acquired") {
       options.registerPullRequestReviewDiff({
