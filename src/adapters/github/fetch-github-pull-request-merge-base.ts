@@ -20,6 +20,18 @@ export interface FetchGitHubPullRequestMergeBaseOptions {
   readonly requestTimeoutMs?: number;
 }
 
+const abortSignalIds = new WeakMap<AbortSignal, number>();
+let nextAbortSignalId = 0;
+const abortSignalScope = (signal?: AbortSignal): number => {
+  if (signal === undefined) return 0;
+  let id = abortSignalIds.get(signal);
+  if (id === undefined) {
+    id = ++nextAbortSignalId;
+    abortSignalIds.set(signal, id);
+  }
+  return id;
+};
+
 /** Stable key for one operation-local immutable branch-point comparison. */
 export const githubPullRequestMergeBaseReadKey = (
   apiBaseUrl: string,
@@ -27,15 +39,20 @@ export const githubPullRequestMergeBaseReadKey = (
   baseSha: string,
   headSha: string,
   requestTimeoutMs = GITHUB_REQUEST_TIMEOUT_MS,
+  signal?: AbortSignal,
 ): string => JSON.stringify([
   "merge-base-v1",
-  apiBaseUrl.replace(/\/+$/u, "").toLowerCase(),
+  (() => {
+    const parsed = new URL(apiBaseUrl);
+    return `${parsed.origin.toLowerCase()}${parsed.pathname.replace(/\/+$/u, "")}${parsed.search}${parsed.hash}`;
+  })(),
   repository.host.toLowerCase(),
   repository.owner.toLowerCase(),
   repository.repository.toLowerCase(),
   baseSha,
   headSha,
   requestTimeoutMs,
+  abortSignalScope(signal),
 ]);
 
 const isObject = (value: unknown): value is Record<string, unknown> =>

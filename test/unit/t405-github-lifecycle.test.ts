@@ -8,6 +8,7 @@ import {
   FetchGitHubPullRequestDiffAdapter,
   FetchGitHubPullRequestLifecycleAdapter,
 } from "../../src/adapters/github/index.js";
+import { githubPullRequestMergeBaseReadKey } from "../../src/adapters/github/fetch-github-pull-request-merge-base.js";
 import {
   GitHubPullRequestContextStateService,
   createImmutablePullRequestRevisionMapper,
@@ -159,6 +160,49 @@ test("R405 lifecycle operation memo coalesces identical compare reads across dif
   assert.deepEqual(results.map((result) => result.kind), ["available", "available"]);
   assert.equal(pullGets, 2, "different PRs still require their own lifecycle endpoint read");
   assert.equal(compareGets, 1, "identical host/repository/base/head comparisons are single-flight");
+});
+
+test("R405 merge-base cache keys preserve API path case while normalizing the origin", () => {
+  const upperOrigin = githubPullRequestMergeBaseReadKey("https://API.GITHUB.COM/Enterprise/Api/", identity, A, B);
+  const normalizedOrigin = githubPullRequestMergeBaseReadKey("https://api.github.com/Enterprise/Api", identity, A, B);
+  const differentPathCase = githubPullRequestMergeBaseReadKey("https://api.github.com/enterprise/Api", identity, A, B);
+  assert.equal(upperOrigin, normalizedOrigin);
+  assert.notEqual(normalizedOrigin, differentPathCase);
+});
+
+test("R405 one cancelled consumer cannot abort another signal's identical merge-base read", async () => {
+  const mergeBaseReads = new Map();
+  const cancelled = new AbortController();
+  const active = new AbortController();
+  let compareGets = 0;
+  const adapter = new FetchGitHubPullRequestLifecycleAdapter({
+    apiBaseUrl: "https://api.github.com",
+    mergeBaseReads,
+    fetch: async (input, init) => {
+      const url = new URL(String(input));
+      if (url.pathname.includes("/compare/")) {
+        compareGets += 1;
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(resolve, 15);
+          init?.signal?.addEventListener("abort", () => {
+            clearTimeout(timer);
+            reject(new DOMException("aborted", "AbortError"));
+          }, { once: true });
+        });
+        return jsonResponse({ merge_base_commit: { sha: A } });
+      }
+      const number = Number(url.pathname.split("/").at(-1));
+      return jsonResponse({ number, title: `PR ${number}`, html_url: `https://github.com/ssaattww/revmem/pull/${number}`,
+        state: "open", merged_at: null, base: { sha: A }, head: { sha: B } });
+    },
+  });
+  const cancelledRead = adapter.fetchCurrent(identity, 52, undefined, cancelled.signal);
+  const activeRead = adapter.fetchCurrent(identity, 53, undefined, active.signal);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(compareGets, 2, "requests with different cancellation owners must not share one abortable promise");
+  cancelled.abort();
+  await assert.rejects(cancelledRead, { name: "AbortError" });
+  assert.equal((await activeRead).kind, "available");
 });
 
 test("R405 lifecycle operation memo drops unavailable and aborted compare reads", async () => {

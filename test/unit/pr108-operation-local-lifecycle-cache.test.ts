@@ -1,7 +1,56 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { OperationFeedback } from "../../src/application/operation-feedback/operation-feedback.js";
+import { PullRequestLifecycleOperationCacheRegistry } from "../../src/composition/review-contexts/pull-request-lifecycle-operation-cache.js";
 import { createPr108ProductionFixture } from "../helpers/pr108-production-fixture.js";
+
+const deferred = () => {
+  let resolve!: () => void;
+  const promise = new Promise<void>((complete) => { resolve = complete; });
+  return { promise, resolve };
+};
+
+test("PR lifecycle cache keeps concurrent operation scopes independent and stable", async () => {
+  const feedback = new OperationFeedback({
+    showBusy: () => undefined,
+    clearBusy: () => undefined,
+    appendLog: () => undefined,
+    revealLog: () => undefined,
+  });
+  const registry = new PullRequestLifecycleOperationCacheRegistry();
+  const gateA = deferred();
+  const gateB = deferred();
+  const startedA = deferred();
+  const startedB = deferred();
+  let contextA!: import("../../src/application/operation-feedback/operation-feedback.js").OperationFeedbackContext;
+  let cacheA: ReturnType<typeof registry.forOperation> | undefined;
+  let cacheAAfterB: ReturnType<typeof registry.forOperation> | undefined;
+  let cacheB: ReturnType<typeof registry.forOperation> | undefined;
+
+  const operationA = feedback.run("A", async (context) => {
+    contextA = context;
+    cacheA = registry.forOperation(context);
+    startedA.resolve();
+    await gateA.promise;
+    cacheAAfterB = registry.forOperation(context);
+  });
+  await startedA.promise;
+  const operationB = feedback.run("B", async (context) => {
+    cacheB = registry.forOperation(context);
+    startedB.resolve();
+    await gateB.promise;
+  });
+  await startedB.promise;
+  gateA.resolve();
+  await operationA;
+  gateB.resolve();
+  await operationB;
+
+  assert.notEqual(cacheA, cacheB, "overlapping owner/id scopes must never share snapshots");
+  assert.equal(cacheAAfterB, cacheA, "A→B→A access must retain A's operation-local memo");
+  assert.notEqual(registry.forOperation(contextA), cacheA, "operation completion must release its memo");
+});
 
 test("PR lifecycle synchronization and projection reuse one operation snapshot and merge-base GET", async () => {
   const contexts = Array.from({ length: 40 }, (_, index) => 200 + index);

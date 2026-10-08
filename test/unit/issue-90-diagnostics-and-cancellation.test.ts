@@ -93,6 +93,27 @@ test("Issue #90 default diagnostics never emit a supplied file target", async ()
   assert.equal(host.statuses[0]?.activities?.[0]?.detail, undefined);
 });
 
+test("operation finish hooks clean up after success, failure, and cancellation", async () => {
+  const host = new DiagnosticHost(false);
+  const feedback = new OperationFeedback(host, () => 2_500);
+  const completed: number[] = [];
+  await feedback.run("success", async (context) => {
+    feedback.onOperationFinished(context, () => completed.push(context.id));
+  });
+  await assert.rejects(feedback.run("failure", async (context) => {
+    feedback.onOperationFinished(context, () => completed.push(context.id));
+    throw new Error("expected fixture failure");
+  }), /expected fixture failure/u);
+  await feedback.run("cancelled", async (context) => {
+    feedback.onOperationFinished(context, () => completed.push(context.id));
+    feedback.reportPullRequestRefresh(context, {
+      generation: 1, trigger: "review-contexts-refresh", stage: "refresh-request", status: "cancelled",
+      reasonCode: "superseded-by-newer-generation",
+    });
+  });
+  assert.deepEqual(completed, [1, 2, 3]);
+});
+
 test("Issue #137 production formatter preserves refresh payloads and hides queued PR file paths", async () => {
   const hostileValues = [
     "private-repository-name", "secret-branch-name", "https://private.example/pr/42?token=secret",

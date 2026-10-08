@@ -59,43 +59,10 @@ import {
   type PullRequestRefreshReasonCode,
   type OperationFeedbackContext,
 } from "../../application/operation-feedback/index";
+import { PullRequestLifecycleOperationCacheRegistry, type PullRequestLifecycleOperationCache } from "./pull-request-lifecycle-operation-cache";
 
 let pullRequestDetectionGeneration = 0;
-interface PullRequestLifecycleOperationCache {
-  readonly lifecycleReads: Map<string, Promise<GitHubPullRequestLifecycleResult>>;
-  readonly mergeBaseReads: Map<string, Promise<Awaited<ReturnType<typeof fetchGitHubPullRequestMergeBase>>>>;
-}
-const pullRequestLifecycleOperationCaches = new WeakMap<
-  OperationFeedbackContext["owner"],
-  Map<number, PullRequestLifecycleOperationCache>
->();
-const lifecycleOperationCacheFor = (feedbackContext?: OperationFeedbackContext): PullRequestLifecycleOperationCache => {
-  if (feedbackContext === undefined) return { lifecycleReads: new Map(), mergeBaseReads: new Map() };
-  let operationCaches = pullRequestLifecycleOperationCaches.get(feedbackContext.owner);
-  if (operationCaches === undefined) {
-    operationCaches = new Map();
-    pullRequestLifecycleOperationCaches.set(feedbackContext.owner, operationCaches);
-  }
-  for (const operationId of operationCaches.keys()) {
-    if (operationId !== feedbackContext.id) operationCaches.delete(operationId);
-  }
-  let cache = operationCaches.get(feedbackContext.id);
-  if (cache === undefined) {
-    cache = { lifecycleReads: new Map(), mergeBaseReads: new Map() };
-    operationCaches.set(feedbackContext.id, cache);
-  }
-  return cache;
-};
-const releaseLifecycleOperationCache = (
-  feedbackContext: OperationFeedbackContext | undefined,
-  cache: PullRequestLifecycleOperationCache,
-): void => {
-  if (feedbackContext === undefined) return;
-  const operationCaches = pullRequestLifecycleOperationCaches.get(feedbackContext.owner);
-  if (operationCaches?.get(feedbackContext.id) !== cache) return;
-  operationCaches.delete(feedbackContext.id);
-  if (operationCaches.size === 0) pullRequestLifecycleOperationCaches.delete(feedbackContext.owner);
-};
+const pullRequestLifecycleOperationCaches = new PullRequestLifecycleOperationCacheRegistry();
 const fetchPullRequestLifecycle = async (
   identity: GitHubRepositoryIdentity,
   token: string | undefined,
@@ -498,7 +465,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       if (signal?.aborted === true) throw new DOMException("Review Contexts refresh was superseded.", "AbortError");
     };
     const work = this.createWork(signal);
-    const operationCache = lifecycleOperationCacheFor(feedbackContext);
+    const operationCache = pullRequestLifecycleOperationCaches.forOperation(feedbackContext);
     const checkpoint = (kind = "source-context"): Promise<void> => work.item(kind);
     const current: ReviewContextState[] = [];
     const saved = new Map<string, ReviewContextState>();
@@ -627,7 +594,6 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
         total: completed,
       }, feedbackContext);
     }
-    releaseLifecycleOperationCache(feedbackContext, operationCache);
     return projected;
   }
 
@@ -656,7 +622,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       if (signal?.aborted === true) throw new DOMException("Current Context refresh was superseded.", "AbortError");
     };
     const work = this.createWork(signal);
-    const operationCache = lifecycleOperationCacheFor(feedbackContext);
+    const operationCache = pullRequestLifecycleOperationCaches.forOperation(feedbackContext);
     const candidates = new Map<string, CurrentContextUiSnapshot>();
     for (const candidate of localCandidates) {
       assertCurrent();
@@ -1333,7 +1299,7 @@ export function registerT405ReviewContextsRuntime(
     signal?: AbortSignal,
     synchronizeBeforeSearch = true,
   ): Promise<void> => {
-    const lifecycleCache = lifecycleOperationCacheFor(feedbackContext);
+    const lifecycleCache = pullRequestLifecycleOperationCaches.forOperation(feedbackContext);
     const detectionGeneration = ++pullRequestDetectionGeneration;
     const reportDetection = (
       stage: PullRequestRefreshStage,
@@ -1454,6 +1420,8 @@ export function registerT405ReviewContextsRuntime(
       const reselectedToken = await timed("authentication", () => auth.getAccessToken(identity.host, signal, true, true));
       assertDetectionCurrent();
       if (reselectedToken !== undefined) {
+        lifecycleCache.lifecycleReads.clear();
+        lifecycleCache.mergeBaseReads.clear();
         search = await createPullRequestSearch(identity, reselectedToken, searchDiagnostic, lifecycleCache.mergeBaseReads).findOpenByHead(identity, pullRequestSynchronizationRevision, signal);
         assertDetectionCurrent();
       }

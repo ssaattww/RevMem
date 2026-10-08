@@ -112,6 +112,7 @@ export class FetchGitHubPullRequestLifecycleAdapter {
     if (payload.state === "open") {
       const mergeBaseKey = githubPullRequestMergeBaseReadKey(
         this.apiBaseUrl, repository, payload.base.sha, payload.head.sha, GITHUB_REQUEST_TIMEOUT_MS,
+        signal,
       );
       let mergeBasePromise = this.mergeBaseReads?.get(mergeBaseKey);
       if (mergeBasePromise === undefined) {

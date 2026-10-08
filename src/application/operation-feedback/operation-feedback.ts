@@ -699,6 +699,7 @@ const errorIdentity = (error: unknown): object | undefined =>
 export class OperationFeedback {
   private readonly active: ActiveOperation[] = [];
   private readonly pendingBoundaryDuplicates = new WeakSet<object>();
+  private readonly operationFinishedListeners = new Map<number, Set<() => void>>();
   protected nextId = 0;
   private readonly reportedStorageLockScopes = new Set<string>();
 
@@ -766,8 +767,22 @@ export class OperationFeedback {
     } finally {
       const index = this.active.findIndex((candidate) => candidate.id === active.id);
       if (index >= 0) this.active.splice(index, 1);
+      const listeners = this.operationFinishedListeners.get(active.id);
+      this.operationFinishedListeners.delete(active.id);
+      for (const listener of listeners ?? []) listener();
       this.publishStatus();
     }
+  }
+
+  /** Registers operation-local cleanup that runs after success, failure, or cancellation. */
+  public onOperationFinished(context: OperationFeedbackContext, listener: () => void): void {
+    if (context.owner !== this || !this.active.some((operation) => operation.id === context.id)) {
+      listener();
+      return;
+    }
+    const listeners = this.operationFinishedListeners.get(context.id) ?? new Set<() => void>();
+    listeners.add(listener);
+    this.operationFinishedListeners.set(context.id, listeners);
   }
 
   /** Updates one active operation with an anonymous count-only stage. */

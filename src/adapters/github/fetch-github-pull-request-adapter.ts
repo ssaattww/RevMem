@@ -275,6 +275,7 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
       this.emit({ stage: "merge-base", status: "started", ordinal: candidateOrdinal });
       const mergeBaseKey = githubPullRequestMergeBaseReadKey(
         this.apiBaseUrl, repository, candidate.baseSha, candidate.headSha, this.requestTimeoutMs,
+        signal,
       );
       let mergeBasePromise = this.mergeBaseReads?.get(mergeBaseKey);
       if (mergeBasePromise === undefined) {
