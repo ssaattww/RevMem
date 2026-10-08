@@ -98,6 +98,71 @@ test("operation cleanup listener failures do not skip later cleanup or replace s
   assert.deepEqual(busy, [1, 0]);
 });
 
+test("throwing cleanup preserves the original failure and releases the PR lifecycle cache", async () => {
+  const feedback = new OperationFeedback({
+    showBusy: () => undefined,
+    clearBusy: () => undefined,
+    appendLog: () => undefined,
+    revealLog: () => undefined,
+  });
+  const registry = new PullRequestLifecycleOperationCacheRegistry();
+  const originalError = new Error("original operation failure");
+  let context!: import("../../src/application/operation-feedback/operation-feedback.js").OperationFeedbackContext;
+  let cache!: ReturnType<typeof registry.forOperation>;
+  const operation = feedback.run("failure cleanup isolation", async (operationContext) => {
+    context = operationContext;
+    feedback.onOperationFinished(operationContext, () => { throw new Error("cleanup failure"); });
+    cache = registry.forOperation(operationContext);
+    cache.mergeBaseResults.set("completed-compare", { kind: "available", mergeBaseSha: "a".repeat(40) });
+    throw originalError;
+  });
+
+  let observedError: unknown;
+  try {
+    await operation;
+  } catch (error) {
+    observedError = error;
+  }
+  assert.equal(observedError, originalError, "cleanup failure must not replace the operation error");
+  assert.equal(cache.mergeBaseGeneration.value, 1, "the later registry cleanup listener must run");
+  const reacquired = registry.forOperation(context);
+  assert.notEqual(reacquired, cache, "the failed operation's cache must not be reused");
+  assert.equal(reacquired.mergeBaseResults.size, 0, "a failed operation's successful memo must not survive");
+});
+
+test("throwing cleanup preserves the cancelled result and releases the PR lifecycle cache", async () => {
+  const feedback = new OperationFeedback({
+    showBusy: () => undefined,
+    clearBusy: () => undefined,
+    appendLog: () => undefined,
+    revealLog: () => undefined,
+  });
+  const registry = new PullRequestLifecycleOperationCacheRegistry();
+  const cancelledResult = { kind: "cancelled" as const };
+  let context!: import("../../src/application/operation-feedback/operation-feedback.js").OperationFeedbackContext;
+  let cache!: ReturnType<typeof registry.forOperation>;
+  const result = await feedback.run("cancel cleanup isolation", async (operationContext) => {
+    context = operationContext;
+    feedback.onOperationFinished(operationContext, () => { throw new Error("cleanup failure"); });
+    cache = registry.forOperation(operationContext);
+    cache.mergeBaseResults.set("completed-compare", { kind: "available", mergeBaseSha: "b".repeat(40) });
+    feedback.reportPullRequestRefresh(operationContext, {
+      generation: 1,
+      trigger: "review-contexts-refresh",
+      stage: "refresh-request",
+      status: "cancelled",
+      reasonCode: "superseded-by-newer-generation",
+    });
+    return cancelledResult;
+  });
+
+  assert.equal(result, cancelledResult, "cleanup failure must not replace the cancelled result");
+  assert.equal(cache.mergeBaseGeneration.value, 1, "the later registry cleanup listener must run");
+  const reacquired = registry.forOperation(context);
+  assert.notEqual(reacquired, cache, "the cancelled operation's cache must not be reused");
+  assert.equal(reacquired.mergeBaseResults.size, 0, "a cancelled operation's successful memo must not survive");
+});
+
 test("PR lifecycle synchronization and projection reuse one operation snapshot and merge-base GET", async () => {
   const contexts = Array.from({ length: 40 }, (_, index) => 200 + index);
   const fixture = await createPr108ProductionFixture({
