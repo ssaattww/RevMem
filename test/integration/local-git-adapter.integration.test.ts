@@ -198,6 +198,34 @@ test("verified commit cache rechecks an object pruned after a successful read", 
   }
 });
 
+test("batch immutable read rechecks a cached commit pruned after a successful lookup", async () => {
+  const repository = await createTemporaryGitRepository();
+  const adapter = createNodeLocalGitAdapter();
+
+  try {
+    assert.deepEqual(await adapter.readTextFilesAtRevision(
+      repository.path,
+      repository.headCommit,
+      ["fixture.txt"],
+      "posix",
+    ), new Map([["fixture.txt", { kind: "found", content: "base\nhead\n" }]]));
+
+    await repository.runGit(["update-ref", "-d", "refs/heads/main"]);
+    await repository.runGit(["reflog", "expire", "--expire=now", "--all"]);
+    await repository.runGit(["gc", "--prune=now"]);
+    await assert.rejects(repository.runGit(["cat-file", "-e", `${repository.headCommit}^{commit}`]));
+
+    assert.deepEqual(await adapter.readTextFilesAtRevision(
+      repository.path,
+      repository.headCommit,
+      ["fixture.txt"],
+      "posix",
+    ), new Map([["fixture.txt", { kind: "missing-revision" }]]));
+  } finally {
+    await repository.cleanup();
+  }
+});
+
 test("revision path lookup preserves blob-only behavior for directories, gitlinks, symlinks, and colons", async () => {
   const repository = await createTemporaryGitRepository();
   const adapter = createNodeLocalGitAdapter();
@@ -241,6 +269,8 @@ test("batch immutable reads match single-path results for exact paths and specia
     await writeFile(path.join(repository.path, "colon:name.ts"), "colon content\n", "utf8");
     await writeFile(path.join(repository.path, "tab\tname.ts"), "tab content\n", "utf8");
     await writeFile(path.join(repository.path, "line\nname.ts"), "line content\n", "utf8");
+    await writeFile(path.join(repository.path, "prefix-name.ts"), "exact prefix path\n", "utf8");
+    await writeFile(path.join(repository.path, "prefix-name-extra.ts"), "unrequested sibling\n", "utf8");
     await symlink("fixture.txt", path.join(repository.path, "fixture-link"));
     await repository.runGit(["add", "--all"]);
     const missingSubmodule = "f".repeat(40);
@@ -253,6 +283,7 @@ test("batch immutable reads match single-path results for exact paths and specia
       "colon:name.ts",
       "tab\tname.ts",
       "line\nname.ts",
+      "prefix-name.ts",
       "fixture-link",
       "vendor/submodule",
       "nested",
@@ -277,6 +308,7 @@ test("batch immutable reads match single-path results for exact paths and specia
     assert.deepEqual(batched.get("fixture-link"), { kind: "found", content: "fixture.txt" });
     assert.deepEqual(batched.get("vendor/submodule"), { kind: "missing-file" });
     assert.deepEqual(batched.get("nested"), { kind: "missing-file" });
+    assert.deepEqual(batched.get("prefix-name.ts"), { kind: "found", content: "exact prefix path\n" });
     assert.deepEqual(batched.get("missing.ts"), { kind: "missing-file" });
   } finally {
     await repository.cleanup();

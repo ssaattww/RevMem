@@ -169,6 +169,7 @@ test("batch immutable text reads resolve literal NUL-delimited paths and preserv
     ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`],
     lookup,
   ]);
+  await assert.rejects(bulkReader.call(adapter, repositoryRoot, commit, ["nul\0path.ts"], "posix"), TypeError);
 });
 
 test("batch immutable text reads chunk literal pathspecs below Windows command limits", async () => {
@@ -209,25 +210,68 @@ test("batch immutable text reads chunk literal pathspecs below Windows command l
   assert.ok([...result.values()].every((entry) => entry.kind === "missing-file"));
 });
 
+test("failed later ls-tree chunk exposes no partial result and retries every chunk", async () => {
+  const commit = "a".repeat(40);
+  const paths = Array.from({ length: 500 }, (_, index) =>
+    `src/${"long-directory-name/".repeat(2)}file-${String(index).padStart(4, "0")}.ts`);
+  const treePathspecBatches: string[][] = [];
+  let failSecondTreeCall = true;
+  const executor: GitCommandExecutor = {
+    execute: async (invocation) => {
+      if (invocation.argumentsList[0] === "rev-parse") return success(`${commit}\n`);
+      const separator = invocation.argumentsList.indexOf("--");
+      treePathspecBatches.push(invocation.argumentsList.slice(separator + 1));
+      if (failSecondTreeCall && treePathspecBatches.length === 2) {
+        failSecondTreeCall = false;
+        throw new Error("second ls-tree chunk failed");
+      }
+      return success();
+    },
+  };
+  const adapter = new LocalGitAdapter(executor, unreachableGitBlobReader);
+  const bulkReader = (adapter as unknown as {
+    readTextFilesAtRevision: (
+      root: string,
+      revision: string,
+      paths: readonly string[],
+      semantics: "posix" | "windows",
+    ) => Promise<ReadonlyMap<string, { readonly kind: string }>>;
+  }).readTextFilesAtRevision;
+
+  await assert.rejects(bulkReader.call(adapter, repositoryRoot, commit, paths, "posix"), /second ls-tree chunk failed/u);
+  const result = await bulkReader.call(adapter, repositoryRoot, commit, paths, "posix");
+
+  assert.equal(treePathspecBatches.length, 4, "the retry must fetch both metadata chunks again");
+  assert.deepEqual(treePathspecBatches[0], treePathspecBatches[2]);
+  assert.deepEqual(treePathspecBatches[1], treePathspecBatches[3]);
+  assert.equal(result.size, paths.length);
+  assert.ok([...result.values()].every((entry) => entry.kind === "missing-file"));
+});
+
 test("interrupted batch path resolution is not reused by a later request", async () => {
   const commit = "a".repeat(40);
-  const blob = "b".repeat(40);
+  const paths = Array.from({ length: 500 }, (_, index) =>
+    `src/${"long-directory-name/".repeat(2)}file-${String(index).padStart(4, "0")}.ts`);
   const controller = new AbortController();
   let treeCalls = 0;
+  const treePathspecBatches: string[][] = [];
   const executor: GitCommandExecutor = {
     execute: async (invocation) => {
       if (invocation.argumentsList[0] === "rev-parse") return success(`${commit}\n`);
       treeCalls += 1;
+      const separator = invocation.argumentsList.indexOf("--");
+      treePathspecBatches.push(invocation.argumentsList.slice(separator + 1));
       if (treeCalls === 1) {
+        return success();
+      }
+      if (treeCalls === 2) {
         controller.abort();
         throw new DOMException("cancelled", "AbortError");
       }
-      return success(`100644 blob ${blob}\tfile.ts\0`);
+      return success();
     },
   };
-  const adapter = new LocalGitAdapter(executor, {
-    readBlob: async () => new TextEncoder().encode("source\n"),
-  });
+  const adapter = new LocalGitAdapter(executor, unreachableGitBlobReader);
   const bulkReader = (adapter as unknown as {
     readTextFilesAtRevision: (
       root: string,
@@ -239,11 +283,13 @@ test("interrupted batch path resolution is not reused by a later request", async
     ) => Promise<ReadonlyMap<string, { readonly kind: string; readonly content?: string }>>;
   }).readTextFilesAtRevision;
 
-  await assert.rejects(bulkReader.call(adapter, repositoryRoot, commit, ["file.ts"], "posix", undefined, controller.signal), { name: "AbortError" });
-  assert.deepEqual([...await bulkReader.call(adapter, repositoryRoot, commit, ["file.ts"], "posix")], [
-    ["file.ts", { kind: "found", content: "source\n" }],
-  ]);
-  assert.equal(treeCalls, 2, "a cancelled metadata batch must be fetched again");
+  await assert.rejects(bulkReader.call(adapter, repositoryRoot, commit, paths, "posix", undefined, controller.signal), { name: "AbortError" });
+  const result = await bulkReader.call(adapter, repositoryRoot, commit, paths, "posix");
+  assert.equal(result.size, paths.length);
+  assert.ok([...result.values()].every((entry) => entry.kind === "missing-file"));
+  assert.equal(treeCalls, 4, "a cancelled second chunk must cause both chunks to be fetched again");
+  assert.deepEqual(treePathspecBatches[0], treePathspecBatches[2]);
+  assert.deepEqual(treePathspecBatches[1], treePathspecBatches[3]);
 });
 
 test("Node local Git path normalization propagates stat permission errors unchanged", async () => {
