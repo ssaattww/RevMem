@@ -474,6 +474,26 @@ test("batch transport does not resume after a write callback arrives after timeo
   assert.equal(callbackCount, 0);
 });
 
+test("batch transport ignores stdout that completes after abort has already won", async () => {
+  const { transport, child, clock } = setup(() => new FakeChild({ onObject: () => undefined }));
+  const controller = new AbortController();
+  let callbackCount = 0;
+  const running = transport.readBlobs("/repo", [firstOid], () => { callbackCount += 1; }, controller.signal);
+
+  while (child.objectIds.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  controller.abort();
+  while (child.signals.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  clock.fireNext();
+  while (clock.size === 0) await new Promise((resolve) => setImmediate(resolve));
+  child.sendBlob(firstOid, Buffer.from("late response"));
+  await new Promise((resolve) => setImmediate(resolve));
+  clock.fireNext();
+
+  await assert.rejects(running, { name: "AbortError" });
+  assert.equal(callbackCount, 0);
+  assert.deepEqual(child.objectIds, [firstOid]);
+});
+
 test("batch transport destroys streams and unreferences after bounded reap expires", async () => {
   const { transport, child, clock } = setup(() => new FakeChild({
     onObject: (objectId, fake) => fake.sendBlob(objectId, Buffer.from("payload")),
