@@ -3,7 +3,10 @@ import test from "node:test";
 
 import { OperationFeedback } from "../../src/application/operation-feedback/operation-feedback.js";
 import { GitHubPullRequestCacheService } from "../../src/application/github-pr-cache/github-pull-request-cache-service.js";
-import { PullRequestLifecycleOperationCacheRegistry } from "../../src/composition/review-contexts/pull-request-lifecycle-operation-cache.js";
+import {
+  clearPullRequestLifecycleOperationCache,
+  PullRequestLifecycleOperationCacheRegistry,
+} from "../../src/composition/review-contexts/pull-request-lifecycle-operation-cache.js";
 import { createPr108ProductionFixture } from "../helpers/pr108-production-fixture.js";
 
 const deferred = () => {
@@ -32,6 +35,7 @@ test("PR lifecycle cache keeps concurrent operation scopes independent and stabl
   const operationA = feedback.run("A", async (context) => {
     contextA = context;
     cacheA = registry.forOperation(context);
+    cacheA.mergeBaseResults.set("completed-compare", { kind: "available", mergeBaseSha: "a".repeat(40) });
     startedA.resolve();
     await gateA.promise;
     cacheAAfterB = registry.forOperation(context);
@@ -50,7 +54,28 @@ test("PR lifecycle cache keeps concurrent operation scopes independent and stabl
 
   assert.notEqual(cacheA, cacheB, "overlapping owner/id scopes must never share snapshots");
   assert.equal(cacheAAfterB, cacheA, "A→B→A access must retain A's operation-local memo");
-  assert.notEqual(registry.forOperation(contextA), cacheA, "operation completion must release its memo");
+  const cacheAfterA = registry.forOperation(contextA);
+  assert.notEqual(cacheAfterA, cacheA, "operation completion must release its memo");
+  assert.equal(cacheAfterA.mergeBaseResults.size, 0, "a later operation must not inherit completed merge-base results");
+});
+
+test("authentication reselection clears completed merge-base results with the rest of the operation cache", async () => {
+  const feedback = new OperationFeedback({
+    showBusy: () => undefined,
+    clearBusy: () => undefined,
+    appendLog: () => undefined,
+    revealLog: () => undefined,
+  });
+  const registry = new PullRequestLifecycleOperationCacheRegistry();
+  let cache!: ReturnType<typeof registry.forOperation>;
+  await feedback.run("authentication reselection", async (context) => {
+    cache = registry.forOperation(context);
+    cache.mergeBaseReads.set("pending", Promise.resolve({ kind: "available", mergeBaseSha: "b".repeat(40) }));
+    cache.mergeBaseResults.set("completed", { kind: "available", mergeBaseSha: "a".repeat(40) });
+    clearPullRequestLifecycleOperationCache(cache);
+    assert.equal(cache.mergeBaseReads.size, 0);
+    assert.equal(cache.mergeBaseResults.size, 0, "results acquired with the old auth session cannot survive reselection");
+  });
 });
 
 test("operation cleanup listener failures do not skip later cleanup or replace success", async () => {

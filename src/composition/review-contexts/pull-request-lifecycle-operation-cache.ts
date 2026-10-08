@@ -11,6 +11,15 @@ export interface PullRequestLifecycleOperationCache {
   readonly mergeBaseResults: GitHubPullRequestMergeBaseResultMap;
 }
 
+/** Drops account-bound PR reads before retrying after authentication reselection. */
+export const clearPullRequestLifecycleOperationCache = (
+  cache: PullRequestLifecycleOperationCache,
+): void => {
+  cache.lifecycleReads.clear();
+  cache.mergeBaseReads.clear();
+  cache.mergeBaseResults.clear();
+};
+
 /** Owns read memoization for exactly one OperationFeedback owner/id scope. */
 export class PullRequestLifecycleOperationCacheRegistry {
   private readonly caches = new WeakMap<OperationFeedback, Map<number, PullRequestLifecycleOperationCache>>();

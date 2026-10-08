@@ -8,7 +8,11 @@ import {
   FetchGitHubPullRequestDiffAdapter,
   FetchGitHubPullRequestLifecycleAdapter,
 } from "../../src/adapters/github/index.js";
-import { githubPullRequestMergeBaseReadKey } from "../../src/adapters/github/fetch-github-pull-request-merge-base.js";
+import {
+  githubPullRequestMergeBaseReadKey,
+  githubPullRequestMergeBaseResultKey,
+  readGitHubPullRequestMergeBase,
+} from "../../src/adapters/github/fetch-github-pull-request-merge-base.js";
 import {
   GitHubPullRequestContextStateService,
   createImmutablePullRequestRevisionMapper,
@@ -170,6 +174,38 @@ test("R405 merge-base cache keys preserve API path case while normalizing the or
   assert.notEqual(normalizedOrigin, differentPathCase);
 });
 
+test("R405 completed merge-base results reuse only the same repository and base/head SHA pair", async () => {
+  const mergeBaseReads = new Map();
+  const mergeBaseResults = new Map();
+  const comparisonRequests: string[] = [];
+  const fetch: typeof globalThis.fetch = async (input) => {
+    comparisonRequests.push(new URL(String(input)).pathname);
+    return jsonResponse({ merge_base_commit: { sha: A } });
+  };
+  const options = { apiBaseUrl: "https://api.github.com", fetch };
+  const firstSignal = new AbortController();
+  const secondSignal = new AbortController();
+
+  assert.deepEqual(await readGitHubPullRequestMergeBase(options, identity, A, B, firstSignal.signal, mergeBaseReads, mergeBaseResults),
+    { kind: "available", mergeBaseSha: A });
+  assert.deepEqual(await readGitHubPullRequestMergeBase(options, identity, A, B, secondSignal.signal, mergeBaseReads, mergeBaseResults),
+    { kind: "available", mergeBaseSha: A });
+  assert.equal(comparisonRequests.length, 1, "a completed immutable SHA pair is reusable across linked signals");
+
+  const otherRepository = { ...identity, repository: "other-repository" };
+  await readGitHubPullRequestMergeBase(options, otherRepository, A, B, undefined, mergeBaseReads, mergeBaseResults);
+  await readGitHubPullRequestMergeBase(options, identity, C, B, undefined, mergeBaseReads, mergeBaseResults);
+  await readGitHubPullRequestMergeBase(options, identity, A, C, undefined, mergeBaseReads, mergeBaseResults);
+
+  assert.equal(comparisonRequests.length, 4, "repository, base SHA, and head SHA changes each require a fresh comparison");
+  assert.notEqual(githubPullRequestMergeBaseResultKey("https://api.github.com", identity, A, B),
+    githubPullRequestMergeBaseResultKey("https://api.github.com", otherRepository, A, B));
+  assert.notEqual(githubPullRequestMergeBaseResultKey("https://api.github.com", identity, A, B),
+    githubPullRequestMergeBaseResultKey("https://api.github.com", identity, C, B));
+  assert.notEqual(githubPullRequestMergeBaseResultKey("https://api.github.com", identity, A, B),
+    githubPullRequestMergeBaseResultKey("https://api.github.com", identity, A, C));
+});
+
 test("R405 one cancelled consumer cannot abort another signal's identical merge-base read", async () => {
   const mergeBaseReads = new Map();
   const mergeBaseResults = new Map();
@@ -209,8 +245,10 @@ test("R405 one cancelled consumer cannot abort another signal's identical merge-
 
 test("R405 lifecycle operation memo drops unavailable and aborted compare reads", async () => {
   const mergeBaseReads = new Map();
+  const mergeBaseResults = new Map();
   let compareGets = 0;
   let failCompare = true;
+  let throwCompare = false;
   let abortFirstCompare = false;
   const fetch: typeof globalThis.fetch = async (input, init) => {
     const url = new URL(String(input));
@@ -222,6 +260,7 @@ test("R405 lifecycle operation memo drops unavailable and aborted compare reads"
           init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
         });
       }
+      if (throwCompare) throw new Error("temporary network failure");
       if (failCompare) return jsonResponse({ message: "temporary" }, 503);
       return jsonResponse({ merge_base_commit: { sha: A } });
     }
@@ -229,25 +268,35 @@ test("R405 lifecycle operation memo drops unavailable and aborted compare reads"
     return jsonResponse({ number, title: `PR ${number}`, html_url: `https://github.com/ssaattww/revmem/pull/${number}`,
       state: "open", merged_at: null, base: { sha: A }, head: { sha: B } });
   };
-  const adapter = new FetchGitHubPullRequestLifecycleAdapter({ apiBaseUrl: "https://api.github.com", mergeBaseReads, fetch });
+  const adapter = new FetchGitHubPullRequestLifecycleAdapter({ apiBaseUrl: "https://api.github.com", mergeBaseReads, mergeBaseResults, fetch });
 
   assert.deepEqual(await adapter.fetchCurrent(identity, 52), { kind: "unavailable", reason: "api" });
   assert.equal(mergeBaseReads.size, 0, "unavailable outcomes are not retained");
+  assert.equal(mergeBaseResults.size, 0, "HTTP errors are not cached as successful comparisons");
+  throwCompare = true;
+  assert.deepEqual(await adapter.fetchCurrent(identity, 52), { kind: "unavailable", reason: "network" });
+  assert.equal(mergeBaseResults.size, 0, "network errors are not stored in the completed-result map");
+  assert.equal(mergeBaseReads.size, 0);
+  throwCompare = false;
   failCompare = false;
   assert.equal((await adapter.fetchCurrent(identity, 52)).kind, "available");
-  assert.equal(compareGets, 2, "a later attempt retries the failed endpoint");
+  assert.equal(mergeBaseResults.size, 1, "only a successful comparison enters the completed-result map");
+  assert.equal(compareGets, 3, "a later attempt retries unavailable endpoints");
 
   const cancellation = new AbortController();
   abortFirstCompare = true;
   const abortedReads = new Map();
-  const abortAdapter = new FetchGitHubPullRequestLifecycleAdapter({ apiBaseUrl: "https://api.github.com", mergeBaseReads: abortedReads, fetch });
+  const abortedResults = new Map();
+  const abortAdapter = new FetchGitHubPullRequestLifecycleAdapter({ apiBaseUrl: "https://api.github.com", mergeBaseReads: abortedReads, mergeBaseResults: abortedResults, fetch });
   const pending = abortAdapter.fetchCurrent(identity, 52, undefined, cancellation.signal);
   await new Promise((resolve) => setTimeout(resolve, 0));
   cancellation.abort();
   await assert.rejects(pending, { name: "AbortError" });
   assert.equal(abortedReads.size, 0, "aborted outcomes are not retained");
+  assert.equal(abortedResults.size, 0, "aborted outcomes never enter the completed-result map");
   assert.equal((await abortAdapter.fetchCurrent(identity, 52)).kind, "available");
-  assert.equal(compareGets, 4, "a later operation retries after cancellation");
+  assert.equal(abortedResults.size, 1, "a successful retry may be cached after the aborted read");
+  assert.equal(compareGets, 5, "a later operation retries after cancellation");
 });
 
 test("Issue #136 does not publish a superseded new Context when cancellation arrives during atomic save", async () => {

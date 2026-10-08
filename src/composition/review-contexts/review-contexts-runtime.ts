@@ -59,7 +59,11 @@ import {
   type PullRequestRefreshReasonCode,
   type OperationFeedbackContext,
 } from "../../application/operation-feedback/index";
-import { PullRequestLifecycleOperationCacheRegistry, type PullRequestLifecycleOperationCache } from "./pull-request-lifecycle-operation-cache";
+import {
+  clearPullRequestLifecycleOperationCache,
+  PullRequestLifecycleOperationCacheRegistry,
+  type PullRequestLifecycleOperationCache,
+} from "./pull-request-lifecycle-operation-cache";
 
 let pullRequestDetectionGeneration = 0;
 const pullRequestLifecycleOperationCaches = new PullRequestLifecycleOperationCacheRegistry();
@@ -1462,9 +1466,7 @@ export function registerT405ReviewContextsRuntime(
       const reselectedToken = await timed("authentication", () => auth.getAccessToken(identity.host, signal, true, true));
       assertDetectionCurrent();
       if (reselectedToken !== undefined) {
-        lifecycleCache.lifecycleReads.clear();
-        lifecycleCache.mergeBaseReads.clear();
-        lifecycleCache.mergeBaseResults.clear();
+        clearPullRequestLifecycleOperationCache(lifecycleCache);
         search = await createPullRequestSearch(identity, reselectedToken, searchDiagnostic, lifecycleCache.mergeBaseReads, lifecycleCache.mergeBaseResults).findOpenByHead(identity, pullRequestSynchronizationRevision, signal);
         assertDetectionCurrent();
       }
