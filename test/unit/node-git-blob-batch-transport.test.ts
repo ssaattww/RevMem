@@ -49,6 +49,7 @@ interface FakeChildOptions {
   readonly exitCode?: number | null;
   readonly syncWriteReturnsFalse?: boolean;
   readonly deferWriteCallback?: boolean;
+  readonly onClosing?: () => void;
 }
 
 class FakeChild extends EventEmitter {
@@ -143,6 +144,7 @@ class FakeChild extends EventEmitter {
   public close(code: number | null, signal: NodeJS.Signals | null): void {
     if (!this.stdout.readableEnded) this.stdout.end();
     if (!this.stderr.readableEnded) this.stderr.end();
+    this.options.onClosing?.();
     this.emit("close", code, signal);
   }
 }
@@ -341,6 +343,23 @@ test("batch transport rejects a nonzero exit even after all response frames", as
     /failed with exit 7/u,
   );
 
+  assert.equal(callbackCount, 1);
+  assert.deepEqual(child.signals, []);
+});
+
+test("batch transport observes abort racing with successful process close", async () => {
+  const controller = new AbortController();
+  const { transport, child } = setup(() => new FakeChild({
+    onObject: (objectId, fake) => fake.sendBlob(objectId, Buffer.from("payload")),
+    closeOnStdinEnd: true,
+    onClosing: () => controller.abort(),
+  }));
+  let callbackCount = 0;
+
+  await assert.rejects(
+    transport.readBlobs("/repo", [firstOid], () => { callbackCount += 1; }, controller.signal),
+    { name: "AbortError" },
+  );
   assert.equal(callbackCount, 1);
   assert.deepEqual(child.signals, []);
 });

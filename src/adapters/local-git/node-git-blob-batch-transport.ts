@@ -344,6 +344,7 @@ export class NodeGitBlobBatchTransport {
 
       const closed = await withControl(close.promise, this.closeTimeoutMs,
         `Git cat-file batch process close timed out after ${this.closeTimeoutMs} ms`);
+      assertActive();
       if (closed.code !== 0 || closed.signal !== null) {
         const diagnostics = Buffer.concat(stderr).toString("utf8");
         throw new Error(`Git cat-file batch failed with exit ${closed.code ?? "signal"}${diagnostics.length === 0 ? "" : `: ${diagnostics}`}`);
