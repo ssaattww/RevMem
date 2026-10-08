@@ -230,6 +230,59 @@ test("revision path lookup preserves blob-only behavior for directories, gitlink
   }
 });
 
+test("batch immutable reads match single-path results for exact paths and special Git entries", async () => {
+  const repository = await createTemporaryGitRepository();
+  const adapter = createNodeLocalGitAdapter();
+
+  try {
+    await mkdir(path.join(repository.path, "nested"), { recursive: true });
+    await mkdir(path.join(repository.path, "vendor"), { recursive: true });
+    await writeFile(path.join(repository.path, "nested", "tracked.txt"), "nested content\n", "utf8");
+    await writeFile(path.join(repository.path, "colon:name.ts"), "colon content\n", "utf8");
+    await writeFile(path.join(repository.path, "tab\tname.ts"), "tab content\n", "utf8");
+    await writeFile(path.join(repository.path, "line\nname.ts"), "line content\n", "utf8");
+    await symlink("fixture.txt", path.join(repository.path, "fixture-link"));
+    await repository.runGit(["add", "--all"]);
+    const missingSubmodule = "f".repeat(40);
+    await repository.runGit(["update-index", "--add", "--cacheinfo", `160000,${missingSubmodule},vendor/submodule`]);
+    await repository.runGit(["commit", "--message", "add batch lookup cases"]);
+    const revision = await repository.runGit(["rev-parse", "HEAD"]);
+    const paths = [
+      "fixture.txt",
+      "nested/tracked.txt",
+      "colon:name.ts",
+      "tab\tname.ts",
+      "line\nname.ts",
+      "fixture-link",
+      "vendor/submodule",
+      "nested",
+      "missing.ts",
+    ];
+    const bulkReader = (adapter as unknown as {
+      readTextFilesAtRevision: (
+        root: string,
+        object: string,
+        requestedPaths: readonly string[],
+        semantics: "posix" | "windows",
+      ) => Promise<ReadonlyMap<string, unknown>>;
+    }).readTextFilesAtRevision;
+
+    const batched = await bulkReader.call(adapter, repository.path, revision, paths, "posix");
+    const individual = new Map(await Promise.all(paths.map(async (filePath) => [
+      filePath,
+      await adapter.readTextFileAtRevision(repository.path, revision, filePath, "posix"),
+    ] as const)));
+
+    assert.deepEqual(batched, individual);
+    assert.deepEqual(batched.get("fixture-link"), { kind: "found", content: "fixture.txt" });
+    assert.deepEqual(batched.get("vendor/submodule"), { kind: "missing-file" });
+    assert.deepEqual(batched.get("nested"), { kind: "missing-file" });
+    assert.deepEqual(batched.get("missing.ts"), { kind: "missing-file" });
+  } finally {
+    await repository.cleanup();
+  }
+});
+
 test("a missing Git executable is reported without conflating it with a plain folder", async () => {
   const adapter = createNodeLocalGitAdapter({
     executable: "review-range-git-executable-that-does-not-exist"

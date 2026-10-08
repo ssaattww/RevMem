@@ -22,7 +22,14 @@ import type { LocalGitRevisionTextReadResult } from "./revision-text-content";
 
 const FULL_OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const LS_TREE_ENTRY_PATTERN = /^([0-7]{6}) (blob|tree|commit) ([0-9a-f]{40}|[0-9a-f]{64})$/u;
+const MAX_LS_TREE_PATHSPEC_ARGUMENT_UNITS = 28 * 1024;
 const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
+
+interface GitTreeEntry {
+  readonly mode: string;
+  readonly type: "blob" | "tree" | "commit";
+  readonly objectId: string;
+}
 
 /** VS Code境界でopened documentのencoding hintを適用するdecoder。 */
 export type GitBlobTextDecoder = (
@@ -92,6 +99,54 @@ const parseLsTreeBlobObjectId = (output: string, expectedPath: string): string |
   return match[2] === "blob" ? match[3] : undefined;
 };
 
+const parseLsTreeEntries = (
+  output: string,
+  expectedPaths: ReadonlySet<string>,
+): ReadonlyMap<string, GitTreeEntry> => {
+  const entries = new Map<string, GitTreeEntry>();
+  if (output.length === 0) return entries;
+  if (!output.endsWith("\0")) throw new Error("git ls-tree output is not NUL terminated");
+  for (const record of output.slice(0, -1).split("\0")) {
+    const separator = record.indexOf("\t");
+    if (separator < 0) throw new Error("git ls-tree output is missing its path separator");
+    const metadata = record.slice(0, separator);
+    const returnedPath = record.slice(separator + 1);
+    const match = LS_TREE_ENTRY_PATTERN.exec(metadata);
+    if (match === null || !expectedPaths.has(returnedPath)) {
+      throw new Error("git ls-tree output does not match a requested exact path");
+    }
+    if (entries.has(returnedPath)) throw new Error("git ls-tree returned duplicate exact-path entries");
+    entries.set(returnedPath, {
+      mode: match[1]!,
+      type: match[2] as GitTreeEntry["type"],
+      objectId: match[3]!,
+    });
+  }
+  return entries;
+};
+
+const chunkPathspecs = (paths: readonly string[]): readonly (readonly string[])[] => {
+  const chunks: string[][] = [];
+  let chunk: string[] = [];
+  let usedUnits = 0;
+  for (const filePath of paths) {
+    const pathspec = `:(literal)${filePath}`;
+    const units = Math.max(pathspec.length, Buffer.byteLength(pathspec, "utf8")) + 1;
+    if (units > MAX_LS_TREE_PATHSPEC_ARGUMENT_UNITS) {
+      throw new RangeError("Git pathspec exceeds the safe argument batch limit");
+    }
+    if (chunk.length > 0 && usedUnits + units > MAX_LS_TREE_PATHSPEC_ARGUMENT_UNITS) {
+      chunks.push(chunk);
+      chunk = [];
+      usedUnits = 0;
+    }
+    chunk.push(filePath);
+    usedUnits += units;
+  }
+  if (chunk.length > 0) chunks.push(chunk);
+  return chunks;
+};
+
 const parseGitVersion = (stdout: string): string => {
   const line = firstOutputLine(stdout, "git --version");
   const match = /^git version\s+(.+)$/iu.exec(line);
@@ -152,6 +207,99 @@ export class LocalGitAdapter {
     private readonly blobReader: GitBlobReader,
     private readonly decodeWithHint?: GitBlobTextDecoder
   ) {}
+
+  /** Reads multiple exact paths with bounded ls-tree invocations and individual blob reads. */
+  public async readTextFilesAtRevision(
+    repositoryRoot: string,
+    revision: string,
+    repositoryRelativePaths: readonly string[],
+    fileSystemPathSemantics: FileSystemPathSemantics,
+    feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
+    encodingHintsByPath?: ReadonlyMap<string, string>,
+  ): Promise<ReadonlyMap<string, LocalGitRevisionTextReadResult>> {
+    const assertActive = (): void => {
+      if (signal?.aborted) throw new DOMException("Git revision content read was superseded.", "AbortError");
+    };
+    assertActive();
+    const rootPath = requirePath(repositoryRoot, "repositoryRoot");
+    const object = requireImmutableCommitObjectId(revision, "revision");
+    const paths = [...new Set(repositoryRelativePaths.map((candidate) =>
+      requireCanonicalRepositoryRelativePath(candidate, fileSystemPathSemantics, "repositoryRelativePath")))];
+    if (paths.length === 0) return new Map();
+
+    const commitKey = `${rootPath}\0${object}`;
+    const verifyCommit = async (): Promise<boolean> => {
+      const revisionInvocation: GitCommandInvocation = {
+        cwd: rootPath,
+        argumentsList: ["rev-parse", "--verify", "--quiet", `${object}^{commit}`]
+      };
+      const revisionResult = await this.commandExecutor.execute(revisionInvocation, feedbackContext, signal);
+      assertActive();
+      if (revisionResult.exitCode === 1) return false;
+      this.requireSuccess(revisionInvocation, revisionResult);
+      return firstOutputLine(revisionResult.stdout, "immutable commit object") === object;
+    };
+    const touchCommit = (): void => {
+      this.verifiedCommits.delete(commitKey);
+      this.verifiedCommits.set(commitKey, true);
+      if (this.verifiedCommits.size > LocalGitAdapter.VERIFIED_COMMIT_LIMIT) {
+        const oldest = this.verifiedCommits.keys().next().value;
+        if (oldest !== undefined) this.verifiedCommits.delete(oldest);
+      }
+    };
+    if (!this.verifiedCommits.has(commitKey)) {
+      if (!await verifyCommit()) {
+        return new Map(paths.map((filePath) => [filePath, { kind: "missing-revision" } as const]));
+      }
+    }
+    touchCommit();
+
+    // This result map is request-local: interrupted metadata is never memoized.
+    const entries = new Map<string, GitTreeEntry>();
+    for (const chunk of chunkPathspecs(paths)) {
+      assertActive();
+      const invocation: GitCommandInvocation = {
+        cwd: rootPath,
+        argumentsList: ["ls-tree", "--full-tree", "-z", object, "--", ...chunk.map((filePath) => `:(literal)${filePath}`)]
+      };
+      const result = await this.commandExecutor.execute(invocation, feedbackContext, signal);
+      assertActive();
+      if (result.exitCode === 1 || result.exitCode === 128) {
+        this.verifiedCommits.delete(commitKey);
+        if (!await verifyCommit()) {
+          return new Map(paths.map((filePath) => [filePath, { kind: "missing-revision" } as const]));
+        }
+        touchCommit();
+        if (result.exitCode === 1) continue;
+      }
+      this.requireSuccess(invocation, result);
+      for (const [filePath, entry] of parseLsTreeEntries(result.stdout, new Set(chunk))) entries.set(filePath, entry);
+    }
+
+    const output = new Map<string, LocalGitRevisionTextReadResult>();
+    for (const filePath of paths) {
+      assertActive();
+      const entry = entries.get(filePath);
+      if (entry === undefined || entry.type !== "blob") {
+        output.set(filePath, { kind: "missing-file" });
+        continue;
+      }
+      const bytes = await this.blobReader.readBlob(rootPath, entry.objectId, feedbackContext, signal);
+      assertActive();
+      try {
+        const hint = encodingHintsByPath?.get(filePath);
+        output.set(filePath, {
+          kind: "found",
+          content: hint === undefined ? utf8Decoder.decode(bytes) : await this.decodeWithHintOrReject(bytes, hint),
+        });
+      } catch {
+        output.set(filePath, { kind: "invalid-encoding", encoding: "utf-8" });
+      }
+    }
+    assertActive();
+    return output;
+  }
 
   /**
    * Inspects a path and distinguishes missing Git, non-Git folders, and repositories.

@@ -32,7 +32,10 @@ import {
   type ReviewStateStorageUris,
 } from "../../adapters/state-repository/index";
 import { resolveReviewRangeMappingOptions } from "../../application/configuration/review-range-mapping-options";
-import type { RevisionTextContentReadResult } from "../../application/diff-document/index";
+import type {
+  GitCommitReviewDiffDocumentDescriptor,
+  RevisionTextContentReadResult,
+} from "../../application/diff-document/index";
 import {
   GitHubPullRequestCacheService,
   type GitHubPullRequestCacheStorage,
@@ -1051,6 +1054,50 @@ export function registerT405ReviewContextsRuntime(
       : { kind: "missing-file" };
   };
 
+  const readReviewDiffContents = async (
+    root: string,
+    identity: GitHubRepositoryIdentity,
+    token: string | undefined,
+    descriptors: readonly GitCommitReviewDiffDocumentDescriptor[],
+    feedbackContext?: OperationFeedbackContext,
+    signal?: AbortSignal,
+  ): Promise<readonly RevisionTextContentReadResult[]> => {
+    if (descriptors.length === 0) return [];
+    if (signal?.aborted) throw new DOMException("PR content acquisition was superseded.", "AbortError");
+    const first = descriptors[0]!;
+    if (descriptors.some((descriptor) => descriptor.revision !== first.revision ||
+      descriptor.fileSystemPathSemantics !== first.fileSystemPathSemantics)) {
+      throw new Error("Bulk PR text reads must use one immutable revision and path policy");
+    }
+    const local = await options.git.readTextFilesAtRevision(
+      root,
+      first.revision,
+      descriptors.map((descriptor) => descriptor.filePath),
+      first.fileSystemPathSemantics,
+      feedbackContext,
+      signal,
+    );
+    if (signal?.aborted) throw new DOMException("PR content acquisition was superseded.", "AbortError");
+    const remote = createPullRequestRemote(identity, token);
+    return Promise.all(descriptors.map(async (descriptor) => {
+      const result = local.get(descriptor.filePath) ?? { kind: "missing-file" as const };
+      if (result.kind === "found" || result.kind === "invalid-encoding") return result;
+      const fallback = await remote.readFile(
+        identity,
+        descriptor.revision,
+        descriptor.filePath,
+        feedbackContext,
+        signal,
+      );
+      if (fallback.kind === "found") return fallback;
+      if (fallback.kind === "binary") return { kind: "invalid-encoding" as const, encoding: "utf-8" as const };
+      if (fallback.reason === "missing-revision") return { kind: "missing-revision" as const };
+      return result.kind === "missing-revision"
+        ? { kind: "missing-revision" as const }
+        : { kind: "missing-file" as const };
+    }));
+  };
+
   const acquire = async (
     context: ReviewContextState,
     forceRemote = false,
@@ -1130,6 +1177,15 @@ export function registerT405ReviewContextsRuntime(
             registrationSignal,
           );
         },
+        readTextContents: (descriptors, registrationFeedbackContext, registrationSignal) =>
+          readReviewDiffContents(
+            root,
+            identity,
+            token,
+            descriptors,
+            registrationFeedbackContext,
+            registrationSignal,
+          ),
       });
     }
     return { result, root, identity, token };

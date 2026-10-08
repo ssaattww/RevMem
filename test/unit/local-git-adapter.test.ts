@@ -119,6 +119,133 @@ test("immutable text reads verify one commit once and resolve later paths direct
   ]);
 });
 
+test("batch immutable text reads resolve literal NUL-delimited paths and preserve blob-only modes", async () => {
+  const commit = "a".repeat(40);
+  const blob = "b".repeat(40);
+  const symlinkBlob = "c".repeat(40);
+  const gitlinkCommit = "d".repeat(40);
+  const tree = "e".repeat(40);
+  const paths = ["colon:name.ts", "tab\tline\nname.ts", "link", "vendor/submodule", "folder", "missing.ts"];
+  const executor = new RecordingGitCommandExecutor();
+  const blobReads: string[] = [];
+  const blobReader: GitBlobReader = {
+    readBlob: async (_root, objectId) => {
+      blobReads.push(objectId);
+      return new TextEncoder().encode(objectId === blob ? "source\n" : "target.ts");
+    },
+  };
+  const adapter = new LocalGitAdapter(executor, blobReader);
+  const pathspecs = paths.map((filePath) => `:(literal)${filePath}`);
+  const lookup = ["ls-tree", "--full-tree", "-z", commit, "--", ...pathspecs];
+  executor.queue(repositoryRoot, ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`], success(`${commit}\n`));
+  executor.queue(repositoryRoot, lookup, success([
+    `100644 blob ${blob}\t${paths[0]}`,
+    `120000 blob ${symlinkBlob}\t${paths[2]}`,
+    `160000 commit ${gitlinkCommit}\t${paths[3]}`,
+    `040000 tree ${tree}\t${paths[4]}`,
+  ].join("\0") + "\0"));
+
+  const bulkReader = (adapter as unknown as {
+    readTextFilesAtRevision: (
+      root: string,
+      revision: string,
+      requestedPaths: readonly string[],
+      semantics: "posix" | "windows",
+    ) => Promise<ReadonlyMap<string, { readonly kind: string; readonly content?: string }>>;
+  }).readTextFilesAtRevision;
+  const result = await bulkReader.call(adapter, repositoryRoot, commit, paths, "posix");
+
+  assert.deepEqual([...result], [
+    [paths[0], { kind: "found", content: "source\n" }],
+    [paths[1], { kind: "missing-file" }],
+    [paths[2], { kind: "found", content: "target.ts" }],
+    [paths[3], { kind: "missing-file" }],
+    [paths[4], { kind: "missing-file" }],
+    [paths[5], { kind: "missing-file" }],
+  ]);
+  assert.deepEqual(blobReads, [blob, symlinkBlob], "only blob entries are read; symlink blobs retain their current text behavior");
+  executor.assertExhausted();
+  assert.deepEqual(executor.invocations.map((entry) => entry.argumentsList), [
+    ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`],
+    lookup,
+  ]);
+});
+
+test("batch immutable text reads chunk literal pathspecs below Windows command limits", async () => {
+  const commit = "a".repeat(40);
+  const requestedPaths = Array.from({ length: 1000 }, (_, index) =>
+    `src/${"long-directory-name/".repeat(2)}file-${String(index).padStart(4, "0")}.ts`);
+  const invocations: GitCommandInvocation[] = [];
+  const executor: GitCommandExecutor = {
+    execute: async (invocation) => {
+      invocations.push(invocation);
+      return invocation.argumentsList[0] === "rev-parse"
+        ? success(`${commit}\n`)
+        : success();
+    },
+  };
+  const adapter = new LocalGitAdapter(executor, unreachableGitBlobReader);
+  const bulkReader = (adapter as unknown as {
+    readTextFilesAtRevision: (
+      root: string,
+      revision: string,
+      paths: readonly string[],
+      semantics: "posix" | "windows",
+    ) => Promise<ReadonlyMap<string, { readonly kind: string }>>;
+  }).readTextFilesAtRevision;
+
+  const result = await bulkReader.call(adapter, repositoryRoot, commit, requestedPaths, "posix");
+  const treeInvocations = invocations.filter((entry) => entry.argumentsList[0] === "ls-tree");
+  assert.ok(treeInvocations.length > 1, "large path lists must be split into bounded Git argument batches");
+  const collectedPathspecs = treeInvocations.flatMap((entry) => {
+    const separator = entry.argumentsList.indexOf("--");
+    const pathspecs = entry.argumentsList.slice(separator + 1);
+    const commandLineUnits = entry.argumentsList.reduce((sum, argument) => sum + argument.length + 1, 0);
+    assert.ok(commandLineUnits < 32_767, "each direct Git invocation stays below Windows CreateProcess limits");
+    return pathspecs;
+  });
+  assert.deepEqual(collectedPathspecs, requestedPaths.map((filePath) => `:(literal)${filePath}`));
+  assert.equal(result.size, requestedPaths.length);
+  assert.ok([...result.values()].every((entry) => entry.kind === "missing-file"));
+});
+
+test("interrupted batch path resolution is not reused by a later request", async () => {
+  const commit = "a".repeat(40);
+  const blob = "b".repeat(40);
+  const controller = new AbortController();
+  let treeCalls = 0;
+  const executor: GitCommandExecutor = {
+    execute: async (invocation) => {
+      if (invocation.argumentsList[0] === "rev-parse") return success(`${commit}\n`);
+      treeCalls += 1;
+      if (treeCalls === 1) {
+        controller.abort();
+        throw new DOMException("cancelled", "AbortError");
+      }
+      return success(`100644 blob ${blob}\tfile.ts\0`);
+    },
+  };
+  const adapter = new LocalGitAdapter(executor, {
+    readBlob: async () => new TextEncoder().encode("source\n"),
+  });
+  const bulkReader = (adapter as unknown as {
+    readTextFilesAtRevision: (
+      root: string,
+      revision: string,
+      paths: readonly string[],
+      semantics: "posix" | "windows",
+      feedbackContext?: undefined,
+      signal?: AbortSignal,
+    ) => Promise<ReadonlyMap<string, { readonly kind: string; readonly content?: string }>>;
+  }).readTextFilesAtRevision;
+
+  await assert.rejects(bulkReader.call(adapter, repositoryRoot, commit, ["file.ts"], "posix", undefined, controller.signal), { name: "AbortError" });
+  assert.deepEqual([...await bulkReader.call(adapter, repositoryRoot, commit, ["file.ts"], "posix")], [
+    ["file.ts", { kind: "found", content: "source\n" }],
+  ]);
+  assert.equal(treeCalls, 2, "a cancelled metadata batch must be fetched again");
+});
+
 test("Node local Git path normalization propagates stat permission errors unchanged", async () => {
   const startPath = path.resolve("restricted-repository");
   const denied = Object.assign(new Error("access denied"), {

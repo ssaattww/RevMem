@@ -465,6 +465,13 @@ export async function createPr108ProductionFixture(options: {
     try { return await readRevisionContent(...args); }
     finally { revisionContentReadMilliseconds += performance.now() - startedAt; }
   };
+  const readRevisionContents = localGit.readTextFilesAtRevision.bind(localGit);
+  localGit.readTextFilesAtRevision = async (...args) => {
+    const startedAt = performance.now();
+    revisionContentReadCount += args[2].length;
+    try { return await readRevisionContents(...args); }
+    finally { revisionContentReadMilliseconds += performance.now() - startedAt; }
+  };
   let diffAcquisitionCount = 0;
   let diffAcquisitionMilliseconds = 0;
   let diffSnapshotFileCount = 0;

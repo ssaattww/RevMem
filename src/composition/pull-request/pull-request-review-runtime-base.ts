@@ -79,6 +79,11 @@ export interface PullRequestReviewRuntimeRegistration {
     feedbackContext?: OperationFeedbackContext,
     signal?: AbortSignal,
   ) => Promise<RevisionTextContentReadResult>;
+  readonly readTextContents?: (
+    descriptors: readonly GitCommitReviewDiffDocumentDescriptor[],
+    feedbackContext?: OperationFeedbackContext,
+    signal?: AbortSignal,
+  ) => Promise<readonly RevisionTextContentReadResult[]>;
 }
 
 export interface PullRequestReviewRuntimeOptions<Uri> {
@@ -713,16 +718,58 @@ export class PullRequestReviewRuntime<Uri> {
           const calculated = await this.calculateProgress(contextId, cancellation.signal, work);
           assertCurrent();
           const lineReviewabilityByFileId: Record<string, PullRequestLineReviewability> = {};
-          for (const file of calculated.progress.files) {
+          const files = calculated.progress.files;
+          const cache = this.fullTextCacheFor(calculated.registration);
+          const batchLimit = this.progressWorkItemLimit();
+          for (let offset = 0; offset < files.length; offset += batchLimit) {
+            const batch = files.slice(offset, offset + batchLimit);
+            for (let index = 0; index < batch.length; index += 1) {
+              assertCurrent();
+              await work.item();
+            }
             assertCurrent();
-            await work.item();
-            lineReviewabilityByFileId[file.fileId] = await this.lineReviewabilityFor(
-              calculated.registration,
-              file,
-              feedbackContext,
-              cancellation.signal,
-            );
-            assertCurrent();
+            if (calculated.registration.readTextContents !== undefined) {
+              const byRevision = new Map<string, GitCommitReviewDiffDocumentDescriptor[]>();
+              for (const file of batch) {
+                if (file.status === "binary" || file.exclusionReason?.kind === "binary" || file.excluded) continue;
+                const filePath = file.newPath ?? file.oldPath;
+                if (filePath === undefined) continue;
+                const modified = file.newPath !== undefined;
+                const revision = modified ? calculated.registration.snapshot.headSha : calculated.registration.snapshot.baseSha;
+                if (cache.files.has(fullTextCacheKey(revision, filePath))) continue;
+                const descriptors = byRevision.get(revision) ?? [];
+                descriptors.push({
+                  contextId: calculated.registration.snapshot.contextId,
+                  filePath,
+                  fileSystemPathSemantics: calculated.registration.fileSystemPathSemantics,
+                  side: modified ? "modified" : "original",
+                  revisionSource: "git-commit",
+                  revision,
+                });
+                byRevision.set(revision, descriptors);
+              }
+              for (const descriptors of byRevision.values()) {
+                assertCurrent();
+                const results = await calculated.registration.readTextContents(descriptors, feedbackContext, cancellation.signal);
+                assertCurrent();
+                if (results.length !== descriptors.length) throw new Error("Bulk PR text read returned an unexpected result count");
+                for (let index = 0; index < descriptors.length; index += 1) {
+                  const descriptor = descriptors[index]!;
+                  const result = results[index]!;
+                  cache.files.set(fullTextCacheKey(descriptor.revision, descriptor.filePath), Promise.resolve(result));
+                }
+              }
+            }
+            for (const file of batch) {
+              assertCurrent();
+              lineReviewabilityByFileId[file.fileId] = await this.lineReviewabilityFor(
+                calculated.registration,
+                file,
+                feedbackContext,
+                cancellation.signal,
+              );
+              assertCurrent();
+            }
           }
           assertCurrent();
           const { snapshot } = calculated.registration;
