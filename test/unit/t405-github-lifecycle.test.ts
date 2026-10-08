@@ -172,12 +172,14 @@ test("R405 merge-base cache keys preserve API path case while normalizing the or
 
 test("R405 one cancelled consumer cannot abort another signal's identical merge-base read", async () => {
   const mergeBaseReads = new Map();
+  const mergeBaseResults = new Map();
   const cancelled = new AbortController();
   const active = new AbortController();
   let compareGets = 0;
   const adapter = new FetchGitHubPullRequestLifecycleAdapter({
     apiBaseUrl: "https://api.github.com",
     mergeBaseReads,
+    mergeBaseResults,
     fetch: async (input, init) => {
       const url = new URL(String(input));
       if (url.pathname.includes("/compare/")) {

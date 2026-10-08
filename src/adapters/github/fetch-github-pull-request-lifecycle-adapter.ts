@@ -1,8 +1,11 @@
 import type { GitHubRepositoryIdentity } from "../../application/github-pr-context/index";
 import type { PullRequestRemoteMetadata } from "../../application/github-pr-diff/index";
 import type { OperationFeedbackContext } from "../../application/operation-feedback/index";
-import { fetchGitHubPullRequestMergeBase, githubPullRequestMergeBaseReadKey } from "./fetch-github-pull-request-merge-base";
-import { GITHUB_REQUEST_TIMEOUT_MS } from "./github-request-timeout";
+import {
+  fetchGitHubPullRequestMergeBase,
+  readGitHubPullRequestMergeBase,
+  type GitHubPullRequestMergeBaseResultMap,
+} from "./fetch-github-pull-request-merge-base";
 
 export type GitHubPullRequestLifecycleUnavailableReason = "rate-limit" | "network" | "api" | "authentication" | "timeout";
 
@@ -20,6 +23,8 @@ export interface FetchGitHubPullRequestLifecycleAdapterOptions {
   readonly fetch?: typeof globalThis.fetch;
   /** Operation-local memo for identical merge-base reads. */
   readonly mergeBaseReads?: Map<string, Promise<Awaited<ReturnType<typeof fetchGitHubPullRequestMergeBase>>>>;
+  /** Completed immutable results shared across linked refresh signals. */
+  readonly mergeBaseResults?: GitHubPullRequestMergeBaseResultMap;
 }
 
 interface PullRequestPayload {
@@ -61,12 +66,14 @@ export class FetchGitHubPullRequestLifecycleAdapter {
   private readonly token: string | undefined;
   private readonly fetchImplementation: typeof globalThis.fetch;
   private readonly mergeBaseReads: FetchGitHubPullRequestLifecycleAdapterOptions["mergeBaseReads"];
+  private readonly mergeBaseResults: FetchGitHubPullRequestLifecycleAdapterOptions["mergeBaseResults"];
 
   public constructor(options: FetchGitHubPullRequestLifecycleAdapterOptions) {
     this.apiBaseUrl = options.apiBaseUrl.replace(/\/+$/u, "");
     this.token = options.token;
     this.fetchImplementation = options.fetch ?? globalThis.fetch;
     this.mergeBaseReads = options.mergeBaseReads;
+    this.mergeBaseResults = options.mergeBaseResults;
   }
 
   public async fetchCurrent(
@@ -110,35 +117,19 @@ export class FetchGitHubPullRequestLifecycleAdapter {
     ) return { kind: "unavailable", reason: "api" };
     let baseSha = payload.base.sha;
     if (payload.state === "open") {
-      const mergeBaseKey = githubPullRequestMergeBaseReadKey(
-        this.apiBaseUrl, repository, payload.base.sha, payload.head.sha, GITHUB_REQUEST_TIMEOUT_MS,
+      const mergeBase = await readGitHubPullRequestMergeBase(
+        {
+          apiBaseUrl: this.apiBaseUrl,
+          ...(this.token === undefined ? {} : { token: this.token }),
+          fetch: this.fetchImplementation,
+        },
+        repository,
+        payload.base.sha,
+        payload.head.sha,
         signal,
+        this.mergeBaseReads,
+        this.mergeBaseResults,
       );
-      let mergeBasePromise = this.mergeBaseReads?.get(mergeBaseKey);
-      if (mergeBasePromise === undefined) {
-        mergeBasePromise = fetchGitHubPullRequestMergeBase(
-          {
-            apiBaseUrl: this.apiBaseUrl,
-            ...(this.token === undefined ? {} : { token: this.token }),
-            fetch: this.fetchImplementation,
-          },
-          repository,
-          payload.base.sha,
-          payload.head.sha,
-          signal,
-        );
-        this.mergeBaseReads?.set(mergeBaseKey, mergeBasePromise);
-      }
-      let mergeBase: Awaited<ReturnType<typeof fetchGitHubPullRequestMergeBase>>;
-      try {
-        mergeBase = await mergeBasePromise;
-      } catch (error) {
-        if (this.mergeBaseReads?.get(mergeBaseKey) === mergeBasePromise) this.mergeBaseReads.delete(mergeBaseKey);
-        throw error;
-      }
-      if (mergeBase.kind === "unavailable" && this.mergeBaseReads?.get(mergeBaseKey) === mergeBasePromise) {
-        this.mergeBaseReads.delete(mergeBaseKey);
-      }
       if (mergeBase.kind === "unavailable") return mergeBase.reason === "timeout" ? { kind: "unavailable", reason: "network" } : mergeBase;
       baseSha = mergeBase.mergeBaseSha;
     }

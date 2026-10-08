@@ -203,3 +203,28 @@ test("PR redetection shares lifecycle and merge-base reads with the same-head ca
     await fixture.dispose();
   }
 });
+
+test("new PR redetection reuses completed merge-base result across its linked provider refresh signal", async () => {
+  const fixture = await createPr108ProductionFixture({
+    contexts: [],
+    contextHead: "D",
+    ownerHead: "D",
+    operationFeedback: true,
+  });
+  try {
+    const before = fixture.metrics();
+    assert.deepEqual(await fixture.invoke("reviewRange.redetectPullRequest"), []);
+    const after = fixture.metrics();
+    const compareGets = Object.entries(after.githubFetchRequestCountsByPath)
+      .filter(([path]) => /\/compare\//u.test(path))
+      .reduce((sum, [, count]) => sum + count, 0) - Object.entries(before.githubFetchRequestCountsByPath)
+      .filter(([path]) => /\/compare\//u.test(path))
+      .reduce((sum, [, count]) => sum + count, 0);
+
+    assert.equal(compareGets, 1, "redetection and the provider refresh compare the same immutable SHA pair once");
+    assert.equal(fixture.registrations.length, 1);
+    assert.equal(fixture.errors.length, 0);
+  } finally {
+    await fixture.dispose();
+  }
+});

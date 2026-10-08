@@ -74,7 +74,7 @@ const fetchPullRequestLifecycle = async (
   const key = JSON.stringify([identity.host.toLowerCase(), identity.owner.toLowerCase(), identity.repository.toLowerCase(), number, "pull-request-lifecycle-v1"]);
   let read = operationCache?.lifecycleReads.get(key);
   if (read === undefined) {
-    read = Promise.resolve().then(() => createPullRequestLifecycle(identity, token, operationCache?.mergeBaseReads)
+    read = Promise.resolve().then(() => createPullRequestLifecycle(identity, token, operationCache?.mergeBaseReads, operationCache?.mergeBaseResults)
       .fetchCurrent(identity, number, feedbackContext, signal));
     operationCache?.lifecycleReads.set(key, read);
   }
@@ -300,11 +300,12 @@ const createPullRequestSearch = (
   token: string | undefined,
   onDiagnostic?: ConstructorParameters<typeof FetchGitHubPullRequestAdapter>[0]["onDiagnostic"],
   mergeBaseReads?: PullRequestLifecycleOperationCache["mergeBaseReads"],
+  mergeBaseResults?: PullRequestLifecycleOperationCache["mergeBaseResults"],
 ): FetchGitHubPullRequestAdapter => {
   const apiBaseUrl = gitHubApiBaseUrl(identity.host);
   return token === undefined
-    ? new FetchGitHubPullRequestAdapter({ apiBaseUrl, ...(onDiagnostic === undefined ? {} : { onDiagnostic }), ...(mergeBaseReads === undefined ? {} : { mergeBaseReads }) })
-    : new FetchGitHubPullRequestAdapter({ apiBaseUrl, token, ...(onDiagnostic === undefined ? {} : { onDiagnostic }), ...(mergeBaseReads === undefined ? {} : { mergeBaseReads }) });
+    ? new FetchGitHubPullRequestAdapter({ apiBaseUrl, ...(onDiagnostic === undefined ? {} : { onDiagnostic }), ...(mergeBaseReads === undefined ? {} : { mergeBaseReads }), ...(mergeBaseResults === undefined ? {} : { mergeBaseResults }) })
+    : new FetchGitHubPullRequestAdapter({ apiBaseUrl, token, ...(onDiagnostic === undefined ? {} : { onDiagnostic }), ...(mergeBaseReads === undefined ? {} : { mergeBaseReads }), ...(mergeBaseResults === undefined ? {} : { mergeBaseResults }) });
 };
 
 const createPullRequestRemote = (
@@ -321,11 +322,12 @@ const createPullRequestLifecycle = (
   identity: GitHubRepositoryIdentity,
   token: string | undefined,
   mergeBaseReads?: Map<string, Promise<Awaited<ReturnType<typeof fetchGitHubPullRequestMergeBase>>>>,
+  mergeBaseResults?: PullRequestLifecycleOperationCache["mergeBaseResults"],
 ): FetchGitHubPullRequestLifecycleAdapter => {
   const apiBaseUrl = gitHubApiBaseUrl(identity.host);
   return token === undefined
-    ? new FetchGitHubPullRequestLifecycleAdapter({ apiBaseUrl, ...(mergeBaseReads === undefined ? {} : { mergeBaseReads }) })
-    : new FetchGitHubPullRequestLifecycleAdapter({ apiBaseUrl, token, ...(mergeBaseReads === undefined ? {} : { mergeBaseReads }) });
+    ? new FetchGitHubPullRequestLifecycleAdapter({ apiBaseUrl, ...(mergeBaseReads === undefined ? {} : { mergeBaseReads }), ...(mergeBaseResults === undefined ? {} : { mergeBaseResults }) })
+    : new FetchGitHubPullRequestLifecycleAdapter({ apiBaseUrl, token, ...(mergeBaseReads === undefined ? {} : { mergeBaseReads }), ...(mergeBaseResults === undefined ? {} : { mergeBaseResults }) });
 };
 
 const localOwner = (snapshot: CurrentContextUiSnapshot): LocalRepositoryOwner | undefined => {
@@ -1449,7 +1451,7 @@ export function registerT405ReviewContextsRuntime(
         ...(event.reasonCode === undefined ? {} : { reasonCode: event.reasonCode }),
       });
     };
-    let search = await createPullRequestSearch(identity, token, searchDiagnostic, lifecycleCache.mergeBaseReads).findOpenByHead(identity, pullRequestSynchronizationRevision, signal);
+    let search = await createPullRequestSearch(identity, token, searchDiagnostic, lifecycleCache.mergeBaseReads, lifecycleCache.mergeBaseResults).findOpenByHead(identity, pullRequestSynchronizationRevision, signal);
     assertDetectionCurrent();
     if (
       token !== undefined &&
@@ -1462,7 +1464,8 @@ export function registerT405ReviewContextsRuntime(
       if (reselectedToken !== undefined) {
         lifecycleCache.lifecycleReads.clear();
         lifecycleCache.mergeBaseReads.clear();
-        search = await createPullRequestSearch(identity, reselectedToken, searchDiagnostic, lifecycleCache.mergeBaseReads).findOpenByHead(identity, pullRequestSynchronizationRevision, signal);
+        lifecycleCache.mergeBaseResults.clear();
+        search = await createPullRequestSearch(identity, reselectedToken, searchDiagnostic, lifecycleCache.mergeBaseReads, lifecycleCache.mergeBaseResults).findOpenByHead(identity, pullRequestSynchronizationRevision, signal);
         assertDetectionCurrent();
       }
     }

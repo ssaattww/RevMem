@@ -4,7 +4,11 @@ import type {
   GitHubPullRequestSearchResult,
   GitHubRepositoryIdentity
 } from "../../application/github-pr-context/index";
-import { fetchGitHubPullRequestMergeBase, githubPullRequestMergeBaseReadKey } from "./fetch-github-pull-request-merge-base";
+import {
+  fetchGitHubPullRequestMergeBase,
+  readGitHubPullRequestMergeBase,
+  type GitHubPullRequestMergeBaseResultMap,
+} from "./fetch-github-pull-request-merge-base";
 import { GITHUB_REQUEST_TIMEOUT_MS, GitHubRequestTimeoutError, runGitHubRequestWithTimeout } from "./github-request-timeout";
 
 interface GitHubPullRequestResponse {
@@ -27,6 +31,8 @@ export interface FetchGitHubPullRequestAdapterOptions {
   readonly requestTimeoutMs?: number;
   /** Operation-local memo shared with lifecycle reads for identical merge bases. */
   readonly mergeBaseReads?: Map<string, Promise<Awaited<ReturnType<typeof fetchGitHubPullRequestMergeBase>>>>;
+  /** Completed immutable results shared across linked refresh signals. */
+  readonly mergeBaseResults?: GitHubPullRequestMergeBaseResultMap;
   /** Emits allowlisted phase, ordinal, count, status, and duration only. */
   readonly onDiagnostic?: (event: GitHubPullRequestSearchPhaseDiagnostic) => void;
 }
@@ -140,6 +146,7 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
   private readonly requestTimeoutMs: number;
   private readonly onDiagnostic: FetchGitHubPullRequestAdapterOptions["onDiagnostic"];
   private readonly mergeBaseReads: FetchGitHubPullRequestAdapterOptions["mergeBaseReads"];
+  private readonly mergeBaseResults: FetchGitHubPullRequestAdapterOptions["mergeBaseResults"];
 
   public constructor(options: FetchGitHubPullRequestAdapterOptions) {
     this.apiBaseUrl = options.apiBaseUrl.replace(/\/+$/u, "");
@@ -148,6 +155,7 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
     this.requestTimeoutMs = options.requestTimeoutMs ?? GITHUB_REQUEST_TIMEOUT_MS;
     this.onDiagnostic = options.onDiagnostic;
     this.mergeBaseReads = options.mergeBaseReads;
+    this.mergeBaseResults = options.mergeBaseResults;
     if (!Number.isSafeInteger(this.requestTimeoutMs) || this.requestTimeoutMs < 1) {
       throw new RangeError("GitHub request timeout must be a positive safe integer");
     }
@@ -273,13 +281,9 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
       candidateOrdinal += 1;
       const mergeBaseStartedAt = Date.now();
       this.emit({ stage: "merge-base", status: "started", ordinal: candidateOrdinal });
-      const mergeBaseKey = githubPullRequestMergeBaseReadKey(
-        this.apiBaseUrl, repository, candidate.baseSha, candidate.headSha, this.requestTimeoutMs,
-        signal,
-      );
-      let mergeBasePromise = this.mergeBaseReads?.get(mergeBaseKey);
-      if (mergeBasePromise === undefined) {
-        mergeBasePromise = fetchGitHubPullRequestMergeBase(
+      let mergeBase: Awaited<ReturnType<typeof fetchGitHubPullRequestMergeBase>>;
+      try {
+        mergeBase = await readGitHubPullRequestMergeBase(
           {
             apiBaseUrl: this.apiBaseUrl,
             ...(this.token === undefined ? {} : { token: this.token }),
@@ -290,23 +294,16 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
           candidate.baseSha,
           candidate.headSha,
           signal,
+          this.mergeBaseReads,
+          this.mergeBaseResults,
         );
-        this.mergeBaseReads?.set(mergeBaseKey, mergeBasePromise);
-      }
-      let mergeBase: Awaited<ReturnType<typeof fetchGitHubPullRequestMergeBase>>;
-      try {
-        mergeBase = await mergeBasePromise;
       } catch (error) {
-        if (this.mergeBaseReads?.get(mergeBaseKey) === mergeBasePromise) this.mergeBaseReads.delete(mergeBaseKey);
         if (isSignalAborted(signal) || (error instanceof DOMException && error.name === "AbortError")) {
           this.emit({ stage: "merge-base", status: "cancelled", ordinal: candidateOrdinal, durationMs: Math.max(0, Date.now() - mergeBaseStartedAt), reasonCode: "superseded-by-newer-generation" });
         } else {
           this.emit({ stage: "merge-base", status: "failed", ordinal: candidateOrdinal, durationMs: Math.max(0, Date.now() - mergeBaseStartedAt), reasonCode: "api-failure" });
         }
         throw error;
-      }
-      if (mergeBase.kind === "unavailable" && this.mergeBaseReads?.get(mergeBaseKey) === mergeBasePromise) {
-        this.mergeBaseReads.delete(mergeBaseKey);
       }
       if (mergeBase.kind === "unavailable") {
         this.emit({

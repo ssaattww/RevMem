@@ -1,10 +1,14 @@
 import type { GitHubPullRequestLifecycleResult } from "../../adapters/github/fetch-github-pull-request-lifecycle-adapter";
-import { fetchGitHubPullRequestMergeBase } from "../../adapters/github/fetch-github-pull-request-merge-base";
+import {
+  fetchGitHubPullRequestMergeBase,
+  type GitHubPullRequestMergeBaseResultMap,
+} from "../../adapters/github/fetch-github-pull-request-merge-base";
 import type { OperationFeedback, OperationFeedbackContext } from "../../application/operation-feedback/operation-feedback";
 
 export interface PullRequestLifecycleOperationCache {
   readonly lifecycleReads: Map<string, Promise<GitHubPullRequestLifecycleResult>>;
   readonly mergeBaseReads: Map<string, Promise<Awaited<ReturnType<typeof fetchGitHubPullRequestMergeBase>>>>;
+  readonly mergeBaseResults: GitHubPullRequestMergeBaseResultMap;
 }
 
 /** Owns read memoization for exactly one OperationFeedback owner/id scope. */
@@ -35,6 +39,6 @@ export class PullRequestLifecycleOperationCacheRegistry {
   }
 
   private createCache(): PullRequestLifecycleOperationCache {
-    return { lifecycleReads: new Map(), mergeBaseReads: new Map() };
+    return { lifecycleReads: new Map(), mergeBaseReads: new Map(), mergeBaseResults: new Map() };
   }
 }
