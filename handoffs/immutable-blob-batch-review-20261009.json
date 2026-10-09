@@ -1,0 +1,2551 @@
+﻿{
+  "schema_version": 3,
+  "producer": {
+    "skill": "chat-handoff-manager",
+    "mode": "ordinary_review_handoff",
+    "generated_at": "2026-10-09T14:23:14Z"
+  },
+  "repository": "ssaattww/RevMem",
+  "issue_or_pr": "https://github.com/ssaattww/RevMem/pull/141",
+  "task_id": null,
+  "branch": "perf/immutable-blob-batch",
+  "base_ref": "6ab5736d148fff0d403d250f2a262ab426dde714",
+  "target": {
+    "current_head": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+    "reviewed_head": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+    "commit_range": "6ab5736d148fff0d403d250f2a262ab426dde714...a910aa2ecf5134ec900bfe3e980b5f5149169710"
+  },
+  "execution_environment": {
+    "kind": "connected_computer",
+    "tool": "RemoteDesktopMCP (RDMCP); GitHub operations through gh on connected computer",
+    "machine_id": "local",
+    "connection": "available",
+    "os": "Windows",
+    "shell": "C:/WINDOWS/system32/cmd.exe",
+    "working_directory": "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009",
+    "repository": "ssaattww/RevMem",
+    "branch": "perf/immutable-blob-batch",
+    "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+    "source_state": "clean",
+    "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e",
+    "ownership": "current_task",
+    "writable_paths": [
+      "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/reports/immutable-blob-batch-review-20261009.md",
+      "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/handoffs/immutable-blob-batch-review-20261009.json",
+      "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009"
+    ],
+    "dependencies": [
+      {
+        "name": "Node",
+        "status": "available",
+        "evidence": "v24.20.0; actual compile and node --test completed on connected computer."
+      },
+      {
+        "name": "npm",
+        "status": "available",
+        "evidence": "11.19.0 via npm.cmd; no execution-policy change."
+      },
+      {
+        "name": "TypeScript",
+        "status": "available",
+        "evidence": "6.0.3 from existing dependency tree."
+      },
+      {
+        "name": "Git",
+        "status": "available",
+        "evidence": "2.46.0.windows.1; synthetic parent-child fixture executed."
+      },
+      {
+        "name": "project node_modules",
+        "status": "available",
+        "evidence": "Existing C:/Users/donabe/RemoteDesktopWorkspace/revmem-enoent-design/node_modules reused through a junction outside reviewed source. Author/target package-lock SHA-256 both 77112e133928664383d0ddaf18dccf076bec5f55d7afe7720d55a1946f7c085f."
+      },
+      {
+        "name": "gh",
+        "status": "available",
+        "evidence": "PR identity and CI jobs read successfully using project-required route."
+      }
+    ],
+    "evidence": [
+      "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/validation-identity.json",
+      "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/source-manifest.json",
+      "Dedicated detached worktree created by this review. Original author worktrees and unrelated worktrees not modified.",
+      "Public PR HEAD and own worktree HEAD matched, git status clean immediately before report generation. Machine session credentials are deliberately not transported."
+    ]
+  },
+  "verification": {
+    "capability": "local_execution_available",
+    "capability_evidence": [
+      "Connected Windows execution available; actual compilation, 130-test focused suite and three probes executed. Chat local filesystem used only for static analysis/report assembly."
+    ],
+    "technical_head": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+    "administrative_parent": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+    "commit": {
+      "state": "commit_pending",
+      "review_target_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710"
+    },
+    "push": {
+      "state": "push_pending",
+      "head_sha": "unknown"
+    },
+    "ci_wait": {
+      "state": "ci_wait_completed",
+      "required_for": "route_verification"
+    },
+    "final_publication": {
+      "sequence": "not_applicable",
+      "pr_action": "not_required"
+    }
+  },
+  "authoritative_requirements": [
+    {
+      "source": "user_instruction",
+      "reference": "Current request: revmem #141 レビュー",
+      "summary": "RevMem PR141の通常レビューを完遂する。今回の実装修正・mergeは依頼されていない。"
+    },
+    {
+      "source": "user_instruction",
+      "reference": "Project instructions supplied with the review context",
+      "summary": "接続先でRDMCPとghを使用。GitHub connectorは使用しない。日本語の作業comment・進捗報告。成果物はBOM付きUTF-8、詳細報告をrepositoryへcommit/pushしPRへ日本語簡易報告。"
+    },
+    {
+      "source": "user_instruction",
+      "reference": "Project testing and diagnostics instructions",
+      "summary": "処理時間の計測など非決定的な検証は通常CIから外し開発中のみ利用する。失敗時にstdout/stderr・生成物・環境等の調査に必要な成果物を保存する。"
+    },
+    {
+      "source": "repository_instruction",
+      "reference": "AGENTS.md; repository-resolved CodexSkill/skills/development-orchestrator/SKILL.md",
+      "summary": "Skill-first entry and applicable repository conventions; explicit review request resolves current mode. No implementation orchestration or unrelated edits."
+    },
+    {
+      "source": "other",
+      "reference": "Attached chatgpt-worker-skills 4.zip and installed chat-review-worker/work-context-manager/review-worker/report-writer/chat-handoff-manager",
+      "summary": "通常レビュー、証拠忠実な報告、実行環境・HEAD・未確認事項を保つschema v3引継ぎ。添付の新しいexecution_environment/verification項目を保持する。"
+    },
+    {
+      "source": "pr",
+      "reference": "https://github.com/ssaattww/RevMem/pull/141",
+      "summary": "PR138から性能のみを新mainへ再構成。optional batch API、bounded group、逐次decode、互換fallback、cancel/child lifetime、Progress登録/cache。Issue136/137全体解決を主張しない。"
+    },
+    {
+      "source": "report",
+      "reference": "reports/immutable-blob-batch-review-preparation-20261009.md",
+      "summary": "現在の対象・scopeと作者検証を照合。過去main/旧分割の性能値は現HEADの測定として利用しない。"
+    },
+    {
+      "source": "design",
+      "reference": "doc/design/vscode-review-range-tracker-design.md §9.1–9.5 (350–424)",
+      "summary": "同一Git runtime、literal exact path、tree/submoduleはmissing-file。metadata/blob timeoutはinvocation・partial stdout/stderr・timeout値を持つGitCommandFailedError、exitCode -1。終了時のdiagnosticも保持。"
+    },
+    {
+      "source": "design",
+      "reference": "Design/BreakingChanges.md around line 107",
+      "summary": "immutable cacheをexact BASE/HEAD revisionとpathに束縛し、revision更新で旧evidenceをevictする。"
+    },
+    {
+      "source": "design",
+      "reference": "Design/Issue139PullRequestRediscovery.md; issue #139; PR #140",
+      "summary": "open/closed/merged再検出、同headの別PR分離、v1選択migrationを維持する。今回はGitHub lifecycle変更を追加しない。"
+    },
+    {
+      "source": "task",
+      "reference": "tasks/tasks-status.md; tasks/phases-status.md T302/T606/T607",
+      "summary": "T302/T606既存契約を確認。T607性能workloadは手動専用。PR141専用task IDは未確認だがPRによる対象特定は一意。"
+    }
+  ],
+  "development_policy": {
+    "method": "TDD / specification-first validation required by supplied worker and repository policies",
+    "testing_order": "Original author's natural specification red→green order is unknown; reviewer probes are verification evidence, not author TDD evidence.",
+    "governing_source": "AGENTS.md; supplied worker skills; user testing instructions"
+  },
+  "validation_plan": {
+    "commands": [
+      "node C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/prepare-review-validation.cjs",
+      "node C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/review-probes.cjs",
+      "gh run list --repo ssaattww/RevMem --commit a910aa2ecf5134ec900bfe3e980b5f5149169710 --json databaseId,event,headSha,status,conclusion,url,workflowName",
+      "gh run view 37938466844 --repo ssaattww/RevMem --json headSha,status,conclusion,jobs,url",
+      "git -C C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009 status --porcelain=v1"
+    ],
+    "required_failure_diagnostics": [
+      "Retain stdout, stderr, combined diagnostic where applicable, result JSON, exact source HEAD, environment/dependency identity, source manifest and reproduction scripts.",
+      "Existing .github/workflows/ci.yml failure diagnostic artifact includes source/test/config/generated/environment; preserve failure collection on later fixes.",
+      "Keep intentional negative probe exit1 separate from compile/focused success and wrapper script exit0."
+    ]
+  },
+  "blocked": [],
+  "authorized_actions": [
+    "read_repository",
+    "edit_documentation",
+    "write_handoff",
+    "write_report",
+    "create_branch",
+    "commit",
+    "push",
+    "comment_pr"
+  ],
+  "write_boundary": {
+    "allowed": [
+      {
+        "path_or_operation": "reports/immutable-blob-batch-review-20261009.md",
+        "reason": "Authorized detailed review report."
+      },
+      {
+        "path_or_operation": "handoffs/immutable-blob-batch-review-20261009.json",
+        "reason": "Authorized complete handoff."
+      },
+      {
+        "path_or_operation": "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009",
+        "reason": "Own reproducible review diagnostics and isolated validation output."
+      },
+      {
+        "path_or_operation": "Ordinary commit/push of these two documents to perf/immutable-blob-batch; gh PR141 comment",
+        "reason": "Project review publication instructions."
+      }
+    ],
+    "forbidden": [
+      {
+        "path_or_operation": "Product code, product tests, configuration, workflows, Skills",
+        "reason": "Review only; fixes belong to subsequent implementation."
+      },
+      {
+        "path_or_operation": "Other sessions, other worktrees, main checkout, force push, merge",
+        "reason": "Outside current review write boundary."
+      }
+    ]
+  },
+  "scope": [
+    "18 changed files and directly affected dependencies across parser, transport, LocalGit, production composition, tests, package registration and implementation report.",
+    "Optional readBlobs/readTextContents; max 128 OIDs and Windows argument budget; sequential decoding; unique-OID single fallback; per-path encoding; typed oversize-only fallback.",
+    "Cancellation/generation and immutable revision cache; remote fallback sequentiality; timeout/error compatibility; child process lifecycle.",
+    "Verify existing CI diagnostics, matching-head CI and targeted Windows tests; publish review documents and Japanese PR comment."
+  ],
+  "non_goals": [
+    "Implement or fix production code/tests/configuration/workflows.",
+    "Merge, close Issues136/137, change PR state, or claim independent-final attestation.",
+    "New timeout configuration, detailed Issue137 diagnostics, state/debounce/store/lock, GitHub lifecycle memo and UI coordinator.",
+    "Re-run performance benchmarks or perform physical VS Code UI acceptance as part of this review."
+  ],
+  "files": {
+    "changed": [
+      {
+        "path": "package.json",
+        "purpose": "test:unit追加登録、timing-sensitiveとの分離"
+      },
+      {
+        "path": "reports/immutable-blob-batch-review-preparation-20261009.md",
+        "purpose": "範囲、検証件数の位置付け、過去測定と今回未実施の区別"
+      },
+      {
+        "path": "src/adapters/local-git/cat-file-batch-parser.ts",
+        "purpose": "OID・型・サイズ・ヘッダー上限・LF・EOF・応答件数"
+      },
+      {
+        "path": "src/adapters/local-git/git-blob-reader.ts",
+        "purpose": "optional API、型付きサイズ超過"
+      },
+      {
+        "path": "src/adapters/local-git/index.ts",
+        "purpose": "exportと既存factory"
+      },
+      {
+        "path": "src/adapters/local-git/local-git-adapter.ts",
+        "purpose": "literal path、128件/引数制限、重複OID、encoding、fallback、abort"
+      },
+      {
+        "path": "src/adapters/local-git/node-git-blob-batch-transport.ts",
+        "purpose": "逐次要求、backpressure、期限、TERM/KILL、遅延error、購読解除"
+      },
+      {
+        "path": "src/adapters/local-git/node-git-blob-reader.ts",
+        "purpose": "基点差分、既存single契約と中断時cleanup"
+      },
+      {
+        "path": "src/composition/pull-request/pull-request-review-runtime-base.ts",
+        "purpose": "revision別prefetch、cache、世代/登録一致、Tree公開"
+      },
+      {
+        "path": "src/composition/pull-request/pull-request-review-runtime.ts",
+        "purpose": "batch取得の進捗報告と既存公開経路"
+      },
+      {
+        "path": "src/composition/review-contexts/review-contexts-runtime.ts",
+        "purpose": "production登録、local/remote順序、逐次remote fallback、例外伝播"
+      },
+      {
+        "path": "test/integration/local-git-adapter.integration.test.ts",
+        "purpose": "実Git、単件比較、特殊path、link・gitlink・tree"
+      },
+      {
+        "path": "test/unit/cat-file-batch-parser.test.ts",
+        "purpose": "任意chunk境界、欠落/過剰/破損フレーム"
+      },
+      {
+        "path": "test/unit/local-git-adapter.test.ts",
+        "purpose": "引数予算、129 OID、encoding、oversize、遅延decode、abort"
+      },
+      {
+        "path": "test/unit/node-git-blob-batch-transport.test.ts",
+        "purpose": "手動clock、終了競合、backpressure、購読、時間依存assert"
+      },
+      {
+        "path": "test/unit/node-git-blob-reader.test.ts",
+        "purpose": "既存readerのtimeout・部分出力保持・中断と終了処理・spawn失敗競合"
+      },
+      {
+        "path": "test/unit/t405-pull-request-review-runtime.test.ts",
+        "purpose": "batch呼出しとcache利用、既存PR状態/登録競合"
+      },
+      {
+        "path": "test/unit/t606-r6-real-composition.test.ts",
+        "purpose": "実compositionのbatch登録、local/remote結果順、remote同時数1"
+      }
+    ],
+    "inspected": [
+      {
+        "path": "package.json",
+        "purpose": "test:unit追加登録、timing-sensitiveとの分離"
+      },
+      {
+        "path": "reports/immutable-blob-batch-review-preparation-20261009.md",
+        "purpose": "範囲、検証件数の位置付け、過去測定と今回未実施の区別"
+      },
+      {
+        "path": "src/adapters/local-git/cat-file-batch-parser.ts",
+        "purpose": "OID・型・サイズ・ヘッダー上限・LF・EOF・応答件数"
+      },
+      {
+        "path": "src/adapters/local-git/git-blob-reader.ts",
+        "purpose": "optional API、型付きサイズ超過"
+      },
+      {
+        "path": "src/adapters/local-git/index.ts",
+        "purpose": "exportと既存factory"
+      },
+      {
+        "path": "src/adapters/local-git/local-git-adapter.ts",
+        "purpose": "literal path、128件/引数制限、重複OID、encoding、fallback、abort"
+      },
+      {
+        "path": "src/adapters/local-git/node-git-blob-batch-transport.ts",
+        "purpose": "逐次要求、backpressure、期限、TERM/KILL、遅延error、購読解除"
+      },
+      {
+        "path": "src/adapters/local-git/node-git-blob-reader.ts",
+        "purpose": "基点差分、既存single契約と中断時cleanup"
+      },
+      {
+        "path": "src/composition/pull-request/pull-request-review-runtime-base.ts",
+        "purpose": "revision別prefetch、cache、世代/登録一致、Tree公開"
+      },
+      {
+        "path": "src/composition/pull-request/pull-request-review-runtime.ts",
+        "purpose": "batch取得の進捗報告と既存公開経路"
+      },
+      {
+        "path": "src/composition/review-contexts/review-contexts-runtime.ts",
+        "purpose": "production登録、local/remote順序、逐次remote fallback、例外伝播"
+      },
+      {
+        "path": "test/integration/local-git-adapter.integration.test.ts",
+        "purpose": "実Git、単件比較、特殊path、link・gitlink・tree"
+      },
+      {
+        "path": "test/unit/cat-file-batch-parser.test.ts",
+        "purpose": "任意chunk境界、欠落/過剰/破損フレーム"
+      },
+      {
+        "path": "test/unit/local-git-adapter.test.ts",
+        "purpose": "引数予算、129 OID、encoding、oversize、遅延decode、abort"
+      },
+      {
+        "path": "test/unit/node-git-blob-batch-transport.test.ts",
+        "purpose": "手動clock、終了競合、backpressure、購読、時間依存assert"
+      },
+      {
+        "path": "test/unit/node-git-blob-reader.test.ts",
+        "purpose": "既存readerのtimeout・部分出力保持・中断と終了処理・spawn失敗競合"
+      },
+      {
+        "path": "test/unit/t405-pull-request-review-runtime.test.ts",
+        "purpose": "batch呼出しとcache利用、既存PR状態/登録競合"
+      },
+      {
+        "path": "test/unit/t606-r6-real-composition.test.ts",
+        "purpose": "実compositionのbatch登録、local/remote結果順、remote同時数1"
+      },
+      {
+        "path": "src/application/operation-feedback/operation-feedback.ts",
+        "purpose": "実transport errorのclassificationとbounded retry契約。"
+      },
+      {
+        "path": "src/adapters/local-git/node-git-command-executor.ts",
+        "purpose": "GitCommandFailedError/timeout診断形式。"
+      },
+      {
+        "path": "doc/design/vscode-review-range-tracker-design.md",
+        "purpose": "§9と既存I/O timeout/retry、generation/秘匿境界。"
+      },
+      {
+        "path": "Design/BreakingChanges.md",
+        "purpose": "immutable revision cache contract。"
+      },
+      {
+        "path": "Design/Issue139PullRequestRediscovery.md",
+        "purpose": "PR再検出継続契約。"
+      },
+      {
+        "path": ".github/workflows/ci.yml",
+        "purpose": "全段階とfailure artifact登録。"
+      },
+      {
+        "path": "tools/run-ci-command.mjs",
+        "purpose": "stdout/stderr/combined/result JSON保存。"
+      },
+      {
+        "path": "AGENTS.md",
+        "purpose": "作業規約。"
+      },
+      {
+        "path": "tasks/tasks-status.md; tasks/phases-status.md",
+        "purpose": "関連taskと性能検証の位置付け。"
+      }
+    ],
+    "intentionally_untouched": [
+      {
+        "path_or_area": "Production sources and product tests",
+        "reason": "レビューのみ。指摘は未修正。"
+      },
+      {
+        "path_or_area": "GitHub lifecycle implementation, unrelated worktrees, repository main checkout",
+        "reason": "対象scope外・所有境界。"
+      },
+      {
+        "path_or_area": "CI workflows",
+        "reason": "既存の診断artifact経路が要求を満たすため変更不要。"
+      },
+      {
+        "path_or_area": "Physical VS Code UI and current-main performance comparison",
+        "reason": "今回実施していない。完了を主張しない。"
+      }
+    ]
+  },
+  "commands": [
+    {
+      "command": "node C:/Users/donabe/RemoteDesktopWorkspace/revmem-enoent-design/node_modules/typescript/bin/tsc -p C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/validation-source/tsconfig.test.json --outDir C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/compiled",
+      "purpose": "同一tracked sourceのtest compile",
+      "exit_code": 0,
+      "result": "passed",
+      "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+      "evidence": "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/compile-test.result.json; stdout/stderr logs",
+      "execution_environment": {
+        "kind": "connected_computer",
+        "tool": "RemoteDesktopMCP (RDMCP); GitHub operations through gh on connected computer",
+        "machine_id": "local",
+        "connection": "available",
+        "os": "Windows",
+        "shell": "C:/WINDOWS/system32/cmd.exe",
+        "working_directory": "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009",
+        "repository": "ssaattww/RevMem",
+        "branch": "perf/immutable-blob-batch",
+        "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+        "source_state": "clean",
+        "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e",
+        "ownership": "current_task",
+        "writable_paths": [
+          "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/reports/immutable-blob-batch-review-20261009.md",
+          "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/handoffs/immutable-blob-batch-review-20261009.json",
+          "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009"
+        ],
+        "dependencies": [
+          {
+            "name": "Node",
+            "status": "available",
+            "evidence": "v24.20.0; actual compile and node --test completed on connected computer."
+          },
+          {
+            "name": "npm",
+            "status": "available",
+            "evidence": "11.19.0 via npm.cmd; no execution-policy change."
+          },
+          {
+            "name": "TypeScript",
+            "status": "available",
+            "evidence": "6.0.3 from existing dependency tree."
+          },
+          {
+            "name": "Git",
+            "status": "available",
+            "evidence": "2.46.0.windows.1; synthetic parent-child fixture executed."
+          },
+          {
+            "name": "project node_modules",
+            "status": "available",
+            "evidence": "Existing C:/Users/donabe/RemoteDesktopWorkspace/revmem-enoent-design/node_modules reused through a junction outside reviewed source. Author/target package-lock SHA-256 both 77112e133928664383d0ddaf18dccf076bec5f55d7afe7720d55a1946f7c085f."
+          },
+          {
+            "name": "gh",
+            "status": "available",
+            "evidence": "PR identity and CI jobs read successfully using project-required route."
+          }
+        ],
+        "evidence": [
+          "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/validation-identity.json",
+          "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/source-manifest.json",
+          "Dedicated detached worktree created by this review. Original author worktrees and unrelated worktrees not modified.",
+          "Public PR HEAD and own worktree HEAD matched, git status clean immediately before report generation. Machine session credentials are deliberately not transported."
+        ]
+      },
+      "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e"
+    },
+    {
+      "command": "C:\\Program Files\\nodejs\\node.exe \"--test\" \"C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\cat-file-batch-parser.test.js\" \"C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\node-git-blob-batch-transport.test.js\" \"C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\local-git-adapter.test.js\" \"C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\node-git-blob-reader.test.js\" \"C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\t405-pull-request-review-runtime.test.js\" \"C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\t606-r6-real-composition.test.js\" \"C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\integration\\local-git-adapter.integration.test.js\"",
+      "purpose": "変更関連7ファイルの機能検証",
+      "exit_code": 0,
+      "result": "passed",
+      "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+      "evidence": "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/focused-review.result.json; stdout log: 130 tests, 125 pass, 0 fail, 5 skip",
+      "execution_environment": {
+        "kind": "connected_computer",
+        "tool": "RemoteDesktopMCP (RDMCP); GitHub operations through gh on connected computer",
+        "machine_id": "local",
+        "connection": "available",
+        "os": "Windows",
+        "shell": "C:/WINDOWS/system32/cmd.exe",
+        "working_directory": "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009",
+        "repository": "ssaattww/RevMem",
+        "branch": "perf/immutable-blob-batch",
+        "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+        "source_state": "clean",
+        "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e",
+        "ownership": "current_task",
+        "writable_paths": [
+          "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/reports/immutable-blob-batch-review-20261009.md",
+          "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/handoffs/immutable-blob-batch-review-20261009.json",
+          "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009"
+        ],
+        "dependencies": [
+          {
+            "name": "Node",
+            "status": "available",
+            "evidence": "v24.20.0; actual compile and node --test completed on connected computer."
+          },
+          {
+            "name": "npm",
+            "status": "available",
+            "evidence": "11.19.0 via npm.cmd; no execution-policy change."
+          },
+          {
+            "name": "TypeScript",
+            "status": "available",
+            "evidence": "6.0.3 from existing dependency tree."
+          },
+          {
+            "name": "Git",
+            "status": "available",
+            "evidence": "2.46.0.windows.1; synthetic parent-child fixture executed."
+          },
+          {
+            "name": "project node_modules",
+            "status": "available",
+            "evidence": "Existing C:/Users/donabe/RemoteDesktopWorkspace/revmem-enoent-design/node_modules reused through a junction outside reviewed source. Author/target package-lock SHA-256 both 77112e133928664383d0ddaf18dccf076bec5f55d7afe7720d55a1946f7c085f."
+          },
+          {
+            "name": "gh",
+            "status": "available",
+            "evidence": "PR identity and CI jobs read successfully using project-required route."
+          }
+        ],
+        "evidence": [
+          "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/validation-identity.json",
+          "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/source-manifest.json",
+          "Dedicated detached worktree created by this review. Original author worktrees and unrelated worktrees not modified.",
+          "Public PR HEAD and own worktree HEAD matched, git status clean immediately before report generation. Machine session credentials are deliberately not transported."
+        ]
+      },
+      "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e"
+    },
+    {
+      "command": "node C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/review-probes.cjs",
+      "purpose": "実transport+retry、実Git親子path、同じtestの模擬停止比較",
+      "exit_code": 0,
+      "result": "passed",
+      "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+      "evidence": "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/review-probes.result.json; all observations retained",
+      "execution_environment": {
+        "kind": "connected_computer",
+        "tool": "RemoteDesktopMCP (RDMCP); GitHub operations through gh on connected computer",
+        "machine_id": "local",
+        "connection": "available",
+        "os": "Windows",
+        "shell": "C:/WINDOWS/system32/cmd.exe",
+        "working_directory": "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009",
+        "repository": "ssaattww/RevMem",
+        "branch": "perf/immutable-blob-batch",
+        "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+        "source_state": "clean",
+        "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e",
+        "ownership": "current_task",
+        "writable_paths": [
+          "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/reports/immutable-blob-batch-review-20261009.md",
+          "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/handoffs/immutable-blob-batch-review-20261009.json",
+          "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009"
+        ],
+        "dependencies": [
+          {
+            "name": "Node",
+            "status": "available",
+            "evidence": "v24.20.0; actual compile and node --test completed on connected computer."
+          },
+          {
+            "name": "npm",
+            "status": "available",
+            "evidence": "11.19.0 via npm.cmd; no execution-policy change."
+          },
+          {
+            "name": "TypeScript",
+            "status": "available",
+            "evidence": "6.0.3 from existing dependency tree."
+          },
+          {
+            "name": "Git",
+            "status": "available",
+            "evidence": "2.46.0.windows.1; synthetic parent-child fixture executed."
+          },
+          {
+            "name": "project node_modules",
+            "status": "available",
+            "evidence": "Existing C:/Users/donabe/RemoteDesktopWorkspace/revmem-enoent-design/node_modules reused through a junction outside reviewed source. Author/target package-lock SHA-256 both 77112e133928664383d0ddaf18dccf076bec5f55d7afe7720d55a1946f7c085f."
+          },
+          {
+            "name": "gh",
+            "status": "available",
+            "evidence": "PR identity and CI jobs read successfully using project-required route."
+          }
+        ],
+        "evidence": [
+          "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/validation-identity.json",
+          "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/source-manifest.json",
+          "Dedicated detached worktree created by this review. Original author worktrees and unrelated worktrees not modified.",
+          "Public PR HEAD and own worktree HEAD matched, git status clean immediately before report generation. Machine session credentials are deliberately not transported."
+        ]
+      },
+      "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e"
+    },
+    {
+      "command": "C:\\Program Files\\nodejs\\node.exe \"--test\" \"--test-name-pattern=^transport test harness fails finitely when a wait condition never occurs$\" \"C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\node-git-blob-batch-transport.test.js\"",
+      "purpose": "timing-control",
+      "exit_code": 0,
+      "result": "passed",
+      "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+      "evidence": "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/timing-control.*; intentional controlled scheduling experiment",
+      "execution_environment": {
+        "kind": "connected_computer",
+        "tool": "RemoteDesktopMCP (RDMCP); GitHub operations through gh on connected computer",
+        "machine_id": "local",
+        "connection": "available",
+        "os": "Windows",
+        "shell": "C:/WINDOWS/system32/cmd.exe",
+        "working_directory": "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009",
+        "repository": "ssaattww/RevMem",
+        "branch": "perf/immutable-blob-batch",
+        "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+        "source_state": "clean",
+        "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e",
+        "ownership": "current_task",
+        "writable_paths": [
+          "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/reports/immutable-blob-batch-review-20261009.md",
+          "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/handoffs/immutable-blob-batch-review-20261009.json",
+          "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009"
+        ],
+        "dependencies": [
+          {
+            "name": "Node",
+            "status": "available",
+            "evidence": "v24.20.0; actual compile and node --test completed on connected computer."
+          },
+          {
+            "name": "npm",
+            "status": "available",
+            "evidence": "11.19.0 via npm.cmd; no execution-policy change."
+          },
+          {
+            "name": "TypeScript",
+            "status": "available",
+            "evidence": "6.0.3 from existing dependency tree."
+          },
+          {
+            "name": "Git",
+            "status": "available",
+            "evidence": "2.46.0.windows.1; synthetic parent-child fixture executed."
+          },
+          {
+            "name": "project node_modules",
+            "status": "available",
+            "evidence": "Existing C:/Users/donabe/RemoteDesktopWorkspace/revmem-enoent-design/node_modules reused through a junction outside reviewed source. Author/target package-lock SHA-256 both 77112e133928664383d0ddaf18dccf076bec5f55d7afe7720d55a1946f7c085f."
+          },
+          {
+            "name": "gh",
+            "status": "available",
+            "evidence": "PR identity and CI jobs read successfully using project-required route."
+          }
+        ],
+        "evidence": [
+          "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/validation-identity.json",
+          "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/source-manifest.json",
+          "Dedicated detached worktree created by this review. Original author worktrees and unrelated worktrees not modified.",
+          "Public PR HEAD and own worktree HEAD matched, git status clean immediately before report generation. Machine session credentials are deliberately not transported."
+        ]
+      },
+      "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e"
+    },
+    {
+      "command": "C:\\Program Files\\nodejs\\node.exe \"--require\" \"C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\scheduler-pause-probe.cjs\" \"--test\" \"--test-name-pattern=^transport test harness fails finitely when a wait condition never occurs$\" \"C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\node-git-blob-batch-transport.test.js\"",
+      "purpose": "timing-scheduler-pause",
+      "exit_code": 1,
+      "result": "failed",
+      "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+      "evidence": "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/timing-scheduler-pause.*; intentional controlled scheduling experiment",
+      "execution_environment": {
+        "kind": "connected_computer",
+        "tool": "RemoteDesktopMCP (RDMCP); GitHub operations through gh on connected computer",
+        "machine_id": "local",
+        "connection": "available",
+        "os": "Windows",
+        "shell": "C:/WINDOWS/system32/cmd.exe",
+        "working_directory": "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009",
+        "repository": "ssaattww/RevMem",
+        "branch": "perf/immutable-blob-batch",
+        "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+        "source_state": "clean",
+        "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e",
+        "ownership": "current_task",
+        "writable_paths": [
+          "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/reports/immutable-blob-batch-review-20261009.md",
+          "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/handoffs/immutable-blob-batch-review-20261009.json",
+          "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009"
+        ],
+        "dependencies": [
+          {
+            "name": "Node",
+            "status": "available",
+            "evidence": "v24.20.0; actual compile and node --test completed on connected computer."
+          },
+          {
+            "name": "npm",
+            "status": "available",
+            "evidence": "11.19.0 via npm.cmd; no execution-policy change."
+          },
+          {
+            "name": "TypeScript",
+            "status": "available",
+            "evidence": "6.0.3 from existing dependency tree."
+          },
+          {
+            "name": "Git",
+            "status": "available",
+            "evidence": "2.46.0.windows.1; synthetic parent-child fixture executed."
+          },
+          {
+            "name": "project node_modules",
+            "status": "available",
+            "evidence": "Existing C:/Users/donabe/RemoteDesktopWorkspace/revmem-enoent-design/node_modules reused through a junction outside reviewed source. Author/target package-lock SHA-256 both 77112e133928664383d0ddaf18dccf076bec5f55d7afe7720d55a1946f7c085f."
+          },
+          {
+            "name": "gh",
+            "status": "available",
+            "evidence": "PR identity and CI jobs read successfully using project-required route."
+          }
+        ],
+        "evidence": [
+          "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/validation-identity.json",
+          "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/source-manifest.json",
+          "Dedicated detached worktree created by this review. Original author worktrees and unrelated worktrees not modified.",
+          "Public PR HEAD and own worktree HEAD matched, git status clean immediately before report generation. Machine session credentials are deliberately not transported."
+        ]
+      },
+      "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e"
+    },
+    {
+      "command": "gh pr view 141 --repo ssaattww/RevMem --json headRefOid,headRefName,baseRefOid,state,url && git -C C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009 rev-parse HEAD && git -C C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009 status --porcelain=v1",
+      "purpose": "公開対象と専用worktree同一性",
+      "exit_code": 0,
+      "result": "passed",
+      "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+      "evidence": "Both a910aa2..., branch perf/immutable-blob-batch, base6ab..., OPEN; clean worktree immediately before report generation.",
+      "execution_environment": {
+        "kind": "connected_computer",
+        "tool": "RemoteDesktopMCP (RDMCP); GitHub operations through gh on connected computer",
+        "machine_id": "local",
+        "connection": "available",
+        "os": "Windows",
+        "shell": "C:/WINDOWS/system32/cmd.exe",
+        "working_directory": "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009",
+        "repository": "ssaattww/RevMem",
+        "branch": "perf/immutable-blob-batch",
+        "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+        "source_state": "clean",
+        "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e",
+        "ownership": "current_task",
+        "writable_paths": [
+          "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/reports/immutable-blob-batch-review-20261009.md",
+          "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/handoffs/immutable-blob-batch-review-20261009.json",
+          "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009"
+        ],
+        "dependencies": [
+          {
+            "name": "Node",
+            "status": "available",
+            "evidence": "v24.20.0; actual compile and node --test completed on connected computer."
+          },
+          {
+            "name": "npm",
+            "status": "available",
+            "evidence": "11.19.0 via npm.cmd; no execution-policy change."
+          },
+          {
+            "name": "TypeScript",
+            "status": "available",
+            "evidence": "6.0.3 from existing dependency tree."
+          },
+          {
+            "name": "Git",
+            "status": "available",
+            "evidence": "2.46.0.windows.1; synthetic parent-child fixture executed."
+          },
+          {
+            "name": "project node_modules",
+            "status": "available",
+            "evidence": "Existing C:/Users/donabe/RemoteDesktopWorkspace/revmem-enoent-design/node_modules reused through a junction outside reviewed source. Author/target package-lock SHA-256 both 77112e133928664383d0ddaf18dccf076bec5f55d7afe7720d55a1946f7c085f."
+          },
+          {
+            "name": "gh",
+            "status": "available",
+            "evidence": "PR identity and CI jobs read successfully using project-required route."
+          }
+        ],
+        "evidence": [
+          "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/validation-identity.json",
+          "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/source-manifest.json",
+          "Dedicated detached worktree created by this review. Original author worktrees and unrelated worktrees not modified.",
+          "Public PR HEAD and own worktree HEAD matched, git status clean immediately before report generation. Machine session credentials are deliberately not transported."
+        ]
+      },
+      "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e"
+    }
+  ],
+  "tests": [
+    {
+      "name": "TypeScript test compile",
+      "phase": "verification",
+      "result": "passed",
+      "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+      "evidence": "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/compile-test.result.json (exit0)"
+    },
+    {
+      "name": "Focused seven-file suite",
+      "phase": "verification",
+      "result": "passed",
+      "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+      "evidence": "130 tests; 125 passed, 0 failed, 5 POSIX skip; focused-review.*"
+    },
+    {
+      "name": "Actual batch timeout versus existing single timeout retry contract",
+      "phase": "verification",
+      "result": "passed",
+      "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+      "evidence": "Defect reproduced: permanent/1 rejected vs retryable/2 recovered. Verification succeeded; product finding remains."
+    },
+    {
+      "name": "Real Git parent-directory plus child with sibling",
+      "phase": "verification",
+      "result": "passed",
+      "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+      "evidence": "Defect reproduced: individual missing/found, batch rejected. Verification succeeded; API finding remains."
+    },
+    {
+      "name": "Timing test without pause",
+      "phase": "verification",
+      "result": "passed",
+      "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+      "evidence": "timing-control.result.json; exit0"
+    },
+    {
+      "name": "Same timing test with one controlled 1100ms pause",
+      "phase": "verification",
+      "result": "failed",
+      "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+      "evidence": "timing-scheduler-pause.result.json/stdout; expected demonstration of wall-clock-dependent assertion, exit1; not a naturally observed hosted CI failure."
+    },
+    {
+      "name": "Current-head performance comparison",
+      "phase": "verification",
+      "result": "not_run",
+      "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+      "evidence": "Held; old report measurements are not current evidence."
+    },
+    {
+      "name": "Physical VS Code UI acceptance",
+      "phase": "verification",
+      "result": "not_run",
+      "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+      "evidence": "Held; hosted Extension Host success is separate."
+    }
+  ],
+  "ci": {
+    "required": true,
+    "workflow": ".github/workflows/ci.yml (CI)",
+    "run_id": 37938466844,
+    "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+    "conclusion": "success",
+    "artifacts": [
+      {
+        "id": "unknown",
+        "name": "user validation artifact (upload step successful; exact artifact identifier not fetched)",
+        "purpose": "VSIX validation deliverable."
+      }
+    ]
+  },
+  "implementation": {
+    "outcome": "not_applicable",
+    "final_head": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+    "commits": [
+      {
+        "sha": "fcd2b423b5fc4c8bd1c02495a5fb0c346ae9cf94",
+        "purpose": "Reviewed author's immutable blob batch implementation (not reviewer-authored)."
+      },
+      {
+        "sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+        "purpose": "Reviewed author's mandatory test registration adjustment (not reviewer-authored)."
+      }
+    ],
+    "addressed_findings": [],
+    "failure_diagnostics": [
+      {
+        "type": "test_result",
+        "location": "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/review-probes.result.json",
+        "summary": "Three observed defects and separate wrapper/negative-test exit results."
+      },
+      {
+        "type": "standard_output",
+        "location": "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/timing-scheduler-pause.stdout.log",
+        "summary": "Intentional controlled scheduling pause assertion failure."
+      },
+      {
+        "type": "standard_error",
+        "location": "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/timing-scheduler-pause.stderr.log",
+        "summary": "Empty; Node test reporter includes child stderr in stdout."
+      },
+      {
+        "type": "other",
+        "location": "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/source-manifest.json",
+        "summary": "1577 tracked files, matching reviewed HEAD/tree and dependency lock."
+      }
+    ],
+    "blocked_items": [],
+    "summary": [
+      "No product implementation or fixes were made by this reviewer. Implementation commits listed above identify the inspected author changes."
+    ]
+  },
+  "review": {
+    "mode": "initial_review",
+    "reviewed_head": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+    "reviewer": {
+      "identity": "ChatGPT /root — RevMem PR141 ordinary initial review started 2026-10-09",
+      "role": "normal_reviewer",
+      "continuity": {
+        "previous_reviewer_identity": null,
+        "changed": false,
+        "reason": "Initial review in this worker chat."
+      },
+      "independence": {
+        "implemented_change": false,
+        "implemented_review_fix": false,
+        "served_as_normal_reviewer": true,
+        "inherited_conversation": false,
+        "evidence": [
+          "Root reviewer performed no product implementation/fix.",
+          "Two helpers inherited this review context and performed static read-only analysis. Root verified findings and executed all actual tests on connected computer.",
+          "This is the ordinary initial reviewer, not an independent final reviewer or final attestation."
+        ]
+      }
+    },
+    "verdict": "fail",
+    "required_coverage": [
+      {
+        "criterion": "要求・設計適合",
+        "disposition": "checked_finding",
+        "evidence": "I141-BATCH-001/002/003"
+      },
+      {
+        "criterion": "正しさ・境界条件",
+        "disposition": "checked_finding",
+        "evidence": "I141-BATCH-002/003、実probe"
+      },
+      {
+        "criterion": "範囲逸脱",
+        "disposition": "checked_no_finding",
+        "evidence": "高速化と関連テスト・報告に限定"
+      },
+      {
+        "criterion": "変更ファイルと直接依存",
+        "disposition": "checked_finding",
+        "evidence": "18ファイルと呼出し先、上記指摘"
+      },
+      {
+        "criterion": "API・互換性・設定",
+        "disposition": "checked_finding",
+        "evidence": "optional互換は確認、timeout/親子pathに指摘。依存/設定追加なし"
+      },
+      {
+        "criterion": "エラー・診断",
+        "disposition": "checked_finding",
+        "evidence": "I141-BATCH-002。failure artifactは既存"
+      },
+      {
+        "criterion": "セキュリティ・秘密情報",
+        "disposition": "checked_no_finding",
+        "evidence": "immutable OID、canonical/literal path、shell:false、上位の既存秘匿境界"
+      },
+      {
+        "criterion": "テスト・検証の妥当性",
+        "disposition": "checked_finding",
+        "evidence": "I141-BATCH-001、正常検証と追加probeを分離"
+      },
+      {
+        "criterion": "current HEADのCI",
+        "disposition": "checked_no_finding",
+        "evidence": "両runのhead SHA一致とsuccess"
+      },
+      {
+        "criterion": "報告・文書・追跡",
+        "disposition": "checked_no_finding",
+        "evidence": "旧性能測定/今回未測定を区別。PR専用task IDは未確認、対象はPRで確定"
+      },
+      {
+        "criterion": "回帰・保守性",
+        "disposition": "checked_finding",
+        "evidence": "I141-BATCH-002/003。共通validator等の再利用は確認"
+      }
+    ],
+    "independent_closure": {
+      "initial_independent_reviewed_head": null,
+      "closure_reviewed_heads": [],
+      "reviewer_continuity": null,
+      "closure_scope": [],
+      "completeness_matrix": []
+    },
+    "validation_assessment": [
+      {
+        "item": "Windows compile and focused suite",
+        "result": "supported",
+        "evidence": "Source identity/manifest and matching lock verified; compile0; 125pass0fail5skip."
+      },
+      {
+        "item": "Three findings",
+        "result": "failed",
+        "evidence": "All reproduced against reviewed source through controlled transport/timer and real Git probes. Finding001 negative test exit1 separated from wrapper exit0."
+      },
+      {
+        "item": "Reviewed implementation CI",
+        "result": "supported",
+        "evidence": "PR37938466844 and push37938461409 both same a910 HEAD success. PR job113846440613 all normal stages success including Extension Host/VSIX."
+      },
+      {
+        "item": "Failure diagnostic workflow",
+        "result": "supported",
+        "evidence": "ci.yml and run-ci-command.mjs reviewed. Failure-only steps skipped in success run as expected."
+      },
+      {
+        "item": "Physical UI and current performance",
+        "result": "unavailable",
+        "evidence": "Not run; no inference from historical performance numbers."
+      },
+      {
+        "item": "Original specification red→green sequence",
+        "result": "unsupported",
+        "evidence": "Not established from available author evidence."
+      }
+    ],
+    "reserved_report_paths": [],
+    "report_attestation": {
+      "allowed": false,
+      "reviewed_implementation_head": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+      "allowed_paths": [],
+      "required_first_parent": null,
+      "maximum_commits_after_reviewed_head": null,
+      "forbidden_path_classes": [],
+      "no_later_commits_required": "not_applicable",
+      "validation_status": "not_applicable",
+      "validation_evidence": [
+        "Normal initial review fail; no independent-final report-attestation route. Ordinary documentation commit is not an attestation."
+      ]
+    },
+    "summary": [
+      "Medium3件未修正。全18変更ファイルと直接依存をレビュー。",
+      "製品修正は行っていない。次は修正担当への引継ぎと同じ担当によるfix verification。"
+    ]
+  },
+  "report": {
+    "report_type": "review_report",
+    "outcome": "created",
+    "persistence_mode": "repository_file",
+    "paths": [
+      "reports/immutable-blob-batch-review-20261009.md"
+    ],
+    "reviewed_head": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+    "attestation_head": null,
+    "pr_comments": [],
+    "summary": [
+      "完全な報告書本文はreport-writer source_payloadに保存。UTF-8 BOMでrepositoryへ保存予定。",
+      "生成後の普通の報告commit SHAとPR comment URLは公開後のPRコメント/最終応答で示す。自分自身の将来SHAは要求しない。"
+    ]
+  },
+  "findings": [
+    {
+      "id": "I141-BATCH-001",
+      "severity": "medium",
+      "origin": "introduced_by_change",
+      "location": "test/unit/node-git-blob-batch-transport.test.ts:883-889 (helper 45-55); package.json:154",
+      "description": "必須test:unitへ登録されたharnessテストが実時間25ms timeout後にDate.now()-startedAt < 1000をassertする。",
+      "impact": "実装が正常でも実行機の一時停止や負荷で必須CIの合否が変わり、時間依存検証を開発専用にする指示に反する。",
+      "evidence": "同じコンパイル済み1テストは通常exit0。5ms callback直前に1度だけ1100msのAtomics.waitを入れた制御実験ではactual false/expected true、1test 0pass 1fail、exit1。現在のhosted CIの自然発生失敗は主張しない。timing-control.* / timing-scheduler-pause.* に保存。",
+      "required_action": "実測経過時間による通常CIの合否を除去し、手動clock/timerを使うか開発専用test:timing-sensitiveへ分離する。決定的なparser/transport検証は必須に残し、package/workflowの登録を確認する。",
+      "reviewed_head": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+      "status": "unaddressed"
+    },
+    {
+      "id": "I141-BATCH-002",
+      "severity": "medium",
+      "origin": "introduced_by_change",
+      "location": "src/adapters/local-git/node-git-blob-batch-transport.ts:219-227,323-362; src/application/operation-feedback/operation-feedback.ts:324-371; src/composition/pull-request/pull-request-review-runtime-base.ts:701-790",
+      "description": "要求/EOF/close期限のreject(new Error(timeoutMessage))が既存GitCommandFailedError(-1)契約を失う。LocalGit/構成層も再分類せず返す。",
+      "impact": "複数OIDの取得が一時timeoutするとpermanentに分類され、maxAttempts3でも1回で失敗する。単件の既存retry契約と設計§9.5の診断形式に反する。",
+      "evidence": "実NodeGitBlobBatchTransport+fake child+手動タイマーの要求timeoutを実classifyOperationFailure/runWithBoundedRetryへ渡すとpermanent/1attempt/rejected。比較用の既存単件timeout契約Errorではretryable/2attempt/recovered。callbacks0, SIGTERM1, pendingTimers0。30秒の実時間待ちはしていない。設計§9.5本文と基点readerを確認。",
+      "required_action": "バッチtimeoutもGitCommandFailedError、synthetic exitCode -1、invocation/取得済み出力/stderr/timeout診断を保持する。キャンセル、プロトコル異常、非0終了を一律retryableにしない。要求/EOF/closeの手動タイマー検証と実compositionの1回目timeout→2回目成功・キャンセル/恒久失敗非retry検証を加える。",
+      "reviewed_head": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+      "status": "unaddressed"
+    },
+    {
+      "id": "I141-BATCH-003",
+      "severity": "medium",
+      "origin": "introduced_by_change",
+      "location": "src/adapters/local-git/local-git-adapter.ts:93-105,276-291; test/integration/local-git-adapter.integration.test.ts:580-639",
+      "description": "親nestedと子nested/tracked.txtの一括ls-treeは兄弟nested/other.txtも返すが、新parserが未要求pathとして一括要求を拒否する。追加された単件互換テストには兄弟がない。",
+      "impact": "追加LocalGitメソッドの単件互換性を失い、正常な要求子ファイルも取得できない。通常PR Progress UIが親descriptorを生成する経路は未確認。",
+      "evidence": "Windows Git2.46.0の合成リポジトリでls-treeがother/tracked両方を返した。単件nestedはmissing-file、単件trackedはfound('tracked\\n')、batchはError('git ls-tree output does not match a requested exact path')。review-probes.result.jsonにraw recordsを保存。静的候補PR141-LG-C01から実証後に本IDへ確定。",
+      "required_action": "親子同時指定でも単件APIと同じ各path結果になるようmetadata取得/検査を修正する。兄弟・深い子を含む実Git回帰fixtureで親missing-file/要求子foundを検証し、literal path・特殊文字・壊れたmetadata・encoding境界を維持する。",
+      "reviewed_head": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+      "status": "unaddressed"
+    }
+  ],
+  "held": [
+    {
+      "item": "Current-main versus current candidate performance remeasurement",
+      "reason": "報告中の計測は旧main/旧分割。今回の実装HEADで再実施していない。",
+      "owner": "implementation worker / user",
+      "remaining_risk": "Windows実機での体感改善量は未確定。",
+      "verdict_impact": "性能改善の定量主張を保留。failは3指摘に基づく。"
+    },
+    {
+      "item": "Physical VS Code UI acceptance",
+      "reason": "hosted Extension Host successは確認したが、接続先の物理UIは操作していない。",
+      "owner": "implementation worker / user",
+      "remaining_risk": "実際の利用導線での効果・互換性を確定していない。",
+      "verdict_impact": "実機受入完了を主張しない。"
+    },
+    {
+      "item": "POSIX signal fixtures in reviewer execution",
+      "reason": "Windows対象のfocused130件中5件はPOSIX専用でskip。",
+      "owner": "implementation worker",
+      "remaining_risk": "今回のWindows追加検証でPOSIX挙動を実証していない。",
+      "verdict_impact": "125成功と5skipを分離。hosted CI成功は別証拠。"
+    }
+  ],
+  "unexplored": [],
+  "unknown": [
+    {
+      "field_or_fact": "PR141 dedicated task ID",
+      "reason": "関連taskは確認したがPR専用IDは見つからない。PR対象は一意。"
+    },
+    {
+      "field_or_fact": "Author specification red→green sequence",
+      "reason": "今回の公開報告・commit履歴から自然な実施順序を確定できない。"
+    },
+    {
+      "field_or_fact": "CI artifact IDs and downloaded contents",
+      "reason": "job/upload成功を確認。artifact一覧取得と内容downloadは未実施。"
+    },
+    {
+      "field_or_fact": "Ordinary UI reachability of parent-directory descriptor",
+      "reason": "API不一致は実Gitで確認。通常PR Progressから親が渡る経路は確認していない。"
+    },
+    {
+      "field_or_fact": "Report publication commit SHA and subsequent CI",
+      "reason": "このpacket生成時点ではcommit/push前。将来の自己SHAは記載せず、公開PRコメントで別記する。"
+    },
+    {
+      "field_or_fact": "Exact applied subagent model identifiers",
+      "reason": "補助担当2名は親設定を継承した静的読取。実行profileの厳密な外部識別は主張しない。"
+    }
+  ],
+  "not_applicable": [
+    {
+      "field_or_area": "Implementation/fix outcome and addressed findings",
+      "reason": "通常レビューのみ。修正は行っていない。"
+    },
+    {
+      "field_or_area": "Independent final review, bounded independent closure, report attestation and merge gate",
+      "reason": "今回initial_reviewのfail。独立最終レビューではない。"
+    },
+    {
+      "field_or_area": "New diagnostic workflow or dependency install",
+      "reason": "既存workflow/依存が利用可能であり変更不要。"
+    }
+  ],
+  "remaining_risks": [
+    "Medium3件は未修正。各findingの修正と回帰検証、同じ通常レビュー担当によるfix verificationが必要。",
+    "性能/UI/POSIXの保留とTDD順序・artifact内容の不明を成功へ読み替えない。",
+    "次担当は公開HEAD、接続先、作業所有権、依存と実行許可範囲を再解決する。機械内パスはアップロード済みartifactではない。"
+  ],
+  "source_payloads": [
+    {
+      "source_skill": "work-context-manager",
+      "output_contract_version": "attached chatgpt-worker-skills 4.zip, Output contract (no numeric version declared)",
+      "content_type": "application/json",
+      "payload": {
+        "repository": "ssaattww/RevMem",
+        "issue_or_pr": "https://github.com/ssaattww/RevMem/pull/141",
+        "task_id": null,
+        "mode": "review",
+        "branch": "perf/immutable-blob-batch",
+        "base_ref": "6ab5736d148fff0d403d250f2a262ab426dde714",
+        "current_head": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+        "reviewed_head": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+        "verification_capability": "local_execution_available",
+        "verification_capability_evidence": [
+          "Connected Windows execution available; actual compilation, 130-test focused suite and three probes executed. Chat local filesystem used only for static analysis/report assembly."
+        ],
+        "execution_environment": {
+          "kind": "connected_computer",
+          "tool": "RemoteDesktopMCP (RDMCP); GitHub operations through gh on connected computer",
+          "machine_id": "local",
+          "connection": "available",
+          "os": "Windows",
+          "shell": "C:/WINDOWS/system32/cmd.exe",
+          "working_directory": "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009",
+          "repository": "ssaattww/RevMem",
+          "branch": "perf/immutable-blob-batch",
+          "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+          "source_state": "clean",
+          "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e",
+          "ownership": "current_task",
+          "writable_paths": [
+            "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/reports/immutable-blob-batch-review-20261009.md",
+            "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/handoffs/immutable-blob-batch-review-20261009.json",
+            "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009"
+          ],
+          "dependencies": [
+            {
+              "name": "Node",
+              "status": "available",
+              "evidence": "v24.20.0; actual compile and node --test completed on connected computer."
+            },
+            {
+              "name": "npm",
+              "status": "available",
+              "evidence": "11.19.0 via npm.cmd; no execution-policy change."
+            },
+            {
+              "name": "TypeScript",
+              "status": "available",
+              "evidence": "6.0.3 from existing dependency tree."
+            },
+            {
+              "name": "Git",
+              "status": "available",
+              "evidence": "2.46.0.windows.1; synthetic parent-child fixture executed."
+            },
+            {
+              "name": "project node_modules",
+              "status": "available",
+              "evidence": "Existing C:/Users/donabe/RemoteDesktopWorkspace/revmem-enoent-design/node_modules reused through a junction outside reviewed source. Author/target package-lock SHA-256 both 77112e133928664383d0ddaf18dccf076bec5f55d7afe7720d55a1946f7c085f."
+            },
+            {
+              "name": "gh",
+              "status": "available",
+              "evidence": "PR identity and CI jobs read successfully using project-required route."
+            }
+          ],
+          "evidence": [
+            "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/validation-identity.json",
+            "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/source-manifest.json",
+            "Dedicated detached worktree created by this review. Original author worktrees and unrelated worktrees not modified.",
+            "Public PR HEAD and own worktree HEAD matched, git status clean immediately before report generation. Machine session credentials are deliberately not transported."
+          ]
+        },
+        "execution_state": {
+          "technical_head": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+          "administrative_parent": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+          "commit": "commit_pending",
+          "push": "push_pending",
+          "ci_wait": "ci_wait_completed",
+          "full_local_equivalence_gate": {
+            "state": "not_required",
+            "candidate_head": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+            "invalidated_runs": []
+          }
+        },
+        "scope": [
+          "18 changed files and directly affected dependencies across parser, transport, LocalGit, production composition, tests, package registration and implementation report.",
+          "Optional readBlobs/readTextContents; max 128 OIDs and Windows argument budget; sequential decoding; unique-OID single fallback; per-path encoding; typed oversize-only fallback.",
+          "Cancellation/generation and immutable revision cache; remote fallback sequentiality; timeout/error compatibility; child process lifecycle.",
+          "Verify existing CI diagnostics, matching-head CI and targeted Windows tests; publish review documents and Japanese PR comment."
+        ],
+        "non_goals": [
+          "Implement or fix production code/tests/configuration/workflows.",
+          "Merge, close Issues136/137, change PR state, or claim independent-final attestation.",
+          "New timeout configuration, detailed Issue137 diagnostics, state/debounce/store/lock, GitHub lifecycle memo and UI coordinator.",
+          "Re-run performance benchmarks or perform physical VS Code UI acceptance as part of this review."
+        ],
+        "authoritative_requirements": [
+          {
+            "source": "user_instruction",
+            "reference": "Current request: revmem #141 レビュー",
+            "summary": "RevMem PR141の通常レビューを完遂する。今回の実装修正・mergeは依頼されていない。"
+          },
+          {
+            "source": "user_instruction",
+            "reference": "Project instructions supplied with the review context",
+            "summary": "接続先でRDMCPとghを使用。GitHub connectorは使用しない。日本語の作業comment・進捗報告。成果物はBOM付きUTF-8、詳細報告をrepositoryへcommit/pushしPRへ日本語簡易報告。"
+          },
+          {
+            "source": "user_instruction",
+            "reference": "Project testing and diagnostics instructions",
+            "summary": "処理時間の計測など非決定的な検証は通常CIから外し開発中のみ利用する。失敗時にstdout/stderr・生成物・環境等の調査に必要な成果物を保存する。"
+          },
+          {
+            "source": "repository_instruction",
+            "reference": "AGENTS.md; repository-resolved CodexSkill/skills/development-orchestrator/SKILL.md",
+            "summary": "Skill-first entry and applicable repository conventions; explicit review request resolves current mode. No implementation orchestration or unrelated edits."
+          },
+          {
+            "source": "other",
+            "reference": "Attached chatgpt-worker-skills 4.zip and installed chat-review-worker/work-context-manager/review-worker/report-writer/chat-handoff-manager",
+            "summary": "通常レビュー、証拠忠実な報告、実行環境・HEAD・未確認事項を保つschema v3引継ぎ。添付の新しいexecution_environment/verification項目を保持する。"
+          },
+          {
+            "source": "pr",
+            "reference": "https://github.com/ssaattww/RevMem/pull/141",
+            "summary": "PR138から性能のみを新mainへ再構成。optional batch API、bounded group、逐次decode、互換fallback、cancel/child lifetime、Progress登録/cache。Issue136/137全体解決を主張しない。"
+          },
+          {
+            "source": "report",
+            "reference": "reports/immutable-blob-batch-review-preparation-20261009.md",
+            "summary": "現在の対象・scopeと作者検証を照合。過去main/旧分割の性能値は現HEADの測定として利用しない。"
+          },
+          {
+            "source": "design",
+            "reference": "doc/design/vscode-review-range-tracker-design.md §9.1–9.5 (350–424)",
+            "summary": "同一Git runtime、literal exact path、tree/submoduleはmissing-file。metadata/blob timeoutはinvocation・partial stdout/stderr・timeout値を持つGitCommandFailedError、exitCode -1。終了時のdiagnosticも保持。"
+          },
+          {
+            "source": "design",
+            "reference": "Design/BreakingChanges.md around line 107",
+            "summary": "immutable cacheをexact BASE/HEAD revisionとpathに束縛し、revision更新で旧evidenceをevictする。"
+          },
+          {
+            "source": "design",
+            "reference": "Design/Issue139PullRequestRediscovery.md; issue #139; PR #140",
+            "summary": "open/closed/merged再検出、同headの別PR分離、v1選択migrationを維持する。今回はGitHub lifecycle変更を追加しない。"
+          },
+          {
+            "source": "task",
+            "reference": "tasks/tasks-status.md; tasks/phases-status.md T302/T606/T607",
+            "summary": "T302/T606既存契約を確認。T607性能workloadは手動専用。PR141専用task IDは未確認だがPRによる対象特定は一意。"
+          }
+        ],
+        "write_boundary": {
+          "allowed": [
+            "reports/immutable-blob-batch-review-20261009.md",
+            "handoffs/immutable-blob-batch-review-20261009.json",
+            "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009",
+            "Ordinary commit/push of these two documents to perf/immutable-blob-batch; gh PR141 comment"
+          ],
+          "forbidden": [
+            "Product code, product tests, configuration, workflows, Skills",
+            "Other sessions, other worktrees, main checkout, force push, merge"
+          ]
+        },
+        "development_policy": {
+          "method": "TDD / specification-first validation required by supplied worker and repository policies",
+          "testing_order": "Original author's natural specification red→green order is unknown; reviewer probes are verification evidence, not author TDD evidence.",
+          "governing_source": "AGENTS.md; supplied worker skills; user testing instructions"
+        },
+        "validation": {
+          "commands": [
+            "node C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/prepare-review-validation.cjs",
+            "node C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/review-probes.cjs",
+            "gh run list --repo ssaattww/RevMem --commit a910aa2ecf5134ec900bfe3e980b5f5149169710 --json databaseId,event,headSha,status,conclusion,url,workflowName",
+            "gh run view 37938466844 --repo ssaattww/RevMem --json headSha,status,conclusion,jobs,url",
+            "git -C C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009 status --porcelain=v1"
+          ],
+          "required_failure_diagnostics": [
+            "Retain stdout, stderr, combined diagnostic where applicable, result JSON, exact source HEAD, environment/dependency identity, source manifest and reproduction scripts.",
+            "Existing .github/workflows/ci.yml failure diagnostic artifact includes source/test/config/generated/environment; preserve failure collection on later fixes.",
+            "Keep intentional negative probe exit1 separate from compile/focused success and wrapper script exit0."
+          ]
+        },
+        "ci": {
+          "matching_run": "37938466844",
+          "conclusion": "success"
+        },
+        "unknown": [
+          "PR141 dedicated task ID: 関連taskは確認したがPR専用IDは見つからない。PR対象は一意。",
+          "Author specification red→green sequence: 今回の公開報告・commit履歴から自然な実施順序を確定できない。",
+          "CI artifact IDs and downloaded contents: job/upload成功を確認。artifact一覧取得と内容downloadは未実施。",
+          "Ordinary UI reachability of parent-directory descriptor: API不一致は実Gitで確認。通常PR Progressから親が渡る経路は確認していない。",
+          "Report publication commit SHA and subsequent CI: このpacket生成時点ではcommit/push前。将来の自己SHAは記載せず、公開PRコメントで別記する。",
+          "Exact applied subagent model identifiers: 補助担当2名は親設定を継承した静的読取。実行profileの厳密な外部識別は主張しない。"
+        ],
+        "blocked": [],
+        "remaining_risks": [
+          "Medium3件は未修正。各findingの修正と回帰検証、同じ通常レビュー担当によるfix verificationが必要。",
+          "性能/UI/POSIXの保留とTDD順序・artifact内容の不明を成功へ読み替えない。",
+          "次担当は公開HEAD、接続先、作業所有権、依存と実行許可範囲を再解決する。機械内パスはアップロード済みartifactではない。"
+        ]
+      }
+    },
+    {
+      "source_skill": "review-worker",
+      "output_contract_version": "attached chatgpt-worker-skills 4.zip, Output contract (no numeric version declared)",
+      "content_type": "application/json",
+      "payload": {
+        "mode": "initial_review",
+        "reviewed_implementation_head": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+        "initial_independent_reviewed_head": null,
+        "closure_reviewed_heads": [],
+        "independent_review_continuity": null,
+        "bounded_closure_scope": [],
+        "base_ref": "6ab5736d148fff0d403d250f2a262ab426dde714",
+        "commit_range": "6ab5736d148fff0d403d250f2a262ab426dde714...a910aa2ecf5134ec900bfe3e980b5f5149169710",
+        "reviewer": {
+          "identity": "ChatGPT /root — RevMem PR141 ordinary initial review started 2026-10-09",
+          "role": "normal_reviewer",
+          "continuity": {
+            "previous_reviewer_identity": null,
+            "changed": false,
+            "reason": "Initial review in this worker chat."
+          },
+          "independence": {
+            "implemented_change": false,
+            "implemented_review_fix": false,
+            "served_as_normal_reviewer": true,
+            "inherited_conversation": false,
+            "evidence": [
+              "Root reviewer performed no product implementation/fix.",
+              "Two helpers inherited this review context and performed static read-only analysis. Root verified findings and executed all actual tests on connected computer.",
+              "This is the ordinary initial reviewer, not an independent final reviewer or final attestation."
+            ]
+          }
+        },
+        "required_coverage": [
+          {
+            "criterion": "要求・設計適合",
+            "disposition": "checked_finding",
+            "evidence": "I141-BATCH-001/002/003"
+          },
+          {
+            "criterion": "正しさ・境界条件",
+            "disposition": "checked_finding",
+            "evidence": "I141-BATCH-002/003、実probe"
+          },
+          {
+            "criterion": "範囲逸脱",
+            "disposition": "checked_no_finding",
+            "evidence": "高速化と関連テスト・報告に限定"
+          },
+          {
+            "criterion": "変更ファイルと直接依存",
+            "disposition": "checked_finding",
+            "evidence": "18ファイルと呼出し先、上記指摘"
+          },
+          {
+            "criterion": "API・互換性・設定",
+            "disposition": "checked_finding",
+            "evidence": "optional互換は確認、timeout/親子pathに指摘。依存/設定追加なし"
+          },
+          {
+            "criterion": "エラー・診断",
+            "disposition": "checked_finding",
+            "evidence": "I141-BATCH-002。failure artifactは既存"
+          },
+          {
+            "criterion": "セキュリティ・秘密情報",
+            "disposition": "checked_no_finding",
+            "evidence": "immutable OID、canonical/literal path、shell:false、上位の既存秘匿境界"
+          },
+          {
+            "criterion": "テスト・検証の妥当性",
+            "disposition": "checked_finding",
+            "evidence": "I141-BATCH-001、正常検証と追加probeを分離"
+          },
+          {
+            "criterion": "current HEADのCI",
+            "disposition": "checked_no_finding",
+            "evidence": "両runのhead SHA一致とsuccess"
+          },
+          {
+            "criterion": "報告・文書・追跡",
+            "disposition": "checked_no_finding",
+            "evidence": "旧性能測定/今回未測定を区別。PR専用task IDは未確認、対象はPRで確定"
+          },
+          {
+            "criterion": "回帰・保守性",
+            "disposition": "checked_finding",
+            "evidence": "I141-BATCH-002/003。共通validator等の再利用は確認"
+          }
+        ],
+        "findings": [
+          {
+            "id": "I141-BATCH-001",
+            "severity": "medium",
+            "origin": "introduced_by_change",
+            "location": "test/unit/node-git-blob-batch-transport.test.ts:883-889 (helper 45-55); package.json:154",
+            "description": "必須test:unitへ登録されたharnessテストが実時間25ms timeout後にDate.now()-startedAt < 1000をassertする。",
+            "impact": "実装が正常でも実行機の一時停止や負荷で必須CIの合否が変わり、時間依存検証を開発専用にする指示に反する。",
+            "evidence": "同じコンパイル済み1テストは通常exit0。5ms callback直前に1度だけ1100msのAtomics.waitを入れた制御実験ではactual false/expected true、1test 0pass 1fail、exit1。現在のhosted CIの自然発生失敗は主張しない。timing-control.* / timing-scheduler-pause.* に保存。",
+            "required_action": "実測経過時間による通常CIの合否を除去し、手動clock/timerを使うか開発専用test:timing-sensitiveへ分離する。決定的なparser/transport検証は必須に残し、package/workflowの登録を確認する。",
+            "reviewed_head": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+            "status": "unaddressed"
+          },
+          {
+            "id": "I141-BATCH-002",
+            "severity": "medium",
+            "origin": "introduced_by_change",
+            "location": "src/adapters/local-git/node-git-blob-batch-transport.ts:219-227,323-362; src/application/operation-feedback/operation-feedback.ts:324-371; src/composition/pull-request/pull-request-review-runtime-base.ts:701-790",
+            "description": "要求/EOF/close期限のreject(new Error(timeoutMessage))が既存GitCommandFailedError(-1)契約を失う。LocalGit/構成層も再分類せず返す。",
+            "impact": "複数OIDの取得が一時timeoutするとpermanentに分類され、maxAttempts3でも1回で失敗する。単件の既存retry契約と設計§9.5の診断形式に反する。",
+            "evidence": "実NodeGitBlobBatchTransport+fake child+手動タイマーの要求timeoutを実classifyOperationFailure/runWithBoundedRetryへ渡すとpermanent/1attempt/rejected。比較用の既存単件timeout契約Errorではretryable/2attempt/recovered。callbacks0, SIGTERM1, pendingTimers0。30秒の実時間待ちはしていない。設計§9.5本文と基点readerを確認。",
+            "required_action": "バッチtimeoutもGitCommandFailedError、synthetic exitCode -1、invocation/取得済み出力/stderr/timeout診断を保持する。キャンセル、プロトコル異常、非0終了を一律retryableにしない。要求/EOF/closeの手動タイマー検証と実compositionの1回目timeout→2回目成功・キャンセル/恒久失敗非retry検証を加える。",
+            "reviewed_head": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+            "status": "unaddressed"
+          },
+          {
+            "id": "I141-BATCH-003",
+            "severity": "medium",
+            "origin": "introduced_by_change",
+            "location": "src/adapters/local-git/local-git-adapter.ts:93-105,276-291; test/integration/local-git-adapter.integration.test.ts:580-639",
+            "description": "親nestedと子nested/tracked.txtの一括ls-treeは兄弟nested/other.txtも返すが、新parserが未要求pathとして一括要求を拒否する。追加された単件互換テストには兄弟がない。",
+            "impact": "追加LocalGitメソッドの単件互換性を失い、正常な要求子ファイルも取得できない。通常PR Progress UIが親descriptorを生成する経路は未確認。",
+            "evidence": "Windows Git2.46.0の合成リポジトリでls-treeがother/tracked両方を返した。単件nestedはmissing-file、単件trackedはfound('tracked\\n')、batchはError('git ls-tree output does not match a requested exact path')。review-probes.result.jsonにraw recordsを保存。静的候補PR141-LG-C01から実証後に本IDへ確定。",
+            "required_action": "親子同時指定でも単件APIと同じ各path結果になるようmetadata取得/検査を修正する。兄弟・深い子を含む実Git回帰fixtureで親missing-file/要求子foundを検証し、literal path・特殊文字・壊れたmetadata・encoding境界を維持する。",
+            "reviewed_head": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+            "status": "unaddressed"
+          }
+        ],
+        "finding_completeness_matrix": [
+          {
+            "finding_id": "I141-BATCH-001",
+            "required_action": "実測経過時間による通常CIの合否を除去し、手動clock/timerを使うか開発専用test:timing-sensitiveへ分離する。決定的なparser/transport検証は必須に残し、package/workflowの登録を確認する。",
+            "disposition": "unaddressed",
+            "production_path": "test/unit/node-git-blob-batch-transport.test.ts:883-889 (helper 45-55); package.json:154",
+            "actual_composition_fixture": "Actual compiled registered test with controlled scheduling pause.",
+            "focused_evidence": "同じコンパイル済み1テストは通常exit0。5ms callback直前に1度だけ1100msのAtomics.waitを入れた制御実験ではactual false/expected true、1test 0pass 1fail、exit1。現在のhosted CIの自然発生失敗は主張しない。timing-control.* / timing-scheduler-pause.* に保存。"
+          },
+          {
+            "finding_id": "I141-BATCH-002",
+            "required_action": "バッチtimeoutもGitCommandFailedError、synthetic exitCode -1、invocation/取得済み出力/stderr/timeout診断を保持する。キャンセル、プロトコル異常、非0終了を一律retryableにしない。要求/EOF/closeの手動タイマー検証と実compositionの1回目timeout→2回目成功・キャンセル/恒久失敗非retry検証を加える。",
+            "disposition": "unaddressed",
+            "production_path": "src/adapters/local-git/node-git-blob-batch-transport.ts:219-227,323-362; src/application/operation-feedback/operation-feedback.ts:324-371; src/composition/pull-request/pull-request-review-runtime-base.ts:701-790",
+            "actual_composition_fixture": "Actual batch transport error passed to real classifier/retry; full composition timeout recovery regression required from implementer.",
+            "focused_evidence": "実NodeGitBlobBatchTransport+fake child+手動タイマーの要求timeoutを実classifyOperationFailure/runWithBoundedRetryへ渡すとpermanent/1attempt/rejected。比較用の既存単件timeout契約Errorではretryable/2attempt/recovered。callbacks0, SIGTERM1, pendingTimers0。30秒の実時間待ちはしていない。設計§9.5本文と基点readerを確認。"
+          },
+          {
+            "finding_id": "I141-BATCH-003",
+            "required_action": "親子同時指定でも単件APIと同じ各path結果になるようmetadata取得/検査を修正する。兄弟・深い子を含む実Git回帰fixtureで親missing-file/要求子foundを検証し、literal path・特殊文字・壊れたmetadata・encoding境界を維持する。",
+            "disposition": "unaddressed",
+            "production_path": "src/adapters/local-git/local-git-adapter.ts:93-105,276-291; test/integration/local-git-adapter.integration.test.ts:580-639",
+            "actual_composition_fixture": "Actual LocalGitAdapter with real Windows Git and sibling fixture.",
+            "focused_evidence": "Windows Git2.46.0の合成リポジトリでls-treeがother/tracked両方を返した。単件nestedはmissing-file、単件trackedはfound('tracked\\n')、batchはError('git ls-tree output does not match a requested exact path')。review-probes.result.jsonにraw recordsを保存。静的候補PR141-LG-C01から実証後に本IDへ確定。"
+          }
+        ],
+        "severity_reclassification_records": [],
+        "held": [
+          {
+            "item": "Current-main versus current candidate performance remeasurement",
+            "reason": "報告中の計測は旧main/旧分割。今回の実装HEADで再実施していない。",
+            "owner": "implementation worker / user",
+            "remaining_risk": "Windows実機での体感改善量は未確定。",
+            "verdict_impact": "性能改善の定量主張を保留。failは3指摘に基づく。"
+          },
+          {
+            "item": "Physical VS Code UI acceptance",
+            "reason": "hosted Extension Host successは確認したが、接続先の物理UIは操作していない。",
+            "owner": "implementation worker / user",
+            "remaining_risk": "実際の利用導線での効果・互換性を確定していない。",
+            "verdict_impact": "実機受入完了を主張しない。"
+          },
+          {
+            "item": "POSIX signal fixtures in reviewer execution",
+            "reason": "Windows対象のfocused130件中5件はPOSIX専用でskip。",
+            "owner": "implementation worker",
+            "remaining_risk": "今回のWindows追加検証でPOSIX挙動を実証していない。",
+            "verdict_impact": "125成功と5skipを分離。hosted CI成功は別証拠。"
+          }
+        ],
+        "unexplored": [],
+        "validation_assessment": [
+          {
+            "item": "Windows compile and focused suite",
+            "result": "supported",
+            "evidence": "Source identity/manifest and matching lock verified; compile0; 125pass0fail5skip."
+          },
+          {
+            "item": "Three findings",
+            "result": "failed",
+            "evidence": "All reproduced against reviewed source through controlled transport/timer and real Git probes. Finding001 negative test exit1 separated from wrapper exit0."
+          },
+          {
+            "item": "Reviewed implementation CI",
+            "result": "supported",
+            "evidence": "PR37938466844 and push37938461409 both same a910 HEAD success. PR job113846440613 all normal stages success including Extension Host/VSIX."
+          },
+          {
+            "item": "Failure diagnostic workflow",
+            "result": "supported",
+            "evidence": "ci.yml and run-ci-command.mjs reviewed. Failure-only steps skipped in success run as expected."
+          },
+          {
+            "item": "Physical UI and current performance",
+            "result": "unavailable",
+            "evidence": "Not run; no inference from historical performance numbers."
+          },
+          {
+            "item": "Original specification red→green sequence",
+            "result": "unsupported",
+            "evidence": "Not established from available author evidence."
+          }
+        ],
+        "commands": [
+          {
+            "command": "node C:/Users/donabe/RemoteDesktopWorkspace/revmem-enoent-design/node_modules/typescript/bin/tsc -p C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/validation-source/tsconfig.test.json --outDir C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/compiled",
+            "purpose": "同一tracked sourceのtest compile",
+            "exit_code": 0,
+            "result": "passed",
+            "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+            "evidence": "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/compile-test.result.json; stdout/stderr logs",
+            "execution_environment": {
+              "kind": "connected_computer",
+              "tool": "RemoteDesktopMCP (RDMCP); GitHub operations through gh on connected computer",
+              "machine_id": "local",
+              "connection": "available",
+              "os": "Windows",
+              "shell": "C:/WINDOWS/system32/cmd.exe",
+              "working_directory": "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009",
+              "repository": "ssaattww/RevMem",
+              "branch": "perf/immutable-blob-batch",
+              "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+              "source_state": "clean",
+              "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e",
+              "ownership": "current_task",
+              "writable_paths": [
+                "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/reports/immutable-blob-batch-review-20261009.md",
+                "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/handoffs/immutable-blob-batch-review-20261009.json",
+                "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009"
+              ],
+              "dependencies": [
+                {
+                  "name": "Node",
+                  "status": "available",
+                  "evidence": "v24.20.0; actual compile and node --test completed on connected computer."
+                },
+                {
+                  "name": "npm",
+                  "status": "available",
+                  "evidence": "11.19.0 via npm.cmd; no execution-policy change."
+                },
+                {
+                  "name": "TypeScript",
+                  "status": "available",
+                  "evidence": "6.0.3 from existing dependency tree."
+                },
+                {
+                  "name": "Git",
+                  "status": "available",
+                  "evidence": "2.46.0.windows.1; synthetic parent-child fixture executed."
+                },
+                {
+                  "name": "project node_modules",
+                  "status": "available",
+                  "evidence": "Existing C:/Users/donabe/RemoteDesktopWorkspace/revmem-enoent-design/node_modules reused through a junction outside reviewed source. Author/target package-lock SHA-256 both 77112e133928664383d0ddaf18dccf076bec5f55d7afe7720d55a1946f7c085f."
+                },
+                {
+                  "name": "gh",
+                  "status": "available",
+                  "evidence": "PR identity and CI jobs read successfully using project-required route."
+                }
+              ],
+              "evidence": [
+                "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/validation-identity.json",
+                "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/source-manifest.json",
+                "Dedicated detached worktree created by this review. Original author worktrees and unrelated worktrees not modified.",
+                "Public PR HEAD and own worktree HEAD matched, git status clean immediately before report generation. Machine session credentials are deliberately not transported."
+              ]
+            },
+            "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e"
+          },
+          {
+            "command": "C:\\Program Files\\nodejs\\node.exe \"--test\" \"C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\cat-file-batch-parser.test.js\" \"C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\node-git-blob-batch-transport.test.js\" \"C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\local-git-adapter.test.js\" \"C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\node-git-blob-reader.test.js\" \"C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\t405-pull-request-review-runtime.test.js\" \"C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\t606-r6-real-composition.test.js\" \"C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\integration\\local-git-adapter.integration.test.js\"",
+            "purpose": "変更関連7ファイルの機能検証",
+            "exit_code": 0,
+            "result": "passed",
+            "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+            "evidence": "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/focused-review.result.json; stdout log: 130 tests, 125 pass, 0 fail, 5 skip",
+            "execution_environment": {
+              "kind": "connected_computer",
+              "tool": "RemoteDesktopMCP (RDMCP); GitHub operations through gh on connected computer",
+              "machine_id": "local",
+              "connection": "available",
+              "os": "Windows",
+              "shell": "C:/WINDOWS/system32/cmd.exe",
+              "working_directory": "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009",
+              "repository": "ssaattww/RevMem",
+              "branch": "perf/immutable-blob-batch",
+              "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+              "source_state": "clean",
+              "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e",
+              "ownership": "current_task",
+              "writable_paths": [
+                "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/reports/immutable-blob-batch-review-20261009.md",
+                "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/handoffs/immutable-blob-batch-review-20261009.json",
+                "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009"
+              ],
+              "dependencies": [
+                {
+                  "name": "Node",
+                  "status": "available",
+                  "evidence": "v24.20.0; actual compile and node --test completed on connected computer."
+                },
+                {
+                  "name": "npm",
+                  "status": "available",
+                  "evidence": "11.19.0 via npm.cmd; no execution-policy change."
+                },
+                {
+                  "name": "TypeScript",
+                  "status": "available",
+                  "evidence": "6.0.3 from existing dependency tree."
+                },
+                {
+                  "name": "Git",
+                  "status": "available",
+                  "evidence": "2.46.0.windows.1; synthetic parent-child fixture executed."
+                },
+                {
+                  "name": "project node_modules",
+                  "status": "available",
+                  "evidence": "Existing C:/Users/donabe/RemoteDesktopWorkspace/revmem-enoent-design/node_modules reused through a junction outside reviewed source. Author/target package-lock SHA-256 both 77112e133928664383d0ddaf18dccf076bec5f55d7afe7720d55a1946f7c085f."
+                },
+                {
+                  "name": "gh",
+                  "status": "available",
+                  "evidence": "PR identity and CI jobs read successfully using project-required route."
+                }
+              ],
+              "evidence": [
+                "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/validation-identity.json",
+                "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/source-manifest.json",
+                "Dedicated detached worktree created by this review. Original author worktrees and unrelated worktrees not modified.",
+                "Public PR HEAD and own worktree HEAD matched, git status clean immediately before report generation. Machine session credentials are deliberately not transported."
+              ]
+            },
+            "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e"
+          },
+          {
+            "command": "node C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/review-probes.cjs",
+            "purpose": "実transport+retry、実Git親子path、同じtestの模擬停止比較",
+            "exit_code": 0,
+            "result": "passed",
+            "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+            "evidence": "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/review-probes.result.json; all observations retained",
+            "execution_environment": {
+              "kind": "connected_computer",
+              "tool": "RemoteDesktopMCP (RDMCP); GitHub operations through gh on connected computer",
+              "machine_id": "local",
+              "connection": "available",
+              "os": "Windows",
+              "shell": "C:/WINDOWS/system32/cmd.exe",
+              "working_directory": "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009",
+              "repository": "ssaattww/RevMem",
+              "branch": "perf/immutable-blob-batch",
+              "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+              "source_state": "clean",
+              "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e",
+              "ownership": "current_task",
+              "writable_paths": [
+                "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/reports/immutable-blob-batch-review-20261009.md",
+                "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/handoffs/immutable-blob-batch-review-20261009.json",
+                "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009"
+              ],
+              "dependencies": [
+                {
+                  "name": "Node",
+                  "status": "available",
+                  "evidence": "v24.20.0; actual compile and node --test completed on connected computer."
+                },
+                {
+                  "name": "npm",
+                  "status": "available",
+                  "evidence": "11.19.0 via npm.cmd; no execution-policy change."
+                },
+                {
+                  "name": "TypeScript",
+                  "status": "available",
+                  "evidence": "6.0.3 from existing dependency tree."
+                },
+                {
+                  "name": "Git",
+                  "status": "available",
+                  "evidence": "2.46.0.windows.1; synthetic parent-child fixture executed."
+                },
+                {
+                  "name": "project node_modules",
+                  "status": "available",
+                  "evidence": "Existing C:/Users/donabe/RemoteDesktopWorkspace/revmem-enoent-design/node_modules reused through a junction outside reviewed source. Author/target package-lock SHA-256 both 77112e133928664383d0ddaf18dccf076bec5f55d7afe7720d55a1946f7c085f."
+                },
+                {
+                  "name": "gh",
+                  "status": "available",
+                  "evidence": "PR identity and CI jobs read successfully using project-required route."
+                }
+              ],
+              "evidence": [
+                "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/validation-identity.json",
+                "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/source-manifest.json",
+                "Dedicated detached worktree created by this review. Original author worktrees and unrelated worktrees not modified.",
+                "Public PR HEAD and own worktree HEAD matched, git status clean immediately before report generation. Machine session credentials are deliberately not transported."
+              ]
+            },
+            "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e"
+          },
+          {
+            "command": "C:\\Program Files\\nodejs\\node.exe \"--test\" \"--test-name-pattern=^transport test harness fails finitely when a wait condition never occurs$\" \"C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\node-git-blob-batch-transport.test.js\"",
+            "purpose": "timing-control",
+            "exit_code": 0,
+            "result": "passed",
+            "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+            "evidence": "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/timing-control.*; intentional controlled scheduling experiment",
+            "execution_environment": {
+              "kind": "connected_computer",
+              "tool": "RemoteDesktopMCP (RDMCP); GitHub operations through gh on connected computer",
+              "machine_id": "local",
+              "connection": "available",
+              "os": "Windows",
+              "shell": "C:/WINDOWS/system32/cmd.exe",
+              "working_directory": "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009",
+              "repository": "ssaattww/RevMem",
+              "branch": "perf/immutable-blob-batch",
+              "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+              "source_state": "clean",
+              "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e",
+              "ownership": "current_task",
+              "writable_paths": [
+                "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/reports/immutable-blob-batch-review-20261009.md",
+                "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/handoffs/immutable-blob-batch-review-20261009.json",
+                "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009"
+              ],
+              "dependencies": [
+                {
+                  "name": "Node",
+                  "status": "available",
+                  "evidence": "v24.20.0; actual compile and node --test completed on connected computer."
+                },
+                {
+                  "name": "npm",
+                  "status": "available",
+                  "evidence": "11.19.0 via npm.cmd; no execution-policy change."
+                },
+                {
+                  "name": "TypeScript",
+                  "status": "available",
+                  "evidence": "6.0.3 from existing dependency tree."
+                },
+                {
+                  "name": "Git",
+                  "status": "available",
+                  "evidence": "2.46.0.windows.1; synthetic parent-child fixture executed."
+                },
+                {
+                  "name": "project node_modules",
+                  "status": "available",
+                  "evidence": "Existing C:/Users/donabe/RemoteDesktopWorkspace/revmem-enoent-design/node_modules reused through a junction outside reviewed source. Author/target package-lock SHA-256 both 77112e133928664383d0ddaf18dccf076bec5f55d7afe7720d55a1946f7c085f."
+                },
+                {
+                  "name": "gh",
+                  "status": "available",
+                  "evidence": "PR identity and CI jobs read successfully using project-required route."
+                }
+              ],
+              "evidence": [
+                "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/validation-identity.json",
+                "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/source-manifest.json",
+                "Dedicated detached worktree created by this review. Original author worktrees and unrelated worktrees not modified.",
+                "Public PR HEAD and own worktree HEAD matched, git status clean immediately before report generation. Machine session credentials are deliberately not transported."
+              ]
+            },
+            "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e"
+          },
+          {
+            "command": "C:\\Program Files\\nodejs\\node.exe \"--require\" \"C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\scheduler-pause-probe.cjs\" \"--test\" \"--test-name-pattern=^transport test harness fails finitely when a wait condition never occurs$\" \"C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\node-git-blob-batch-transport.test.js\"",
+            "purpose": "timing-scheduler-pause",
+            "exit_code": 1,
+            "result": "failed",
+            "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+            "evidence": "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/timing-scheduler-pause.*; intentional controlled scheduling experiment",
+            "execution_environment": {
+              "kind": "connected_computer",
+              "tool": "RemoteDesktopMCP (RDMCP); GitHub operations through gh on connected computer",
+              "machine_id": "local",
+              "connection": "available",
+              "os": "Windows",
+              "shell": "C:/WINDOWS/system32/cmd.exe",
+              "working_directory": "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009",
+              "repository": "ssaattww/RevMem",
+              "branch": "perf/immutable-blob-batch",
+              "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+              "source_state": "clean",
+              "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e",
+              "ownership": "current_task",
+              "writable_paths": [
+                "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/reports/immutable-blob-batch-review-20261009.md",
+                "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/handoffs/immutable-blob-batch-review-20261009.json",
+                "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009"
+              ],
+              "dependencies": [
+                {
+                  "name": "Node",
+                  "status": "available",
+                  "evidence": "v24.20.0; actual compile and node --test completed on connected computer."
+                },
+                {
+                  "name": "npm",
+                  "status": "available",
+                  "evidence": "11.19.0 via npm.cmd; no execution-policy change."
+                },
+                {
+                  "name": "TypeScript",
+                  "status": "available",
+                  "evidence": "6.0.3 from existing dependency tree."
+                },
+                {
+                  "name": "Git",
+                  "status": "available",
+                  "evidence": "2.46.0.windows.1; synthetic parent-child fixture executed."
+                },
+                {
+                  "name": "project node_modules",
+                  "status": "available",
+                  "evidence": "Existing C:/Users/donabe/RemoteDesktopWorkspace/revmem-enoent-design/node_modules reused through a junction outside reviewed source. Author/target package-lock SHA-256 both 77112e133928664383d0ddaf18dccf076bec5f55d7afe7720d55a1946f7c085f."
+                },
+                {
+                  "name": "gh",
+                  "status": "available",
+                  "evidence": "PR identity and CI jobs read successfully using project-required route."
+                }
+              ],
+              "evidence": [
+                "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/validation-identity.json",
+                "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/source-manifest.json",
+                "Dedicated detached worktree created by this review. Original author worktrees and unrelated worktrees not modified.",
+                "Public PR HEAD and own worktree HEAD matched, git status clean immediately before report generation. Machine session credentials are deliberately not transported."
+              ]
+            },
+            "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e"
+          },
+          {
+            "command": "gh pr view 141 --repo ssaattww/RevMem --json headRefOid,headRefName,baseRefOid,state,url && git -C C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009 rev-parse HEAD && git -C C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009 status --porcelain=v1",
+            "purpose": "公開対象と専用worktree同一性",
+            "exit_code": 0,
+            "result": "passed",
+            "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+            "evidence": "Both a910aa2..., branch perf/immutable-blob-batch, base6ab..., OPEN; clean worktree immediately before report generation.",
+            "execution_environment": {
+              "kind": "connected_computer",
+              "tool": "RemoteDesktopMCP (RDMCP); GitHub operations through gh on connected computer",
+              "machine_id": "local",
+              "connection": "available",
+              "os": "Windows",
+              "shell": "C:/WINDOWS/system32/cmd.exe",
+              "working_directory": "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009",
+              "repository": "ssaattww/RevMem",
+              "branch": "perf/immutable-blob-batch",
+              "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+              "source_state": "clean",
+              "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e",
+              "ownership": "current_task",
+              "writable_paths": [
+                "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/reports/immutable-blob-batch-review-20261009.md",
+                "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/handoffs/immutable-blob-batch-review-20261009.json",
+                "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009"
+              ],
+              "dependencies": [
+                {
+                  "name": "Node",
+                  "status": "available",
+                  "evidence": "v24.20.0; actual compile and node --test completed on connected computer."
+                },
+                {
+                  "name": "npm",
+                  "status": "available",
+                  "evidence": "11.19.0 via npm.cmd; no execution-policy change."
+                },
+                {
+                  "name": "TypeScript",
+                  "status": "available",
+                  "evidence": "6.0.3 from existing dependency tree."
+                },
+                {
+                  "name": "Git",
+                  "status": "available",
+                  "evidence": "2.46.0.windows.1; synthetic parent-child fixture executed."
+                },
+                {
+                  "name": "project node_modules",
+                  "status": "available",
+                  "evidence": "Existing C:/Users/donabe/RemoteDesktopWorkspace/revmem-enoent-design/node_modules reused through a junction outside reviewed source. Author/target package-lock SHA-256 both 77112e133928664383d0ddaf18dccf076bec5f55d7afe7720d55a1946f7c085f."
+                },
+                {
+                  "name": "gh",
+                  "status": "available",
+                  "evidence": "PR identity and CI jobs read successfully using project-required route."
+                }
+              ],
+              "evidence": [
+                "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/validation-identity.json",
+                "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/source-manifest.json",
+                "Dedicated detached worktree created by this review. Original author worktrees and unrelated worktrees not modified.",
+                "Public PR HEAD and own worktree HEAD matched, git status clean immediately before report generation. Machine session credentials are deliberately not transported."
+              ]
+            },
+            "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e"
+          }
+        ],
+        "tests": [
+          {
+            "name": "TypeScript test compile",
+            "phase": "verification",
+            "result": "passed",
+            "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+            "evidence": "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/compile-test.result.json (exit0)"
+          },
+          {
+            "name": "Focused seven-file suite",
+            "phase": "verification",
+            "result": "passed",
+            "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+            "evidence": "130 tests; 125 passed, 0 failed, 5 POSIX skip; focused-review.*"
+          },
+          {
+            "name": "Actual batch timeout versus existing single timeout retry contract",
+            "phase": "verification",
+            "result": "passed",
+            "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+            "evidence": "Defect reproduced: permanent/1 rejected vs retryable/2 recovered. Verification succeeded; product finding remains."
+          },
+          {
+            "name": "Real Git parent-directory plus child with sibling",
+            "phase": "verification",
+            "result": "passed",
+            "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+            "evidence": "Defect reproduced: individual missing/found, batch rejected. Verification succeeded; API finding remains."
+          },
+          {
+            "name": "Timing test without pause",
+            "phase": "verification",
+            "result": "passed",
+            "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+            "evidence": "timing-control.result.json; exit0"
+          },
+          {
+            "name": "Same timing test with one controlled 1100ms pause",
+            "phase": "verification",
+            "result": "failed",
+            "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+            "evidence": "timing-scheduler-pause.result.json/stdout; expected demonstration of wall-clock-dependent assertion, exit1; not a naturally observed hosted CI failure."
+          },
+          {
+            "name": "Current-head performance comparison",
+            "phase": "verification",
+            "result": "not_run",
+            "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+            "evidence": "Held; old report measurements are not current evidence."
+          },
+          {
+            "name": "Physical VS Code UI acceptance",
+            "phase": "verification",
+            "result": "not_run",
+            "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+            "evidence": "Held; hosted Extension Host success is separate."
+          }
+        ],
+        "ci": {
+          "required": true,
+          "workflow": ".github/workflows/ci.yml (CI)",
+          "run_id": 37938466844,
+          "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+          "conclusion": "success",
+          "artifacts": [
+            {
+              "id": "unknown",
+              "name": "user validation artifact (upload step successful; exact artifact identifier not fetched)",
+              "purpose": "VSIX validation deliverable."
+            }
+          ]
+        },
+        "verdict": "fail",
+        "remaining_risks": [
+          "Medium3件は未修正。各findingの修正と回帰検証、同じ通常レビュー担当によるfix verificationが必要。",
+          "性能/UI/POSIXの保留とTDD順序・artifact内容の不明を成功へ読み替えない。",
+          "次担当は公開HEAD、接続先、作業所有権、依存と実行許可範囲を再解決する。機械内パスはアップロード済みartifactではない。"
+        ],
+        "next_action": {
+          "type": "implementation",
+          "target_skill": "chat-implementation-worker",
+          "mode": "review_follow_up",
+          "summary": "I141-BATCH-001/002/003の修正と必要な回帰検証を行い、同じ通常レビュー担当へfix verificationを返す。",
+          "instructions": [
+            "最新PR HEADとこのreviewed HEADとの差分を確認し、接続先・worktree所有権・依存・書込範囲を再解決する。",
+            "指摘IDと重大度Mediumを保持する。必要対応の一部だけを完了扱いにしない。",
+            "001: deterministic timerまたは開発専用登録。002:既存Git timeout type/-1/diagnosticsとproduction retry契約。003:兄弟/深い子を含む実Git単件互換性。",
+            "各必要対応、production path、actual composition/fixture、focused evidenceを対応表に記録し、詳細実装報告・診断を保存する。",
+            "修正後のHEADを公開し、既存の必須CI結果とreviewed HEADを分離して返す。性能/UI未実施は保持する。",
+            "本packetはこのレビューの許可記録であり、新たな実装権限を独立に与えない。次の明示依頼と既存の有効な指示から実装範囲を解決する。"
+          ],
+          "required_attachments_or_references": [
+            "https://github.com/ssaattww/RevMem/pull/141",
+            "reports/immutable-blob-batch-review-20261009.md",
+            "handoffs/immutable-blob-batch-review-20261009.json",
+            "reports/immutable-blob-batch-review-preparation-20261009.md",
+            "doc/design/vscode-review-range-tracker-design.md §9",
+            "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/review-probes.cjs",
+            "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/review-probes.result.json"
+          ],
+          "requested_authorized_actions": [
+            "read_repository",
+            "edit_code",
+            "edit_tests",
+            "edit_documentation",
+            "write_report",
+            "write_handoff",
+            "commit",
+            "push",
+            "comment_pr"
+          ]
+        },
+        "reserved_report_paths": [],
+        "report_attestation_allowed": false,
+        "report_attestation_conditions": {
+          "allowed": false,
+          "reviewed_implementation_head": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+          "allowed_paths": [],
+          "required_first_parent": null,
+          "maximum_commits_after_reviewed_head": null,
+          "forbidden_path_classes": [],
+          "no_later_commits_required": "not_applicable",
+          "validation_status": "not_applicable",
+          "validation_evidence": [
+            "Normal initial review fail; no independent-final report-attestation route. Ordinary documentation commit is not an attestation."
+          ]
+        }
+      }
+    },
+    {
+      "source_skill": "report-writer",
+      "output_contract_version": "attached chatgpt-worker-skills 4.zip, Output contract (no numeric version declared)",
+      "content_type": "application/json",
+      "payload": {
+        "report_type": "review_report",
+        "complete_body": "# immutable blob 一括読み取りの初回レビュー\n\n## 判定と対象\n\n**判定: fail。Medium 3件が未修正。** 技術判定は、下記のレビュー対象HEADに適用する。\n\n| 項目 | 値 |\n|---|---|\n| 対象 | [RevMem PR #141](https://github.com/ssaattww/RevMem/pull/141) |\n| モード | initial_review（通常レビュー） |\n| ブランチ | `perf/immutable-blob-batch` |\n| 基点 | `6ab5736d148fff0d403d250f2a262ab426dde714`（main） |\n| reviewed_implementation_head | `a910aa2ecf5134ec900bfe3e980b5f5149169710` |\n| 対象tree | `c31ac3edb7e7833ac0febc61cba6cd20a0218f33` |\n| 差分 | 基点から対象HEADまで、18ファイル、3,162行追加・42行削除 |\n| 担当 | このPRの実装・修正を行っていないChatGPT通常レビュー担当。取得層の補助担当2名は静的読取のみ |\n| 保存形式 | 通常レビュー報告と引継ぎ。独立最終レビューのattestationではない |\n| 報告保存後のHEAD | このファイル自身のコミットSHAは生成時点では存在しないため、公開後のPRコメントへ記録する |\n\n公開PRと専用ワークツリーのHEADが一致することを、レビュー開始時と報告準備前に確認した。既存の作者ワークツリー、main、別PRのワークツリーは変更していない。今回、製品コード・製品テスト・設定・workflowの修正とmergeは行っていない。\n\n## 範囲と根拠\n\n対象は、PR本文と[実装報告](immutable-blob-batch-review-preparation-20261009.md)が定義するGit本文取得の高速化である。optionalな `readBlobs` / `readTextContents`、最大128 OID、引数予算、逐次デコード、同一OIDの重複除去、1 unique OIDの単件取得、パスごとのencoding、型付きサイズ超過だけのグループ再取得、キャンセル、子プロセス終了処理、Progressへの登録と同revisionのcache利用を確認した。\n\n[Issue #136](https://github.com/ssaattww/RevMem/issues/136)・[Issue #137](https://github.com/ssaattww/RevMem/issues/137)全体の症状解消、新しいユーザー向けtimeout設定、詳細operation診断、state repository/debounce/store/lock、GitHub lifecycle memo、UI coordinatorは今回の範囲外である。PR本文にある過去の性能測定を、このHEADやWindows実機の測定値として扱っていない。\n\n適用した主な根拠は、利用者のレビュー・診断成果物・時間依存CI除外・報告公開の指示、`AGENTS.md`、添付の `chatgpt-worker-skills 4.zip`、`chat-review-worker` → `work-context-manager` → `review-worker` → `report-writer` → `chat-handoff-manager` である。`development-orchestrator` の入口規約も確認し、今回の明示された通常レビュー範囲へ適用した。GitHub操作はプロジェクト指示に従い、接続先で `gh` を使用した。\n\n既存契約として、[恒久設計 §9](https://github.com/ssaattww/RevMem/blob/a910aa2ecf5134ec900bfe3e980b5f5149169710/doc/design/vscode-review-range-tracker-design.md#L350-L424)、同設計の個別I/Oに対するtimeout/retry契約、[PR再検出設計](https://github.com/ssaattww/RevMem/blob/a910aa2ecf5134ec900bfe3e980b5f5149169710/Design/Issue139PullRequestRediscovery.md)、`Design/BreakingChanges.md` のimmutable cache契約、`tasks/tasks-status.md`・`tasks/phases-status.md` のT302/T606/T607を照合した。\n\n## 必須指摘\n\n### I141-BATCH-001 / Medium — 実測時間を合否条件にするテストが必須CIへ入っている\n\n**起源:** introduced_by_change\n\n**状態:** 未修正\n\n**場所:** [transport test 883–889行](https://github.com/ssaattww/RevMem/blob/a910aa2ecf5134ec900bfe3e980b5f5149169710/test/unit/node-git-blob-batch-transport.test.ts#L883-L889)、同ファイル45–55行、[package.json 154行](https://github.com/ssaattww/RevMem/blob/a910aa2ecf5134ec900bfe3e980b5f5149169710/package.json#L154)。\n\n追加された `transport test harness fails finitely when a wait condition never occurs` は、実時間の25ms timeoutを待った後、`Date.now() - startedAt < 1_000` を検証する。このファイル全体が `test:unit` に登録され、CIのUnit tests段階で実行される。\n\n**実証:** 同じコンパイル済みテストを1件だけ指定すると成功（exit 0）。タイマーcallbackの直前に1度だけ1,100msの模擬的な実行停止を入れると、同じテストは次のassertで失敗した（exit 1、1件中1失敗）。\n\n```text\nAssertionError [ERR_ASSERTION]: a missing event must not leave a polling loop running\nactual: false\nexpected: true\n```\n\nこの追加検証は、実行遅延によって合否が変わることを示すための制御された実験であり、現在のhosted CIで自然発生した失敗の記録ではない。現在の対象HEADのCIは成功している。\n\n**影響:** 実装が正しくても実行機の負荷・一時停止によってCIが失敗する条件が残る。利用者が指定した「処理時間の計測など確定的でないテストをCIから除外し、開発中のみ使用する」方針に反する。\n\n**必要な対応:**\n\n- 時計・タイマーを制御する検証へ変更し、実測時間の上限を通常CIの合否条件から外す。\n- 実測する検証を残す場合は、既存の `test:timing-sensitive` 等、通常CIが呼ばない開発用経路へ分離する。\n- parser/transportの決定的な機能テストは必須検証に残し、登録とworkflowから時間依存テストが混入しないことを確認する。\n\n### I141-BATCH-002 / Medium — バッチのtimeoutが既存のエラー契約を失い、再試行されない\n\n**起源:** introduced_by_change\n\n**状態:** 未修正\n\n**場所:** [transport 219–227行](https://github.com/ssaattww/RevMem/blob/a910aa2ecf5134ec900bfe3e980b5f5149169710/src/adapters/local-git/node-git-blob-batch-transport.ts#L219-L227)、同ファイル323–362行、[既存の失敗分類](https://github.com/ssaattww/RevMem/blob/a910aa2ecf5134ec900bfe3e980b5f5149169710/src/application/operation-feedback/operation-feedback.ts#L324-L371)、[Progressの呼出し](https://github.com/ssaattww/RevMem/blob/a910aa2ecf5134ec900bfe3e980b5f5149169710/src/composition/pull-request/pull-request-review-runtime-base.ts#L701-L790)。\n\n新しいtransportは要求・EOF・closeの期限切れを、`new Error(timeoutMessage)` で返す。既存の失敗分類がGit timeoutとして再試行可能とするのは、`GitCommandFailedError` の `result.exitCode === -1` 等であり、今回の通常Errorは `permanent` になる。LocalGitと構成層は、この例外を再分類せず上位へ返す。\n\n恒久設計§9.5は、metadata/blobのtimeoutでinvocation・取得済み出力・stderrを保持する `GitCommandFailedError` とsynthetic exit code `-1` を要求する。基点の単件readerはこの形式を返す。\n\n**実証:** 実際の `NodeGitBlobBatchTransport` にfake childと手動タイマーを注入し、2 OIDの要求timeoutを発火させた。取得した実Errorを、実際の `classifyOperationFailure` / `runWithBoundedRetry(maxAttempts: 3)` へ渡した。比較側は既存単件timeout契約のErrorを構成した。\n\n| 入力 | 分類 | 試行回数 | 2回目は成功する処理の結果 |\n|---|---|---:|---|\n| 実transportが返したbatch timeout | permanent | 1 | rejected |\n| 既存単件timeout契約のGitCommandFailedError / exitCode -1 | retryable | 2 | recovered |\n\nbatch側のmessageは `Git cat-file batch request timed out after 30000 ms`。callback 0回、SIGTERM 1回、残存する手動タイマー0件も確認した。実時間で30秒待つ検証ではない。\n\n**影響:** バッチに入る複数OIDの取得で一時的なtimeoutが発生すると、最大3回の再試行が設定されていても1回でPR Progressが失敗する。単件取得との動作差が生じる。\n\n**必要な対応:**\n\n- バッチのtimeoutでも、既存設計§9.5に沿ったGit failure形式・exit code・診断情報を保持し、既存の分類で `retryable` となるようにする。\n- キャンセル・壊れたプロトコル・通常の非0終了などの異なる失敗を一律に再試行可能へ変更しない。\n- 実transportの要求/EOF/close期限と構成層の再試行を結ぶ、手動タイマーによる回帰検証を追加する。1回目timeout・2回目成功で回復し、キャンセルと恒久失敗が再試行されないことも確認する。\n\n### I141-BATCH-003 / Medium — 親ディレクトリと子ファイルの同時指定が単件APIと一致しない\n\n**起源:** introduced_by_change\n\n**状態:** 未修正。静的候補 `PR141-LG-C01` を実Gitで確認した上で、このfinding IDを付与した。\n\n**場所:** [LocalGit 93–105行](https://github.com/ssaattww/RevMem/blob/a910aa2ecf5134ec900bfe3e980b5f5149169710/src/adapters/local-git/local-git-adapter.ts#L93-L105)、[276–291行](https://github.com/ssaattww/RevMem/blob/a910aa2ecf5134ec900bfe3e980b5f5149169710/src/adapters/local-git/local-git-adapter.ts#L276-L291)、[追加された実Git比較テスト](https://github.com/ssaattww/RevMem/blob/a910aa2ecf5134ec900bfe3e980b5f5149169710/test/integration/local-git-adapter.integration.test.ts#L580-L639)。\n\n追加テストは親 `nested` と子 `nested/tracked.txt` を同時に取得し、各パスを単件取得したMapと一致することを要求している。ただし、親の中にはこの子ファイルしか作っていない。\n\n**実証:** 接続先のGit `2.46.0.windows.1` で、`nested/tracked.txt` と `nested/other.txt` を持つ合成リポジトリを作成した。親と子を同じ `ls-tree` に指定すると、Gitは次の両方を返した。\n\n```text\nnested/other.txt\nnested/tracked.txt\n```\n\n新しいparserは未要求の `nested/other.txt` に対して `git ls-tree output does not match a requested exact path` を投げ、一括要求全体が失敗した。\n\n| 呼出し | 実際の結果 |\n|---|---|\n| 単件 `nested` | missing-file |\n| 単件 `nested/tracked.txt` | found、本文 `tracked\\n` |\n| 一括 `[nested, nested/tracked.txt]` | Errorで拒否 |\n\n**影響:** 公開されている追加のLocalGitメソッドで、単件取得との互換性を失う。正常な子ファイルも取得できない。通常のPR Progressから親ディレクトリdescriptorが混入する経路は、このレビューでは確認しておらず、通常UIでの発生を断定しない。\n\n**必要な対応:**\n\n- 親・子の同時指定でも、各要求パスを単件取得したときと同じ結果を返すように、metadata取得と検査を調整する。\n- 未要求の兄弟ファイル・さらに深い子を含む実Git fixtureで、親はmissing-file、要求した子はfoundとなることを検証する。\n- literal path、特殊文字、壊れたmetadata、パスごとのencodingに対する既存の検証境界を維持する。\n\n## 検証結果と環境\n\n検証場所はRDMCPの接続先Windows（node_id `local`）。プロセスのshellは `C:\\WINDOWS\\system32\\cmd.exe`。レビュー対象は `C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009` のdetached HEADである。\n\nレビュー対象からtracked file 1,577件を作業用領域へコピーし、製品ソースに出力を書き込まず検証した。コピー時のsource manifest SHA-256は `a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e`。既存の依存は `revmem-enoent-design/node_modules` の実体を参照し、新規依存の追加・global install・認証や機械設定の変更はしていない。作者側と対象側のlockfile SHA-256が `77112e133928664383d0ddaf18dccf076bec5f55d7afe7720d55a1946f7c085f` で一致することを確認した。\n\n| 検証 | 結果 |\n|---|---|\n| Node / TypeScript / Git | v24.20.0 / 6.0.3 / 2.46.0.windows.1 |\n| `tsc -p validation-source/tsconfig.test.json --outDir compiled` | exit 0 |\n| 変更関連7ファイルの `node --test` | 130件、125成功、0失敗、5 skip、exit 0 |\n| timeout再試行probe | バッチ1回失敗・既存単件契約2回で回復を確認 |\n| 親子パスprobe | 単件成功/欠落に対してbatch全体の例外を確認 |\n| 時間依存テスト1件、模擬停止なし | exit 0 |\n| 同テスト1件、1度だけ1,100msの模擬停止あり | assert失敗、exit 1 |\n| probe全体の実行 | exit 0（各観測を保存する検証scriptの終了値。模擬停止時テストのexit 1は別に保持） |\n\n変更関連7ファイルは、parser、batch transport、LocalGit、single reader、T405 runtime、T606実composition、LocalGit実Git統合である。5 skipはWindowsで実行しないPOSIX signal fixture。今回のWindows検証でPOSIX signalの成功を主張しない。\n\n生の標準出力・標準エラー・結果JSON・source manifest・再現scriptは、接続先の `C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/` に保存した。\n\n- `validation-identity.json`、`source-manifest.json`\n- `compile-test.stdout.log`、`compile-test.stderr.log`、`compile-test.result.json`\n- `focused-review.stdout.log`、`focused-review.stderr.log`、`focused-review.result.json`\n- `review-probes.cjs`、`review-probes.stdout.log`、`review-probes.stderr.log`、`review-probes.result.json`\n- `timing-control.*`、`timing-scheduler-pause.*`\n\n準備時、PowerShellが `npm.ps1` を拒否し、別の読取コマンドでは `Get-FileHash` が利用できなかった。これは製品テスト失敗ではない。標準の `npm.cmd`、Node、RDMCP転送のhash検証を使用し、実行ポリシーの変更は行っていない。ソース取得・検証開始前のTodo期限切れ拒否2回は、進捗更新後に未実行操作だけを実行した。\n\n## CIと診断成果物\n\n対象HEAD `a910aa2ecf5134ec900bfe3e980b5f5149169710` に一致する実行だけを確認した。\n\n| イベント | run | 結果 |\n|---|---|---|\n| pull_request | [37938466844](https://github.com/ssaattww/RevMem/actions/runs/37938466844) | success |\n| push | [37938461409](https://github.com/ssaattww/RevMem/actions/runs/37938461409) | success |\n\nPR runのjob `113846440613` はbuild、型検査、architecture正負、lint、unit、各登録済み回帰、Git/GitHub統合、Extension Host、VSIX生成/manifest検証/成果物uploadまで成功している。\n\n[ci.yml](https://github.com/ssaattww/RevMem/blob/a910aa2ecf5134ec900bfe3e980b5f5149169710/.github/workflows/ci.yml) は `tools/run-ci-command.mjs` でstdout・stderr・combined log・exitを持つresult JSONを保存し、失敗時に環境・生成物・source等を含む `ci-failure-diagnostics-${run_id}-${run_attempt}` をuploadする。必要な診断workflowは既存のため変更不要だった。成功したPR runでは失敗時成果物段階はskipし、user validation artifactのuploadは成功している。成果物IDや内容のダウンロードは今回未実施。\n\n旧HEAD `fcd2b423...` の失敗runを、このHEADの結果として代用していない。報告追加後の別HEADのCI状態は公開後にPRコメントへ別記し、この表の成功を自動的に転用しない。\n\n## 変更ファイルと確認範囲\n\n| ファイル | 主な確認 |\n|---|---|\n| `package.json` | test:unit追加登録、timing-sensitiveとの分離 |\n| `reports/immutable-blob-batch-review-preparation-20261009.md` | 範囲、検証件数の位置付け、過去測定と今回未実施の区別 |\n| `src/adapters/local-git/cat-file-batch-parser.ts` | OID・型・サイズ・ヘッダー上限・LF・EOF・応答件数 |\n| `src/adapters/local-git/git-blob-reader.ts` | optional API、型付きサイズ超過 |\n| `src/adapters/local-git/index.ts` | exportと既存factory |\n| `src/adapters/local-git/local-git-adapter.ts` | literal path、128件/引数制限、重複OID、encoding、fallback、abort |\n| `src/adapters/local-git/node-git-blob-batch-transport.ts` | 逐次要求、backpressure、期限、TERM/KILL、遅延error、購読解除 |\n| `src/adapters/local-git/node-git-blob-reader.ts` | 基点差分、既存single契約と中断時cleanup |\n| `src/composition/pull-request/pull-request-review-runtime-base.ts` | revision別prefetch、cache、世代/登録一致、Tree公開 |\n| `src/composition/pull-request/pull-request-review-runtime.ts` | batch取得の進捗報告と既存公開経路 |\n| `src/composition/review-contexts/review-contexts-runtime.ts` | production登録、local/remote順序、逐次remote fallback、例外伝播 |\n| `test/integration/local-git-adapter.integration.test.ts` | 実Git、単件比較、特殊path、link・gitlink・tree |\n| `test/unit/cat-file-batch-parser.test.ts` | 任意chunk境界、欠落/過剰/破損フレーム |\n| `test/unit/local-git-adapter.test.ts` | 引数予算、129 OID、encoding、oversize、遅延decode、abort |\n| `test/unit/node-git-blob-batch-transport.test.ts` | 手動clock、終了競合、backpressure、購読、時間依存assert |\n| `test/unit/node-git-blob-reader.test.ts` | 既存readerのtimeout・部分出力保持・中断と終了処理・spawn失敗競合 |\n| `test/unit/t405-pull-request-review-runtime.test.ts` | batch呼出しとcache利用、既存PR状態/登録競合 |\n| `test/unit/t606-r6-real-composition.test.ts` | 実compositionのbatch登録、local/remote結果順、remote同時数1 |\n\n直接依存として、LocalGitのcontracts/runtime factory/executor、repository path validator、revision text source、operation-feedbackの分類/再試行、PR登録・revision cache・line reviewability・公開世代管理を追跡した。PR再検出のGitHub adapterと選択identityの実装は今回の差分に含まれず、関連するsourceと設計の継続性および対象HEADのCIを確認した。\n\n## Coverage dispositionsと限界\n\n| 必須観点 | disposition | 根拠 |\n|---|---|---|\n| 要求・設計適合 | checked_finding | I141-BATCH-001/002/003 |\n| 正しさ・境界条件 | checked_finding | I141-BATCH-002/003、実probe |\n| 範囲逸脱 | checked_no_finding | 高速化と関連テスト・報告に限定 |\n| 変更ファイルと直接依存 | checked_finding | 18ファイルと呼出し先、上記指摘 |\n| API・互換性・設定 | checked_finding | optional互換は確認、timeout/親子pathに指摘。依存/設定追加なし |\n| エラー・診断 | checked_finding | I141-BATCH-002。failure artifactは既存 |\n| セキュリティ・秘密情報 | checked_no_finding | immutable OID、canonical/literal path、shell:false、上位の既存秘匿境界 |\n| テスト・検証の妥当性 | checked_finding | I141-BATCH-001、正常検証と追加probeを分離 |\n| current HEADのCI | checked_no_finding | 両runのhead SHA一致とsuccess |\n| 報告・文書・追跡 | checked_no_finding | 旧性能測定/今回未測定を区別。PR専用task IDは未確認、対象はPRで確定 |\n| 回帰・保守性 | checked_finding | I141-BATCH-002/003。共通validator等の再利用は確認 |\n\n保留事項は、現在main対この候補の性能再測定、物理VS Code UIでの受入、Windowsから実行できないPOSIX signal fixtureである。性能・実機UIの確認は実装担当/利用者の後続確認事項とし、この高速化限定レビューで完了したとは扱わない。対象HEADのhosted Extension Host成功と、物理実機UI確認は別の証拠である。\n\n初期実装の「自然な仕様red→green」の実施順序は、今回読んだ公開報告・コミットから確認できない。今回の追加検証を作者のTDD red証拠へ読み替えない。未確認事項を成功へ転換せず、通常レビューの判定は必須指摘3件に基づくfailとする。\n\n## 修正後に必要な引継ぎ\n\n実装担当へI141-BATCH-001/002/003を一括で返す。修正・適切な回帰検証・詳細報告・対象コミットの公開後、この通常レビュー担当へfix verificationを依頼する。各findingについて、要求した対応、production path、実composition/実Git fixture、該当HEADのfocused evidenceを示すこと。現在の指摘IDとMediumの重大度を保持する。\n\n完全な構造化引継ぎは [handoffs/immutable-blob-batch-review-20261009.json](../handoffs/immutable-blob-batch-review-20261009.json) に保存する。独立最終レビューとmergeは今回実施していない。\n",
+        "evidence_sources": [
+          "Current request: revmem #141 レビュー",
+          "Project instructions supplied with the review context",
+          "Project testing and diagnostics instructions",
+          "AGENTS.md; repository-resolved CodexSkill/skills/development-orchestrator/SKILL.md",
+          "Attached chatgpt-worker-skills 4.zip and installed chat-review-worker/work-context-manager/review-worker/report-writer/chat-handoff-manager",
+          "https://github.com/ssaattww/RevMem/pull/141",
+          "reports/immutable-blob-batch-review-preparation-20261009.md",
+          "doc/design/vscode-review-range-tracker-design.md §9.1–9.5 (350–424)",
+          "Design/BreakingChanges.md around line 107",
+          "Design/Issue139PullRequestRediscovery.md; issue #139; PR #140",
+          "tasks/tasks-status.md; tasks/phases-status.md T302/T606/T607",
+          "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/compile-test.result.json; stdout/stderr logs",
+          "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/focused-review.result.json; stdout log: 130 tests, 125 pass, 0 fail, 5 skip",
+          "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/review-probes.result.json; all observations retained",
+          "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/timing-control.*; intentional controlled scheduling experiment",
+          "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/timing-scheduler-pause.*; intentional controlled scheduling experiment",
+          "Both a910aa2..., branch perf/immutable-blob-batch, base6ab..., OPEN; clean worktree immediately before report generation.",
+          "https://github.com/ssaattww/RevMem/actions/runs/37938466844",
+          "https://github.com/ssaattww/RevMem/actions/runs/37938461409"
+        ],
+        "target_identity": {
+          "branch": "perf/immutable-blob-batch",
+          "base_ref": "6ab5736d148fff0d403d250f2a262ab426dde714",
+          "current_head": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+          "reviewed_implementation_head": "a910aa2ecf5134ec900bfe3e980b5f5149169710"
+        },
+        "verification": {
+          "capability": "local_execution_available",
+          "technical_head": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+          "administrative_parent": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+          "commit_state": "commit_pending",
+          "push_state": "push_pending",
+          "ci_wait_state": "ci_wait_completed"
+        },
+        "execution_environment": {
+          "kind": "connected_computer",
+          "tool": "RemoteDesktopMCP (RDMCP); GitHub operations through gh on connected computer",
+          "machine_id": "local",
+          "connection": "available",
+          "os": "Windows",
+          "shell": "C:/WINDOWS/system32/cmd.exe",
+          "working_directory": "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009",
+          "repository": "ssaattww/RevMem",
+          "branch": "perf/immutable-blob-batch",
+          "head_sha": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+          "source_state": "clean",
+          "source_fingerprint": "git-tree:c31ac3edb7e7833ac0febc61cba6cd20a0218f33; tracked-copy-manifest-sha256:a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e",
+          "ownership": "current_task",
+          "writable_paths": [
+            "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/reports/immutable-blob-batch-review-20261009.md",
+            "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009/handoffs/immutable-blob-batch-review-20261009.json",
+            "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009"
+          ],
+          "dependencies": [
+            {
+              "name": "Node",
+              "status": "available",
+              "evidence": "v24.20.0; actual compile and node --test completed on connected computer."
+            },
+            {
+              "name": "npm",
+              "status": "available",
+              "evidence": "11.19.0 via npm.cmd; no execution-policy change."
+            },
+            {
+              "name": "TypeScript",
+              "status": "available",
+              "evidence": "6.0.3 from existing dependency tree."
+            },
+            {
+              "name": "Git",
+              "status": "available",
+              "evidence": "2.46.0.windows.1; synthetic parent-child fixture executed."
+            },
+            {
+              "name": "project node_modules",
+              "status": "available",
+              "evidence": "Existing C:/Users/donabe/RemoteDesktopWorkspace/revmem-enoent-design/node_modules reused through a junction outside reviewed source. Author/target package-lock SHA-256 both 77112e133928664383d0ddaf18dccf076bec5f55d7afe7720d55a1946f7c085f."
+            },
+            {
+              "name": "gh",
+              "status": "available",
+              "evidence": "PR identity and CI jobs read successfully using project-required route."
+            }
+          ],
+          "evidence": [
+            "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/validation-identity.json",
+            "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/source-manifest.json",
+            "Dedicated detached worktree created by this review. Original author worktrees and unrelated worktrees not modified.",
+            "Public PR HEAD and own worktree HEAD matched, git status clean immediately before report generation. Machine session credentials are deliberately not transported."
+          ]
+        },
+        "independent_closure": {
+          "initial_independent_reviewed_head": null,
+          "closure_reviewed_heads": [],
+          "reviewer_continuity": null,
+          "closure_scope": [],
+          "completeness_matrix": []
+        },
+        "severity_records": [
+          {
+            "finding_id": "I141-BATCH-001",
+            "source_severity": "medium",
+            "new_severity": null,
+            "reason": null,
+            "approved_by": null,
+            "record_type": "preserved"
+          },
+          {
+            "finding_id": "I141-BATCH-002",
+            "source_severity": "medium",
+            "new_severity": null,
+            "reason": null,
+            "approved_by": null,
+            "record_type": "preserved"
+          },
+          {
+            "finding_id": "I141-BATCH-003",
+            "source_severity": "medium",
+            "new_severity": null,
+            "reason": null,
+            "approved_by": null,
+            "record_type": "preserved"
+          }
+        ],
+        "persistence": {
+          "mode": "repository_file",
+          "reserved_paths": [],
+          "report_attestation_head": null
+        },
+        "concise_pr_comment_body": null,
+        "unresolved_discrepancies": []
+      }
+    }
+  ],
+  "extensions": [
+    {
+      "namespace": "revmem.review.raw_validation_identity",
+      "payload": {
+        "sourceHead": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+        "sourceTree": "c31ac3edb7e7833ac0febc61cba6cd20a0218f33",
+        "sourceDirectory": "C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009",
+        "snapshot": "C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\validation-source",
+        "compiled": "C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled",
+        "dependencies": "C:\\Users\\donabe\\RemoteDesktopWorkspace\\revmem-enoent-design\\node_modules",
+        "dependencyLockSha256": "77112e133928664383d0ddaf18dccf076bec5f55d7afe7720d55a1946f7c085f",
+        "node": "v24.20.0",
+        "typescript": "6.0.3",
+        "git": "git version 2.46.0.windows.1",
+        "platform": "win32",
+        "sourceState": "clean",
+        "copiedFileCount": 1577,
+        "contentManifestSha256": "a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e"
+      }
+    },
+    {
+      "namespace": "revmem.review.raw_probe_results",
+      "payload": {
+        "sourceHead": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+        "sourceManifest": "a41be6724e6ba4ecb87ed955bb501c666dae97689498ee0b0a86623689bb517e",
+        "results": [
+          {
+            "kind": "timeout-retry-probe",
+            "rows": [
+              {
+                "label": "actual-batch-timeout",
+                "errorName": "Error",
+                "message": "Git cat-file batch request timed out after 30000 ms",
+                "classification": {
+                  "kind": "permanent"
+                },
+                "attempts": 1,
+                "result": "rejected"
+              },
+              {
+                "label": "existing-single-timeout-contract",
+                "errorName": "GitCommandFailedError",
+                "message": "Git command failed with exit code -1: cat-file blob aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "classification": {
+                  "kind": "retryable"
+                },
+                "attempts": 2,
+                "result": "recovered"
+              }
+            ],
+            "callbacks": 0,
+            "signals": [
+              "SIGTERM"
+            ],
+            "pendingTimers": 0
+          },
+          {
+            "kind": "parent-child-path-probe",
+            "git": "git version 2.46.0.windows.1",
+            "revision": "e02b530718929d067e81ba501890f47eb135924e",
+            "lsTreeRecords": [
+              "100644 blob e45c9c2666d44e0327c1f9c239a74c508336053e\tnested/other.txt",
+              "100644 blob 93a9e06d23ffb27541048940052c7a076c7a195a\tnested/tracked.txt"
+            ],
+            "singleParent": {
+              "kind": "missing-file"
+            },
+            "singleChild": {
+              "kind": "found",
+              "content": "tracked\n"
+            },
+            "batch": {
+              "kind": "rejected",
+              "name": "Error",
+              "message": "git ls-tree output does not match a requested exact path"
+            }
+          },
+          {
+            "kind": "timing-control",
+            "command": "C:\\Program Files\\nodejs\\node.exe",
+            "args": [
+              "--test",
+              "--test-name-pattern=^transport test harness fails finitely when a wait condition never occurs$",
+              "C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\node-git-blob-batch-transport.test.js"
+            ],
+            "sourceHead": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+            "startedAt": "2026-10-09T14:09:47.071Z",
+            "finishedAt": "2026-10-09T14:09:47.293Z",
+            "exitCode": 0,
+            "signal": null,
+            "summary": [],
+            "stderr": ""
+          },
+          {
+            "kind": "timing-scheduler-pause",
+            "command": "C:\\Program Files\\nodejs\\node.exe",
+            "args": [
+              "--require",
+              "C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\scheduler-pause-probe.cjs",
+              "--test",
+              "--test-name-pattern=^transport test harness fails finitely when a wait condition never occurs$",
+              "C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\node-git-blob-batch-transport.test.js"
+            ],
+            "sourceHead": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+            "startedAt": "2026-10-09T14:09:47.294Z",
+            "finishedAt": "2026-10-09T14:09:48.595Z",
+            "exitCode": 1,
+            "signal": null,
+            "summary": [],
+            "stderr": ""
+          }
+        ]
+      }
+    },
+    {
+      "namespace": "revmem.review.raw_focused_result",
+      "payload": {
+        "label": "focused-review",
+        "command": "C:\\Program Files\\nodejs\\node.exe",
+        "args": [
+          "--test",
+          "C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\cat-file-batch-parser.test.js",
+          "C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\node-git-blob-batch-transport.test.js",
+          "C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\local-git-adapter.test.js",
+          "C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\node-git-blob-reader.test.js",
+          "C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\t405-pull-request-review-runtime.test.js",
+          "C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\unit\\t606-r6-real-composition.test.js",
+          "C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\compiled\\test\\integration\\local-git-adapter.integration.test.js"
+        ],
+        "cwd": "C:\\Users\\donabe\\RemoteDesktopWorkspace\\review-artifacts\\pr141-review-20261009\\validation-source",
+        "sourceHead": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+        "startedAt": "2026-10-09T14:06:26.513Z",
+        "finishedAt": "2026-10-09T14:06:54.513Z",
+        "exitCode": 0,
+        "signal": null
+      }
+    },
+    {
+      "namespace": "revmem.review.ci_snapshot",
+      "payload": {
+        "technical_head": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+        "runs": [
+          {
+            "run_id": 37938466844,
+            "event": "pull_request",
+            "conclusion": "success",
+            "url": "https://github.com/ssaattww/RevMem/actions/runs/37938466844"
+          },
+          {
+            "run_id": 37938461409,
+            "event": "push",
+            "conclusion": "success",
+            "url": "https://github.com/ssaattww/RevMem/actions/runs/37938461409"
+          }
+        ],
+        "pr_job_id": 113846440613,
+        "normal_steps": "All successful including Extension Host, VSIX packaging/manifest/upload",
+        "failure_only_steps": "Skipped because run succeeded",
+        "artifact_id_and_download": "not_observed",
+        "post_report_commit_ci": "Not yet available at packet generation. Do not apply technical-head CI success to a later SHA."
+      }
+    },
+    {
+      "namespace": "revmem.review.failure_contract_source",
+      "payload": "[Reading 76 lines from line 350 (total: 1284 lines, 858 remaining)]\n\n\n## 9. Local Git content取得\n\n### 9.1 Runtime構成\n\nmetadata commandとblob commandは同一runtime optionsから構成する。\n\n- `executable`: 全Git subprocessで同じ値\n- `timeoutMs`: 全Git subprocessで同じ値\n- `maxBufferBytes`: 旧呼出元とのsource compatibilityだけのdeprecated option。runtimeの出力上限には使用しない\n\nmetadata command、complete diff、blob commandのstdout/stderrはpipeから逐次消費し、`execFile.maxBuffer`へ全量を預けない。text resultが必要なcommandはprocess close後に取得済みchunkを完全な文字列へ結合し、blobはraw byte sequenceとして扱う。したがって4 MiBを超えるPR差分・revision差分・metadata出力を固定child-process bufferだけを理由に失敗させない。\n\nNode Extension Hostでは共通factoryからmetadata executorとblob readerを生成する。portable Git、絶対path指定、Remote、Container環境で、metadataだけ設定済みGitを使いblobだけPATH上の別Gitを使う状態を禁止する。\n\n`LocalGitAdapter`を直接構築する場合は、`GitCommandExecutor`と`GitBlobReader`の両方を明示注入する。blob readerの暗黙既定値を持たせない。Node runtimeのproduction wiringは共通factoryだけを使用し、低水準classの直接構築はtestまたは代替runtime adapterに限定する。\n\n### 9.2 Commit確認\n\n```bash\ngit rev-parse --verify --quiet <full-object-id>^{commit}\n```\n\n- exit 0かつ出力IDが入力と一致: 利用可能\n- exit 1: `missing-revision`\n- その他: 診断情報を保持したGit failure\n\nexit 128を一律missingへ変換しない。\n\n### 9.3 Exact path確認\n\n```bash\ngit ls-tree --full-tree -z <commit-id> -- :(literal)<repository-path>\n```\n\n- exit 0、出力なし: `missing-file`\n- exit 0、exact pathのblob 1件: blob object IDを使用\n- treeまたはsubmodule: `missing-file`\n- 複数件、path不一致、壊れた出力: adapter failure\n- 非0 exit: Git failure\n\nNUL終端で解析し、newlineを含むPOSIX pathを行分割しない。pathspecはliteral指定とする。\n\n### 9.4 Blob本文とencoding\n\n```bash\ngit cat-file blob <blob-id>\n```\n\nstdoutをraw byte streamとして取得し、blob本文へ`execFile.maxBuffer`を適用しない。4 MiBを超える通常textも取得可能とする。\n\nbinary判定はdecodeより先に行う。binaryであれば本文をtextへ変換せず`binary`として行単位レビュー対象外にする。\n\nVS Code 1.125以降で開かれたfilesystem-backed `TextDocument`には、そのfileの`encoding`をhintとして保持する。live document本文は同一documentの`getText()`を使用する。Git revisionのcomplete raw byte sequenceは、対応するhintがありVS Codeが受理する場合だけ、同じhintを指定したVS Code `workspace.decode`で1回だけdecodeする。UTF-8 BOMはこのhintを通じてVS Codeのdecode結果に従う。これにより同じrepository内でShift-JIS、UTF-8、UTF-8 BOMが混在してもfileごとに独立してrevision mappingできる。\n\nopened documentのhintがないfileは、従来どおりfatal UTF-8 decoderで1回だけdecodeする。この保守的fallbackはunknown fileを推測して別encodingへdecodeしないための境界であり、Shift-JIS等のhintなしfileをreplacement characterへ変換して対象化してはならない。hintがunsupported、または指定decoderでraw byte列が完全にdecodeできない場合は`unsupported-encoding`または`invalid-encoding`とし、当該fileだけを行単位レビュー対象外またはunresolvedとして隔離する。いずれの場合も他fileのmapping、Review Contexts、PR進捗、Global集計を失敗させない。\n\nhintはrepository identityとstable file identityに結び付ける。一意なrenameまたはmoveでidentityを保持できるときだけ引き継ぎ、copy、new file、分割、統合、複数候補renameには引き継がない。document encodingまたは対応設定が変化した場合は、旧hintのdecoded text、content hash、line mappingを使用せず対象fileを再計算する。restart後はopen documentから再観測するまでhintを使わない。source本文、path、credential、encoding名を含む個別diagnosticをOutput logへ出してはならない。\n\nGit objectから再取得可能な本文には固定の4 MiB上限を設けない。巨大入力の追加制御は性能計測に基づいて定義する。\n\n### 9.5 Process failure contract\n\nmetadata commandとblob commandのtimeoutは、いずれもinvocation、streamから取得済みのpartial stdout、stderrを保持する`GitCommandFailedError`として返す。timeout時のsynthetic exit codeは`-1`とし、設定されたtimeout値をdiagnosticへ含める。\n\n全Git subprocessはstdout/stderrをpipeで消費し、processの`close` eventで終了を確定する。timeout時も終了処理中に到着したchunkをdiagnosticへ追加し、固定buffer超過をtimeoutやGit failureへ読み替えない。\n\nblob commandがtimeoutした場合は、まずSIGTERMを送信し、その後もstdoutとstderrの収集を継続する。通常経路ではprocessのclose eventを待ってからfailureを確定し、timeoutまでに得た出力と終了処理中の出力を同じdiagnosticへ含める。\n\nSIGTERM後もtermination grace内にclose eventが発生しない場合はSIGKILLへ段階的に移行する。`child.kill()`が`false`を返した場合は送信失敗をdiagnosticへ記録し、close eventを待ちながら次の段階へ進む。SIGKILL後もgrace内にclose eventがない場合だけ、streamを破棄してchildをunrefし、process lifecycleが完了しなかった事実を含むbounded failureを返す。SIGTERMを無視するprocess、signal送信失敗、実際の終了signalを区別して記録する。\n\nGit executableが起動できない場合だけ`GitExecutableNotFoundError`として区別する。通常の非0 exitはmetadata commandではresultとしてadapterへ返し、adapterがmissingとfatalを分類する。blob commandの非0 exitは直接`GitCommandFailedError`とする。\n\n## 10. 変更追従\n\n### 10.1 編集イベント"
+    },
+    {
+      "namespace": "revmem.review.setup_diagnostics",
+      "payload": [
+        "PowerShell npm.ps1 execution-policy refusal; used npm.cmd, no policy change.",
+        "Get-FileHash unavailable; successful archive creation was retained, used transfer hashes and Node hashing.",
+        "Todo stale rejection occurred twice before operation execution; updated progress then executed previously unexecuted calls. Enforcement unchanged.",
+        "One helper's redundant late local search was interrupted; root confirmed affected composition path. No unresolved blocker."
+      ]
+    },
+    {
+      "namespace": "revmem.review.archive_identity",
+      "payload": {
+        "reviewed_archive_sha256": "f5abd9af264e55d6dd623b55b6bf8ecb215de7bca117881da913fe8fb4d4f32f",
+        "reviewed_archive_commit": "a910aa2ecf5134ec900bfe3e980b5f5149169710",
+        "base_archive_sha256": "5fadc77e2eafd0d15d4d58255e9ab53bab22ebe922f4738662e28c553b627b4f",
+        "base_archive_commit": "6ab5736d148fff0d403d250f2a262ab426dde714"
+      }
+    },
+    {
+      "namespace": "revmem.review.transport_proof",
+      "payload": {
+        "report_path": "reports/immutable-blob-batch-review-20261009.md",
+        "handoff_path": "handoffs/immutable-blob-batch-review-20261009.json",
+        "publication_pending": true,
+        "encoding": "UTF-8 with BOM",
+        "reproduction_script_path": "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/review-probes.cjs",
+        "reproduction_script_sha256": "545896f73c3b3aef73b3ba1a8b925a254b05b63059a847ecac14536b9fe67f5a",
+        "validation_preparer_sha256": "f2a6cb5198d3cd1daeac184b096421354c1b8d46b809bdaa8f34837dded3b927",
+        "local_paths_are_uploaded_artifacts": false
+      }
+    },
+    {
+      "namespace": "revmem.review.reproduction_scripts",
+      "payload": {
+        "prepare-review-validation.cjs": "const fs = require('node:fs');\nconst path = require('node:path');\nconst cp = require('node:child_process');\nconst crypto = require('node:crypto');\nconst repo = 'C:/Users/donabe/RemoteDesktopWorkspace/revmem-pr141-review-20261009';\nconst evidence = 'C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009';\nconst owner = 'C:/Users/donabe/Documents/Codex/2026-10-09/task/revmem-blob-batch-review';\nconst expectedHead = 'a910aa2ecf5134ec900bfe3e980b5f5149169710';\nconst snapshot = path.join(evidence, 'validation-source');\nconst compiled = path.join(evidence, 'compiled');\nconst git = (...args) => cp.execFileSync('git', ['-C', repo, ...args], {encoding: 'utf8'}).trim();\nconst digest = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');\nconst record = (label, command, args, cwd) => {\n  const startedAt = new Date().toISOString();\n  const result = cp.spawnSync(command, args, {cwd, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, timeout: 180000, windowsHide: true});\n  fs.writeFileSync(path.join(evidence, label + '.stdout.log'), result.stdout || '');\n  fs.writeFileSync(path.join(evidence, label + '.stderr.log'), result.stderr || '');\n  const outcome = {label, command, args, cwd, sourceHead: expectedHead, startedAt, finishedAt: new Date().toISOString(), exitCode: result.status, signal: result.signal, error: result.error?.message};\n  fs.writeFileSync(path.join(evidence, label + '.result.json'), JSON.stringify(outcome, null, 2));\n  console.log(JSON.stringify(outcome));\n  if (result.status !== 0) { console.log((result.stdout || '').slice(-4000)); console.error((result.stderr || '').slice(-4000)); }\n  return result.status === 0;\n};\nif (git('rev-parse', 'HEAD') !== expectedHead || git('status', '--porcelain=v1') !== '') throw new Error('Reviewed source identity changed');\nconst lock = fs.readFileSync(path.join(repo, 'package-lock.json'));\nconst ownerLock = fs.readFileSync(path.join(owner, 'package-lock.json'));\nif (digest(lock) !== digest(ownerLock)) throw new Error('Existing dependency lock does not match reviewed source');\nconst dependencies = fs.realpathSync(path.join(owner, 'node_modules'));\nif (!fs.existsSync(path.join(dependencies, 'typescript', 'bin', 'tsc'))) throw new Error('TypeScript dependency unavailable');\nif (fs.existsSync(snapshot)) throw new Error('Validation snapshot already exists; do not overwrite');\nfs.mkdirSync(snapshot);\nconst manifest = [];\nconst contentHash = crypto.createHash('sha256');\nconst names = cp.execFileSync('git', ['-C', repo, 'ls-files', '-z'], {encoding: 'utf8'}).split('\\0').filter(Boolean).sort();\nfor (const name of names) {\n  const sourcePath = path.join(repo, name);\n  const bytes = fs.readFileSync(sourcePath);\n  const target = path.join(snapshot, name);\n  fs.mkdirSync(path.dirname(target), {recursive: true});\n  fs.writeFileSync(target, bytes);\n  const fileHash = digest(bytes);\n  manifest.push({path: name, bytes: bytes.length, sha256: fileHash});\n  contentHash.update(name + '\\0' + fileHash + '\\n');\n}\nif (git('rev-parse', 'HEAD') !== expectedHead || git('status', '--porcelain=v1') !== '') throw new Error('Reviewed source changed while copying');\nfs.symlinkSync(dependencies, path.join(evidence, 'node_modules'), 'junction');\nconst identity = {sourceHead: expectedHead, sourceTree: git('rev-parse', 'HEAD^{tree}'), sourceDirectory: repo, snapshot, compiled, dependencies, dependencyLockSha256: digest(lock), node: process.version, typescript: JSON.parse(fs.readFileSync(path.join(dependencies, 'typescript', 'package.json'))).version, git: cp.execFileSync('git', ['--version'], {encoding: 'utf8'}).trim(), platform: process.platform, sourceState: 'clean', copiedFileCount: names.length, contentManifestSha256: contentHash.digest('hex')};\nfs.writeFileSync(path.join(evidence, 'validation-identity.json'), JSON.stringify(identity, null, 2));\nfs.writeFileSync(path.join(evidence, 'source-manifest.json'), JSON.stringify(manifest, null, 2));\nconsole.log(JSON.stringify(identity));\nif (!record('compile-test', process.execPath, [path.join(dependencies, 'typescript', 'bin', 'tsc'), '-p', path.join(snapshot, 'tsconfig.test.json'), '--outDir', compiled], snapshot)) process.exit(1);\nconst tests = ['unit/cat-file-batch-parser.test.js', 'unit/node-git-blob-batch-transport.test.js', 'unit/local-git-adapter.test.js', 'unit/node-git-blob-reader.test.js', 'unit/t405-pull-request-review-runtime.test.js', 'unit/t606-r6-real-composition.test.js', 'integration/local-git-adapter.integration.test.js'];\nif (!record('focused-review', process.execPath, ['--test', ...tests.map(name => path.join(compiled, 'test', name))], snapshot)) process.exitCode = 1;\n",
+        "review-probes.cjs": "const fs = require('node:fs');\nconst path = require('node:path');\nconst cp = require('node:child_process');\nconst {EventEmitter} = require('node:events');\nconst {PassThrough, Writable} = require('node:stream');\nconst evidence = __dirname;\nconst compiled = path.join(evidence, 'compiled');\nconst fromSource = (name) => require(path.join(compiled, 'src', name));\nconst {NodeGitBlobBatchTransport} = fromSource('adapters/local-git/node-git-blob-batch-transport.js');\nconst {GitCommandFailedError} = fromSource('adapters/local-git/contracts.js');\nconst {classifyOperationFailure, runWithBoundedRetry} = fromSource('application/operation-feedback/operation-feedback.js');\nconst {createNodeLocalGitAdapter} = fromSource('adapters/local-git/index.js');\nconst assert = require('node:assert/strict');\n\nasync function timeoutProbe() {\n  const timers = new Map(); let nextId = 0; const signals = [];\n  const child = new EventEmitter();\n  child.stdin = new Writable({write(_chunk, _encoding, _done) {}});\n  child.stdout = new PassThrough(); child.stderr = new PassThrough();\n  child.kill = (signal) => {\n    signals.push(signal);\n    queueMicrotask(() => {child.stdout.end(); child.stderr.end(); child.emit('close', null, signal);});\n    return true;\n  };\n  child.unref = () => child;\n  const transport = new NodeGitBlobBatchTransport({spawnProcess: () => child,\n    setTimer: callback => {const id = ++nextId; timers.set(id, callback); return id;},\n    clearTimer: id => timers.delete(id)});\n  let callbacks = 0;\n  const observed = transport.readBlobs('/fixture', ['a'.repeat(40), 'b'.repeat(40)], () => {callbacks++;}).then(() => undefined, error => error);\n  const timer = timers.entries().next().value;\n  assert.ok(timer, 'manual request timer installed');\n  timers.delete(timer[0]); timer[1]();\n  const batchError = await observed;\n  assert.ok(batchError, 'actual transport rejected its expired request');\n  const singleError = new GitCommandFailedError({cwd: '/fixture', argumentsList: ['cat-file', 'blob', 'a'.repeat(40)]}, {exitCode: -1, stdout: '', stderr: 'timeout'});\n  const rows = [];\n  for (const [label, error] of [['actual-batch-timeout', batchError], ['existing-single-timeout-contract', singleError]]) {\n    let attempts = 0; let result;\n    try {result = (await runWithBoundedRetry(async () => {attempts++; if (attempts === 1) throw error; return 'recovered';}, {maxAttempts: 3, sleep: async () => {}})).value;}\n    catch {result = 'rejected';}\n    rows.push({label, errorName: error.name, message: error.message, classification: classifyOperationFailure(error), attempts, result});\n  }\n  const result = {kind: 'timeout-retry-probe', rows, callbacks, signals, pendingTimers: timers.size};\n  console.log(JSON.stringify(result));\n  assert.equal(rows[0].classification.kind, 'permanent');\n  assert.equal(rows[0].attempts, 1);\n  assert.equal(rows[1].classification.kind, 'retryable');\n  assert.equal(rows[1].attempts, 2);\n  assert.equal(callbacks, 0);\n  assert.equal(timers.size, 0);\n  return result;\n}\n\nasync function parentChildProbe() {\n  const fixture = path.join(evidence, 'parent-child-git-fixture');\n  if (fs.existsSync(fixture)) throw new Error('Fixture already exists; refusing to overwrite');\n  fs.mkdirSync(path.join(fixture, 'nested'), {recursive: true});\n  fs.writeFileSync(path.join(fixture, 'nested', 'tracked.txt'), 'tracked\\n');\n  fs.writeFileSync(path.join(fixture, 'nested', 'other.txt'), 'other\\n');\n  const git = (...args) => cp.execFileSync('git', ['-C', fixture, ...args], {encoding: 'utf8'});\n  git('init', '--initial-branch=main'); git('add', '--', 'nested');\n  git('-c', 'user.name=Review fixture', '-c', 'user.email=review-fixture@example.invalid', 'commit', '-m', 'Synthetic parent child fixture');\n  const revision = git('rev-parse', 'HEAD').trim();\n  const raw = git('ls-tree', '--full-tree', '-z', revision, '--', ':(literal)nested', ':(literal)nested/tracked.txt');\n  const adapter = createNodeLocalGitAdapter();\n  const singleParent = await adapter.readTextFileAtRevision(fixture, revision, 'nested', 'posix');\n  const singleChild = await adapter.readTextFileAtRevision(fixture, revision, 'nested/tracked.txt', 'posix');\n  let batch;\n  try {batch = {kind: 'returned', results: [...await adapter.readTextFilesAtRevision(fixture, revision, ['nested', 'nested/tracked.txt'], 'posix')]};}\n  catch (error) {batch = {kind: 'rejected', name: error.name, message: error.message};}\n  const result = {kind: 'parent-child-path-probe', git: cp.execFileSync('git', ['--version'], {encoding: 'utf8'}).trim(), revision, lsTreeRecords: raw.split('\\0').filter(Boolean), singleParent, singleChild, batch};\n  console.log(JSON.stringify(result));\n  return result;\n}\n\n(async () => {\n  const identity = JSON.parse(fs.readFileSync(path.join(evidence, 'validation-identity.json'), 'utf8'));\n  const results = [await timeoutProbe(), await parentChildProbe()];\n  const preload = path.join(evidence, 'scheduler-pause-probe.cjs');\n  fs.writeFileSync(preload, \"const originalSetTimeout=globalThis.setTimeout;let paused=false;globalThis.setTimeout=(callback,delay,...args)=>originalSetTimeout(()=>{if(!paused&&delay>0&&delay<=5){paused=true;console.error('Review probe: one synthetic 1100 ms scheduler pause before the timer callback');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,1100);}callback(...args);},delay);\\n\");\n  const test = path.join(compiled, 'test', 'unit', 'node-git-blob-batch-transport.test.js');\n  for (const [label, extra] of [['timing-control', []], ['timing-scheduler-pause', ['--require', preload]]]) {\n    const args = [...extra, '--test', '--test-name-pattern=^transport test harness fails finitely when a wait condition never occurs$', test];\n    const startedAt = new Date().toISOString();\n    const run = cp.spawnSync(process.execPath, args, {cwd: identity.snapshot, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024, timeout: 30000, windowsHide: true});\n    fs.writeFileSync(path.join(evidence, label + '.stdout.log'), run.stdout || '');\n    fs.writeFileSync(path.join(evidence, label + '.stderr.log'), run.stderr || '');\n    const result = {kind: label, command: process.execPath, args, sourceHead: identity.sourceHead, startedAt, finishedAt: new Date().toISOString(), exitCode: run.status, signal: run.signal, error: run.error?.message, summary: (run.stdout || '').split(/\\r?\\n/).filter(line => /^(# (tests|suites|pass|fail|cancelled|skipped)|not ok|  error:)/.test(line)), stderr: run.stderr};\n    fs.writeFileSync(path.join(evidence, label + '.result.json'), JSON.stringify(result, null, 2));\n    console.log(JSON.stringify(result));\n    results.push(result);\n  }\n  fs.writeFileSync(path.join(evidence, 'review-probes.result.json'), JSON.stringify({sourceHead: identity.sourceHead, sourceManifest: identity.contentManifestSha256, results}, null, 2));\n})().catch(error => {console.error(error); process.exitCode = 1;});\n"
+      }
+    }
+  ],
+  "next_action": {
+    "type": "implementation",
+    "target_skill": "chat-implementation-worker",
+    "mode": "review_follow_up",
+    "summary": "I141-BATCH-001/002/003の修正と必要な回帰検証を行い、同じ通常レビュー担当へfix verificationを返す。",
+    "instructions": [
+      "最新PR HEADとこのreviewed HEADとの差分を確認し、接続先・worktree所有権・依存・書込範囲を再解決する。",
+      "指摘IDと重大度Mediumを保持する。必要対応の一部だけを完了扱いにしない。",
+      "001: deterministic timerまたは開発専用登録。002:既存Git timeout type/-1/diagnosticsとproduction retry契約。003:兄弟/深い子を含む実Git単件互換性。",
+      "各必要対応、production path、actual composition/fixture、focused evidenceを対応表に記録し、詳細実装報告・診断を保存する。",
+      "修正後のHEADを公開し、既存の必須CI結果とreviewed HEADを分離して返す。性能/UI未実施は保持する。",
+      "本packetはこのレビューの許可記録であり、新たな実装権限を独立に与えない。次の明示依頼と既存の有効な指示から実装範囲を解決する。"
+    ],
+    "required_attachments_or_references": [
+      "https://github.com/ssaattww/RevMem/pull/141",
+      "reports/immutable-blob-batch-review-20261009.md",
+      "handoffs/immutable-blob-batch-review-20261009.json",
+      "reports/immutable-blob-batch-review-preparation-20261009.md",
+      "doc/design/vscode-review-range-tracker-design.md §9",
+      "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/review-probes.cjs",
+      "C:/Users/donabe/RemoteDesktopWorkspace/review-artifacts/pr141-review-20261009/review-probes.result.json"
+    ],
+    "requested_authorized_actions": [
+      "read_repository",
+      "edit_code",
+      "edit_tests",
+      "edit_documentation",
+      "write_report",
+      "write_handoff",
+      "commit",
+      "push",
+      "comment_pr"
+    ]
+  },
+  "transport": {
+    "method": "repository_file",
+    "packet_path": "handoffs/immutable-blob-batch-review-20261009.json",
+    "packet_url": null,
+    "transport_note": "This packet is generated before its ordinary documentation commit. Read together with PR141's publication comment to obtain the actual documentation SHA/comment URL and later CI snapshot. Technical verdict always applies to reviewed HEAD a910aa2ecf5134ec900bfe3e980b5f5149169710. This is not an independent-final attestation."
+  }
+}
