@@ -228,6 +228,15 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
       ...(readTextContents === undefined ? {} : {
         readTextContents: async (descriptors, feedbackContext, signal) => {
           const active = this.activeFileProgress;
+          if (active?.key === key && feedbackContext !== undefined && !signal?.aborted) {
+            for (const descriptor of descriptors) {
+              reportActiveOperationDetail({
+                reason: "pull-request-file",
+                target: descriptor.filePath,
+                phase: "read-content",
+              }, feedbackContext);
+            }
+          }
           const results = await readTextContents(descriptors, feedbackContext, signal);
           if (active?.key === key && feedbackContext !== undefined) {
             for (const descriptor of descriptors) {

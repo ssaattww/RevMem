@@ -8,6 +8,8 @@ import { promisify } from "node:util";
 import test from "node:test";
 
 import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index.js";
+import { PullRequestReviewRuntime } from "../../src/composition/pull-request/pull-request-review-runtime.js";
+import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
 import {
   OperationFeedback,
   setActiveOperationFeedback,
@@ -211,6 +213,47 @@ test("T606 IFR002 real T305-to-T405 composition retries only transient acquisiti
         { kind: "found", content: "second remote\n" },
       ]);
       assert.equal(maximumRemoteContentReads, 1, "remote fallback remains sequential through actual production composition");
+      for (const detailed of [false, true]) {
+        const diagnosticHost = new FeedbackHost();
+        const detailedHost = Object.assign(diagnosticHost, { isDetailedDiagnosticsEnabled: () => detailed });
+        setActiveOperationFeedback(new OperationFeedback(detailedHost));
+        const started = deferred<void>();
+        const pendingContent = deferred<void>();
+        const realReader = registration.readTextContents!;
+        const runtime = new PullRequestReviewRuntime<string>({
+          repository: {
+            load: async () => ({
+              schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+              contextState: pullRequest,
+              globalState: { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, repositoryId, currentRevisionId: headSha, files: {}, updatedAt: pullRequest.updatedAt },
+            }),
+            commit: async () => undefined,
+          },
+          requestHistory: async () => undefined,
+          diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
+          getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+        });
+        runtime.register({
+          ...registration,
+          snapshot: { ...registration.snapshot, files: [{ fileId: "example", oldPath: "example.ts", newPath: "example.ts", status: "modified", additions: 1, deletions: 1, hunks: [{ oldStart: 1, oldCount: 1, newStart: 1, newCount: 1, lines: [{ kind: "deletion", oldLine: 1, text: "old" }, { kind: "addition", newLine: 1, text: "new" }] }] }] },
+          readTextContent: async () => { throw new Error("production bulk registration must bypass the single wrapper"); },
+          readTextContents: async (...args) => {
+            started.resolve();
+            await pendingContent.promise;
+            return realReader(...args);
+          },
+        });
+        const progress = runtime.activateProgress(contextId);
+        try {
+          await started.promise;
+          const details = diagnosticHost.logs.filter((entry) => entry.event === "detail" && entry.detail?.phase === "read-content");
+          assert.equal(details.length, detailed ? 1 : 0, "existing file detail is opt-in and visible before bulk I/O resolves");
+          if (detailed) assert.deepEqual(details[0]?.detail, { reason: "pull-request-file", phase: "read-content", target: "example.ts" });
+        } finally {
+          pendingContent.resolve();
+          await progress;
+        }
+      }
     } finally {
       setActiveOperationFeedback(undefined);
       globalThis.fetch = originalFetch;

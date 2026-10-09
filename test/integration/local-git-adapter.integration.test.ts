@@ -585,6 +585,10 @@ test("batch immutable reads match single-path results for exact paths and specia
     await mkdir(path.join(repository.path, "nested"), { recursive: true });
     await mkdir(path.join(repository.path, "vendor"), { recursive: true });
     await writeFile(path.join(repository.path, "nested", "tracked.txt"), "nested content\n", "utf8");
+    await writeFile(path.join(repository.path, "nested", "other.txt"), "unrequested sibling\n", "utf8");
+    await mkdir(path.join(repository.path, "nested", "deep"), { recursive: true });
+    await writeFile(path.join(repository.path, "nested", "deep", "tracked.txt"), "deep content\n", "utf8");
+    await writeFile(path.join(repository.path, "nested", "deep", "other.txt"), "unrequested deep sibling\n", "utf8");
     const specialPaths = process.platform === "win32"
       ? ["space name.ts", "日本語.ts"]
       : ["colon:name.ts", "tab\tname.ts", "line\nname.ts"];
@@ -611,6 +615,9 @@ test("batch immutable reads match single-path results for exact paths and specia
     const paths = [
       "fixture.txt",
       "nested/tracked.txt",
+      "nested/deep",
+      "nested/deep/tracked.txt",
+      "fixture.txt/missing-child",
       ...specialPaths,
       "prefix-name.ts",
       "fixture-link",

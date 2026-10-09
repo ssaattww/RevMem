@@ -132,7 +132,10 @@ const chunkPathspecs = (paths: readonly string[]): readonly (readonly string[])[
     }
     if (chunk.length > 0 && (
       chunk.length >= MAX_LS_TREE_PATHSPEC_COUNT ||
-      usedUnits + units > MAX_LS_TREE_PATHSPEC_ARGUMENT_UNITS
+      usedUnits + units > MAX_LS_TREE_PATHSPEC_ARGUMENT_UNITS ||
+      // Git expands a parent directory when the same invocation also selects
+      // its descendant. Separate overlapping paths so every result stays exact.
+      chunk.some((existing) => filePath.startsWith(`${existing}/`) || existing.startsWith(`${filePath}/`))
     )) {
       chunks.push(chunk);
       chunk = [];
