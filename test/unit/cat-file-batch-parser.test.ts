@@ -72,6 +72,57 @@ test("cat-file batch parser drains an oversized blob frame without buffering it"
   ]);
 });
 
+test("cat-file batch parser completes frames at the blob limit, including a zero-byte limit", () => {
+  const exactLimitOid = oid("a");
+  const zeroLimitOid = oid("b");
+  const parser = new CatFileBatchResponseParser([exactLimitOid, zeroLimitOid], 3);
+
+  assert.deepEqual(collect(parser, [Buffer.from(
+    `${exactLimitOid} blob 3\nabc\n${zeroLimitOid} blob 0\n\n`, "ascii",
+  )]), [
+    { kind: "blob", objectId: exactLimitOid, bytes: Buffer.from("abc", "ascii") },
+    { kind: "blob", objectId: zeroLimitOid, bytes: Buffer.alloc(0) },
+  ]);
+});
+
+test("cat-file batch parser does not buffer an oversized safe-integer declaration before truncated EOF", () => {
+  const expectedOid = oid("a");
+  const parser = new CatFileBatchResponseParser([expectedOid], 0);
+
+  assert.deepEqual(parser.push(Buffer.from(`${expectedOid} blob 9007199254740991\n`, "ascii")), []);
+  assert.deepEqual(parser.push(Buffer.from([0x78, 0x79])), []);
+  const pending = Object.getOwnPropertyDescriptor(parser, "pendingObject")?.value as
+    { readonly bytes?: Uint8Array } | undefined;
+  assert.equal(pending?.bytes, undefined);
+  assert.throws(() => parser.finish(), /Truncated/u);
+});
+
+test("cat-file batch parser enforces the header byte limit at exactly 128 bytes", () => {
+  const expectedOid = "a".repeat(64);
+  const exactLimitType = "x".repeat(46);
+  const overLimitType = "x".repeat(47);
+  const exactLimitHeader = `${expectedOid} ${exactLimitType} 9007199254740991`;
+  const overLimitHeader = `${expectedOid} ${overLimitType} 9007199254740991`;
+
+  assert.equal(Buffer.byteLength(exactLimitHeader, "ascii"), 128);
+  assert.equal(Buffer.byteLength(overLimitHeader, "ascii"), 129);
+  assert.throws(
+    () => new CatFileBatchResponseParser([expectedOid], 0).push(Buffer.from(`${exactLimitHeader}\n`, "ascii")),
+    /unknown object type/u,
+  );
+  assert.throws(
+    () => new CatFileBatchResponseParser([expectedOid], 0).push(Buffer.from(`${overLimitHeader}\n`, "ascii")),
+    /header exceeds its byte limit/u,
+  );
+});
+
+test("cat-file batch parser rejects invalid blob limits", () => {
+  const expectedOid = oid("a");
+  for (const invalidLimit of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(() => new CatFileBatchResponseParser([expectedOid], invalidLimit), /non-negative safe integer/u);
+  }
+});
+
 test("cat-file batch parser rejects incomplete, malformed, mismatched, and extra frames", () => {
   const expectedOid = oid("a");
   const anotherOid = oid("b");

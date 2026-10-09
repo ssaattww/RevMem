@@ -620,6 +620,49 @@ testWithCleanup("batch transport rejects missing, non-blob, and oversized frames
   }
 });
 
+testWithCleanup("batch transport completes blob frames exactly at the limit and with a zero-byte limit", async () => {
+  const cases = [
+    { payload: Buffer.from("abc", "ascii"), maxBlobBytes: 3 },
+    { payload: Buffer.alloc(0), maxBlobBytes: 0 },
+  ] as const;
+
+  for (const item of cases) {
+    const { transport, child } = setup(() => new FakeChild({
+      onObject: (objectId, fake) => fake.sendBlob(objectId, item.payload),
+      closeOnStdinEnd: true,
+    }), { maxBlobBytes: item.maxBlobBytes });
+    const received: Buffer[] = [];
+
+    await transport.readBlobs("/repo", [firstOid], (_objectId, bytes) => {
+      received.push(Buffer.from(bytes));
+    });
+
+    assert.deepEqual(received, [item.payload]);
+    assert.deepEqual(child.signals, []);
+  }
+});
+
+testWithCleanup("batch transport rejects a normal or abnormal process close before the first response", async () => {
+  for (const exitCode of [0, 7]) {
+    const { transport, child } = setup(() => new FakeChild({
+      onObject: (_objectId, fake) => fake.close(exitCode, null),
+    }));
+
+    await assert.rejects(
+      transport.readBlobs("/repo", [firstOid], async () => undefined),
+      new RegExp(`closed before protocol completion \\(exit ${exitCode}\\)`),
+    );
+    assert.deepEqual(child.signals, []);
+    assert.equal(child.unrefCalled, true);
+  }
+});
+
+test("batch transport rejects invalid blob limits", () => {
+  for (const maxBlobBytes of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(() => new NodeGitBlobBatchTransport({ maxBlobBytes }), /non-negative safe integer/u);
+  }
+});
+
 testWithCleanup("batch transport input errors reject after bounded cleanup", async () => {
   const { transport, child, clock } = setup(() => new FakeChild({
     onObject: (_objectId, fake) => fake.failInput(new Error("input stream failed")),
