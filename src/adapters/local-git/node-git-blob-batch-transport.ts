@@ -59,6 +59,25 @@ const deferred = <T>(): Deferred<T> => {
   return { promise, resolve };
 };
 
+export type FailureNotificationSubscription = (listener: (error: Error) => void) => () => void;
+
+/** Races an operation against a removable failure notification and always releases that subscription. */
+export const raceWithFailureNotification = async <T>(
+  operation: Promise<T>,
+  subscribeFailure: FailureNotificationSubscription,
+  timeout?: Promise<never>,
+): Promise<T> => {
+  let unsubscribe = (): void => {};
+  const failure = new Promise<never>((_resolve, reject) => {
+    unsubscribe = subscribeFailure(reject);
+  });
+  try {
+    return await Promise.race([operation, failure, ...(timeout === undefined ? [] : [timeout])]);
+  } finally {
+    unsubscribe();
+  }
+};
+
 const requirePositiveSafeInteger = (value: number, name: string): number => {
   if (!Number.isSafeInteger(value) || value <= 0) throw new RangeError(`${name} must be a positive safe integer`);
   return value;
@@ -143,7 +162,7 @@ export class NodeGitBlobBatchTransport {
       windowsHide: true,
     });
     const close = deferred<CloseInfo>();
-    const fatal = deferred<Error>();
+    const failureListeners = new Set<(error: Error) => void>();
     const stderr: Buffer[] = [];
     let stderrBytes = 0;
     let closeInfo: CloseInfo | undefined;
@@ -156,7 +175,17 @@ export class NodeGitBlobBatchTransport {
       if (processFailed) return;
       processFailed = true;
       failureReason = error;
-      fatal.resolve(error);
+      const listeners = [...failureListeners];
+      failureListeners.clear();
+      for (const listener of listeners) listener(error);
+    };
+    const subscribeFailure: FailureNotificationSubscription = (listener) => {
+      if (failureReason !== undefined) {
+        listener(failureReason);
+        return () => {};
+      }
+      failureListeners.add(listener);
+      return () => { failureListeners.delete(listener); };
     };
     const onAbort = (): void => fail(new DOMException("Git blob batch was superseded.", "AbortError"));
     const onProcessError = (error: Error): void => fail(error);
@@ -204,11 +233,7 @@ export class NodeGitBlobBatchTransport {
         timer = this.setTimer(() => reject(new Error(timeoutMessage)), timeoutMs);
       });
       try {
-        return await Promise.race([
-          operation,
-          fatal.promise.then((error) => Promise.reject(error)),
-          ...(timeout === undefined ? [] : [timeout]),
-        ]);
+        return await raceWithFailureNotification(operation, subscribeFailure, timeout);
       } finally {
         if (timer !== undefined) this.clearTimer(timer);
       }

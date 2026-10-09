@@ -9,6 +9,7 @@ import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import {
   GitBlobBatchObjectTooLargeError,
   NodeGitBlobBatchTransport,
+  raceWithFailureNotification,
   type NodeGitBlobBatchTransportOptions,
 } from "../../src/adapters/local-git/node-git-blob-batch-transport.js";
 
@@ -348,6 +349,76 @@ const runInTestScope = async (
 const testWithCleanup = (name: string, run: () => void | Promise<void>): void => {
   test(name, () => runInTestScope(name, run));
 };
+
+const createFailureNotifications = (): {
+  readonly subscribe: (listener: (error: Error) => void) => () => void;
+  readonly fail: (error: Error) => void;
+  readonly subscriberCount: () => number;
+} => {
+  const listeners = new Set<(error: Error) => void>();
+  let failureReason: Error | undefined;
+  return {
+    subscribe: (listener) => {
+      if (failureReason !== undefined) {
+        listener(failureReason);
+        return () => {};
+      }
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
+    fail: (error) => {
+      if (failureReason !== undefined) return;
+      failureReason = error;
+      const pending = [...listeners];
+      listeners.clear();
+      for (const listener of pending) listener(error);
+    },
+    subscriberCount: () => listeners.size,
+  };
+};
+
+test("failure notification race unsubscribes after successful operation settlement", async () => {
+  const failure = createFailureNotifications();
+
+  assert.equal(await raceWithFailureNotification(Promise.resolve("complete"), failure.subscribe), "complete");
+  assert.equal(failure.subscriberCount(), 0);
+  failure.fail(new Error("late failure"));
+  assert.equal(failure.subscriberCount(), 0);
+});
+
+test("failure notification race unsubscribes after failure wins", async () => {
+  const failure = createFailureNotifications();
+  const expected = new Error("operation failed");
+  const running = raceWithFailureNotification(new Promise<never>(() => {}), failure.subscribe);
+
+  assert.equal(failure.subscriberCount(), 1);
+  failure.fail(expected);
+  await assert.rejects(running, (error: unknown) => error === expected);
+  assert.equal(failure.subscriberCount(), 0);
+});
+
+test("failure notification race immediately observes an already-recorded failure", async () => {
+  const failure = createFailureNotifications();
+  const expected = new Error("failure recorded before subscription");
+  failure.fail(expected);
+
+  await assert.rejects(
+    raceWithFailureNotification(new Promise<never>(() => {}), failure.subscribe),
+    (error: unknown) => error === expected,
+  );
+  assert.equal(failure.subscriberCount(), 0);
+});
+
+test("failure notification race unsubscribes when a timeout wins", async () => {
+  const failure = createFailureNotifications();
+  const timeout = Promise.reject<never>(new Error("controlled timeout"));
+
+  await assert.rejects(
+    raceWithFailureNotification(new Promise<never>(() => {}), failure.subscribe, timeout),
+    /controlled timeout/u,
+  );
+  assert.equal(failure.subscriberCount(), 0);
+});
 
 const setup = (
   configure: (clock: ManualClock) => FakeChild,
