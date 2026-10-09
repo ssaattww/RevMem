@@ -386,6 +386,17 @@ test("failure notification race unsubscribes after successful operation settleme
   assert.equal(failure.subscriberCount(), 0);
 });
 
+test("failure notification race unsubscribes when the operation rejects", async () => {
+  const failure = createFailureNotifications();
+  const expected = new Error("operation rejected");
+
+  await assert.rejects(
+    raceWithFailureNotification(Promise.reject(expected), failure.subscribe),
+    (error: unknown) => error === expected,
+  );
+  assert.equal(failure.subscriberCount(), 0);
+});
+
 test("failure notification race unsubscribes after failure wins", async () => {
   const failure = createFailureNotifications();
   const expected = new Error("operation failed");
