@@ -197,6 +197,7 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
   public override register(registration: PullRequestReviewRuntimeRegistration): void {
     const key = snapshotKey(registration.snapshot);
     const readTextContent = registration.readTextContent;
+    const readTextContents = registration.readTextContents;
     super.register({
       ...registration,
       readTextContent: async (...args) => {
@@ -224,6 +225,26 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
         }
         return result;
       },
+      ...(readTextContents === undefined ? {} : {
+        readTextContents: async (descriptors, feedbackContext, signal) => {
+          const active = this.activeFileProgress;
+          const results = await readTextContents(descriptors, feedbackContext, signal);
+          if (active?.key === key && feedbackContext !== undefined) {
+            for (const descriptor of descriptors) {
+              const identity = `${descriptor.side}\0${descriptor.revision}\0${descriptor.filePath}`;
+              if (!active.seen.has(identity)) {
+                active.seen.add(identity);
+                reportActiveOperationProgress({
+                  stage: "pull-request-files",
+                  completed: Math.min(active.seen.size, active.total),
+                  total: active.total,
+                }, feedbackContext);
+              }
+            }
+          }
+          return results;
+        },
+      }),
     });
     this.workingTreeRegistrations.set(registration.snapshot.contextId, registration);
   }

@@ -45,3 +45,5 @@ export type {
   LocalGitRevisionTextMissingRevision,
   LocalGitRevisionTextReadResult
 } from "./revision-text-content";
+
+export { MAX_GIT_BLOB_BATCH_OBJECTS, GitBlobBatchObjectTooLargeError } from "./git-blob-reader";
