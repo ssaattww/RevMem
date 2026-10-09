@@ -104,7 +104,7 @@
         "reviewRange.showGutterIcon": { "type": "boolean", "default": true, "description": "確認済み行のガターアイコンを表示します。" },
         "reviewRange.showOverviewRuler": { "type": "boolean", "default": false, "description": "確認済み範囲をOverview Rulerへ表示します。" },
         "reviewRange.globalUnderstanding.autoStartDescendants": { "type": "boolean", "default": false, "description": "開いたファイルの所属folderより深いGlobal Understanding scopeを自動開始します。停止済みscopeは再開しません。" },
-        "reviewRange.diagnostics.detailed": { "type": "boolean", "default": false, "description": "詳細診断を有効にし、再計算理由・処理内訳・対象ファイル名/pathをReview Range Outputと進捗tooltipへ表示します。ファイル名やpathには機密情報が含まれる可能性があります。" },
+        "reviewRange.diagnostics.detailed": { "type": "boolean", "default": false, "description": "詳細診断を有効にし、再計算理由・処理段階をReview Range Outputと進捗tooltipへ表示します。既定値はfalseです。詳細診断でも対象ファイル名/パスは出力しません。" },
         "reviewRange.exclude": {
           "type": "array",
           "items": { "type": "string" },
