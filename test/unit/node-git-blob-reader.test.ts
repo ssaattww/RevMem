@@ -62,9 +62,10 @@ const waitForProcessExit = async (processId: number): Promise<void> => {
   assert.fail(`Expected fixture child ${processId} to exit within the cleanup bound`);
 };
 
-const killOwnedFixtureChild = (processId: number | undefined): void => {
+const killOwnedFixtureChild = async (processId: number | undefined): Promise<void> => {
   if (processId === undefined || !processExists(processId)) return;
   process.kill(processId, "SIGKILL");
+  await waitForProcessExit(processId);
 };
 
 test("blob timeout waits for process close and preserves partial stdout and stderr", async (context) => {
@@ -200,7 +201,7 @@ setInterval(() => {}, 1_000);
     await waitForFile(termPath, "fixture child to receive SIGTERM");
     await waitForProcessExit(processId);
   } finally {
-    killOwnedFixtureChild(processId);
+    await killOwnedFixtureChild(processId);
     await temporaryDirectory.cleanup();
   }
 });
@@ -239,7 +240,7 @@ setInterval(() => {}, 1_000);
     await assert.rejects(running, { name: "AbortError" });
     await waitForProcessExit(processId);
   } finally {
-    killOwnedFixtureChild(processId);
+    await killOwnedFixtureChild(processId);
     await temporaryDirectory.cleanup();
   }
 });
@@ -276,7 +277,7 @@ setInterval(() => {}, 1_000);
     await assert.rejects(running, { name: "AbortError" });
     await waitForProcessExit(processId);
   } finally {
-    killOwnedFixtureChild(processId);
+    await killOwnedFixtureChild(processId);
     await temporaryDirectory.cleanup();
   }
 });
