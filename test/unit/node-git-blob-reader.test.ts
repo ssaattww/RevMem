@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, writeFile } from "node:fs/promises";
+import { chmod, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
@@ -11,20 +11,60 @@ import { createTemporaryDirectory } from "../support/temporary-directory";
 
 const blobObjectId = "abcdef0123456789abcdef0123456789abcdef01";
 
+const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
+
 const writeFakeGit = async (
   directory: string,
-  scriptBody: string
+  scriptBody: string,
+  processIdPath?: string,
 ): Promise<string> => {
   const scriptPath = path.join(directory, "fake-git.cjs");
   const executablePath = path.join(directory, "fake-git");
   await writeFile(scriptPath, scriptBody, "utf8");
   await writeFile(
     executablePath,
-    `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(scriptPath)} "$@"\n`,
+    `#!/bin/sh\n${processIdPath === undefined ? "" : `printf '%s' "$$" > ${shellQuote(processIdPath)}\n`}exec ${JSON.stringify(process.execPath)} ${JSON.stringify(scriptPath)} "$@"\n`,
     "utf8"
   );
   await chmod(executablePath, 0o755);
   return executablePath;
+};
+
+const waitForFile = async (filePath: string, description: string): Promise<string> => {
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    try {
+      return await readFile(filePath, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    }
+  }
+  throw new Error(`Timed out waiting for ${description}`);
+};
+
+const processExists = (processId: number): boolean => {
+  try {
+    process.kill(processId, 0);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+    throw error;
+  }
+};
+
+const waitForProcessExit = async (processId: number): Promise<void> => {
+  const deadline = Date.now() + 1_500;
+  while (Date.now() < deadline) {
+    if (!processExists(processId)) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+  assert.fail(`Expected fixture child ${processId} to exit within the cleanup bound`);
+};
+
+const killOwnedFixtureChild = (processId: number | undefined): void => {
+  if (processId === undefined || !processExists(processId)) return;
+  process.kill(processId, "SIGKILL");
 };
 
 test("blob timeout waits for process close and preserves partial stdout and stderr", async (context) => {
@@ -121,6 +161,136 @@ setTimeout(() => {
         return true;
       }
     );
+  } finally {
+    await temporaryDirectory.cleanup();
+  }
+});
+
+test("blob abort escalates to SIGKILL when the owned process ignores SIGTERM", async (context) => {
+  if (process.platform === "win32") {
+    context.skip("Signal escalation fixture uses POSIX SIGTERM semantics.");
+    return;
+  }
+
+  const temporaryDirectory = await createTemporaryDirectory("review-range-blob-abort-escalation");
+  const processIdPath = path.join(temporaryDirectory.path, "child-pid");
+  const readyPath = path.join(temporaryDirectory.path, "child-ready");
+  const termPath = path.join(temporaryDirectory.path, "term-received");
+  let processId: number | undefined;
+
+  try {
+    const executablePath = await writeFakeGit(
+      temporaryDirectory.path,
+      `
+process.on("SIGTERM", () => require("node:fs").writeFileSync(${JSON.stringify(termPath)}, "term"));
+require("node:fs").writeFileSync(${JSON.stringify(readyPath)}, "ready");
+setInterval(() => {}, 1_000);
+`,
+      processIdPath,
+    );
+    const reader = new NodeGitBlobReader({ timeoutMs: 5_000, terminationGraceMs: 100, executable: executablePath });
+    const controller = new AbortController();
+    const running = reader.readBlob(temporaryDirectory.path, blobObjectId, undefined, controller.signal);
+    processId = Number(await waitForFile(processIdPath, "fixture child PID"));
+    await waitForFile(readyPath, "fixture child signal handler");
+
+    controller.abort();
+
+    await assert.rejects(running, { name: "AbortError" });
+    await waitForFile(termPath, "fixture child to receive SIGTERM");
+    await waitForProcessExit(processId);
+  } finally {
+    killOwnedFixtureChild(processId);
+    await temporaryDirectory.cleanup();
+  }
+});
+
+test("blob abort during timeout termination keeps the existing SIGKILL escalation", async (context) => {
+  if (process.platform === "win32") {
+    context.skip("Signal escalation fixture uses POSIX SIGTERM semantics.");
+    return;
+  }
+
+  const temporaryDirectory = await createTemporaryDirectory("review-range-blob-timeout-abort");
+  const processIdPath = path.join(temporaryDirectory.path, "child-pid");
+  const readyPath = path.join(temporaryDirectory.path, "child-ready");
+  const termPath = path.join(temporaryDirectory.path, "term-received");
+  let processId: number | undefined;
+
+  try {
+    const executablePath = await writeFakeGit(
+      temporaryDirectory.path,
+      `
+process.on("SIGTERM", () => require("node:fs").writeFileSync(${JSON.stringify(termPath)}, "term"));
+require("node:fs").writeFileSync(${JSON.stringify(readyPath)}, "ready");
+setInterval(() => {}, 1_000);
+`,
+      processIdPath,
+    );
+    const reader = new NodeGitBlobReader({ timeoutMs: 1_000, terminationGraceMs: 500, executable: executablePath });
+    const controller = new AbortController();
+    const running = reader.readBlob(temporaryDirectory.path, blobObjectId, undefined, controller.signal);
+    processId = Number(await waitForFile(processIdPath, "fixture child PID"));
+    await waitForFile(readyPath, "fixture child signal handler");
+    await waitForFile(termPath, "timeout to send SIGTERM");
+
+    controller.abort();
+
+    await assert.rejects(running, { name: "AbortError" });
+    await waitForProcessExit(processId);
+  } finally {
+    killOwnedFixtureChild(processId);
+    await temporaryDirectory.cleanup();
+  }
+});
+
+test("blob abort waits for bounded cleanup when SIGTERM closes the child", async (context) => {
+  if (process.platform === "win32") {
+    context.skip("Signal lifecycle fixture uses POSIX SIGTERM semantics.");
+    return;
+  }
+
+  const temporaryDirectory = await createTemporaryDirectory("review-range-blob-abort-close");
+  const processIdPath = path.join(temporaryDirectory.path, "child-pid");
+  const readyPath = path.join(temporaryDirectory.path, "child-ready");
+  let processId: number | undefined;
+
+  try {
+    const executablePath = await writeFakeGit(
+      temporaryDirectory.path,
+      `
+process.on("SIGTERM", () => process.exit(143));
+require("node:fs").writeFileSync(${JSON.stringify(readyPath)}, "ready");
+setInterval(() => {}, 1_000);
+`,
+      processIdPath,
+    );
+    const reader = new NodeGitBlobReader({ timeoutMs: 5_000, terminationGraceMs: 200, executable: executablePath });
+    const controller = new AbortController();
+    const running = reader.readBlob(temporaryDirectory.path, blobObjectId, undefined, controller.signal);
+    processId = Number(await waitForFile(processIdPath, "fixture child PID"));
+    await waitForFile(readyPath, "fixture child signal handler");
+
+    controller.abort();
+
+    await assert.rejects(running, { name: "AbortError" });
+    await waitForProcessExit(processId);
+  } finally {
+    killOwnedFixtureChild(processId);
+    await temporaryDirectory.cleanup();
+  }
+});
+
+test("blob abort racing with a spawn error remains an AbortError", async () => {
+  const temporaryDirectory = await createTemporaryDirectory("review-range-blob-abort-spawn-error");
+  try {
+    const reader = new NodeGitBlobReader({ executable: path.join(temporaryDirectory.path, "missing-git") });
+    const controller = new AbortController();
+    const running = reader.readBlob(temporaryDirectory.path, blobObjectId, undefined, controller.signal);
+    controller.abort();
+
+    await assert.rejects(running, { name: "AbortError" });
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
   } finally {
     await temporaryDirectory.cleanup();
   }
