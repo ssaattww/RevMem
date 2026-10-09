@@ -1,5 +1,12 @@
 # Breaking Changes
 
+## 2026-10-09 — Issue139 PR検索境界
+
+`GitHubPullRequestSearchPort.findOpenByHead` は `findByHead` へ変更した。
+全状態を検索し、任意のbranch/remote識別情報を渡す場合はSHA完全一致に限定しない。
+このTypeScript境界を実装または呼び出す利用側は新しい名前へ更新する必要がある。
+Contextの永続schemaと既存PR識別子は変更しない。
+
 ## 2026-09-06 — PR CI artifact versions and production import paths
 
 PR user-validation VSIX packages now use the published main version at the

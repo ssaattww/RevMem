@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+﻿import { createHash } from "node:crypto";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { TextDecoder } from "node:util";
@@ -226,6 +226,31 @@ export class LocalGitAdapter {
         ...(head === undefined ? {} : { head })
       }
     };
+  }
+
+  /** tracking設定を優先し、削除済みtracking refでもhead branchとremoteを識別する。 */
+  public async resolvePullRequestBranch(
+    repository: LocalGitRepository,
+    signal?: AbortSignal,
+  ): Promise<{ readonly headRef: string; readonly remoteUrl: string } | undefined> {
+    if (repository.branch.kind !== "branch" || repository.remote === undefined) return undefined;
+    const invocation: GitCommandInvocation = {
+      cwd: repository.rootPath,
+      argumentsList: ["for-each-ref", "--format=%(upstream:remotename)%00%(upstream:remoteref)", repository.branch.fullRef],
+    };
+    const result = await this.commandExecutor.execute(invocation, undefined, signal);
+    this.requireSuccess(invocation, result);
+    const [remoteName = "", remoteRef = ""] = result.stdout.replace(/\r?\n$/u, "").split("\0");
+    if (remoteName.length === 0 && remoteRef.length === 0) {
+      return { headRef: repository.branch.fullRef.slice("refs/heads/".length), remoteUrl: repository.remote.rawUrl };
+    }
+    if (remoteName === "." || !remoteRef.startsWith("refs/heads/")) return undefined;
+    const remoteInvocation: GitCommandInvocation = {
+      cwd: repository.rootPath, argumentsList: ["remote", "get-url", remoteName],
+    };
+    const remoteResult = await this.commandExecutor.execute(remoteInvocation, undefined, signal);
+    if (remoteResult.exitCode !== 0) return undefined;
+    return { headRef: remoteRef.slice("refs/heads/".length), remoteUrl: firstOutputLine(remoteResult.stdout, "PR head remote") };
   }
 
   /** Resolves the fetched identity-remote upstream when local HEAD is its ancestor. */
