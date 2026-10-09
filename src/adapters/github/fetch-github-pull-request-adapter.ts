@@ -1,5 +1,6 @@
-import type {
+﻿import type {
   GitHubPullRequestCandidate,
+  GitHubPullRequestBranchIdentity,
   GitHubPullRequestSearchPort,
   GitHubPullRequestSearchResult,
   GitHubRepositoryIdentity
@@ -10,7 +11,9 @@ interface GitHubPullRequestResponse {
   readonly number?: unknown;
   readonly title?: unknown;
   readonly html_url?: unknown;
-  readonly head?: { readonly sha?: unknown };
+  readonly state?: unknown;
+  readonly merged_at?: unknown;
+  readonly head?: { readonly sha?: unknown; readonly ref?: unknown; readonly repo?: { readonly full_name?: unknown } | null };
   readonly base?: { readonly ref?: unknown; readonly sha?: unknown };
 }
 
@@ -31,7 +34,9 @@ const isResponseObject = (value: unknown): value is GitHubPullRequestResponse =>
 
 const toCandidate = (
   value: unknown,
-  expectedHead: string
+  expectedHead: string,
+  repository: GitHubRepositoryIdentity,
+  branch?: GitHubPullRequestBranchIdentity,
 ): GitHubPullRequestCandidate | undefined | "malformed" => {
   if (!isResponseObject(value)) {
     return "malformed";
@@ -44,7 +49,7 @@ const toCandidate = (
     !isString(value.head?.sha) ||
     !isString(value.base?.ref) ||
     !isString(value.base?.sha) ||
-    value.head.sha !== expectedHead
+    (branch === undefined && value.head.sha !== expectedHead)
   ) {
     if (
       typeof value.number !== "number" ||
@@ -61,7 +66,18 @@ const toCandidate = (
     }
     return undefined;
   }
+  // SHAが共通でも別forkや別branchは同じローカルContextの候補にしない。
+  const expectedRepository = branch?.headRepository ?? repository;
+  const expectedFullName = `${expectedRepository.owner}/${expectedRepository.repository}`;
+  if (branch !== undefined) {
+    if (value.head.ref !== branch.headRef || !isString(value.head.repo?.full_name) ||
+      value.head.repo.full_name.toLowerCase() !== expectedFullName.toLowerCase()) return undefined;
+  } else if (value.head.repo === null || (isString(value.head.repo?.full_name) &&
+    value.head.repo.full_name.toLowerCase() !== expectedFullName.toLowerCase())) return undefined;
+  const state = value.state === "closed" ? (isString(value.merged_at) ? "merged" : "closed")
+    : value.state === "open" ? "open" : undefined;
   return {
+    ...(state === undefined ? {} : { state }),
     number: value.number,
     title: value.title,
     url: value.html_url,
@@ -126,14 +142,19 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
     this.fetchImplementation = options.fetch ?? globalThis.fetch;
   }
 
-  public async findOpenByHead(
+  public async findByHead(
     repository: GitHubRepositoryIdentity,
-    headSha: string
+    headSha: string,
+    branch?: GitHubPullRequestBranchIdentity,
   ): Promise<GitHubPullRequestSearchResult> {
+    if (branch !== undefined && branch.headRepository.host.toLowerCase() !== repository.host.toLowerCase()) {
+      return { kind: "found", candidates: [] };
+    }
     const collectionUrl = new URL(
       `${this.apiBaseUrl}/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.repository)}/pulls`
     );
-    collectionUrl.searchParams.set("state", "open");
+    collectionUrl.searchParams.set("state", "all");
+    if (branch !== undefined) collectionUrl.searchParams.set("head", `${branch.headRepository.owner}:${branch.headRef}`);
     collectionUrl.searchParams.set("per_page", "100");
     let url = new URL(collectionUrl);
 
@@ -179,7 +200,7 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
 
       const pageCandidates: GitHubPullRequestCandidate[] = [];
       for (const value of payload) {
-        const candidate = toCandidate(value, headSha);
+        const candidate = toCandidate(value, headSha, repository, branch);
         if (candidate === "malformed") {
           return { kind: "unavailable", reason: "api" };
         }

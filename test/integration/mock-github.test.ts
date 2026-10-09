@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
@@ -117,7 +117,7 @@ test("GitHub adapter searches open pull requests for the exact HEAD and normaliz
       apiBaseUrl: server.baseUrl,
       token: "test-token"
     });
-    const result = await adapter.findOpenByHead(
+    const result = await adapter.findByHead(
       { host: "github.com", owner: "example", repository: "review-range" },
       head
     );
@@ -187,7 +187,7 @@ test("GitHub adapter follows pagination until an exact HEAD candidate is found",
     }
   });
 
-  const result = await adapter.findOpenByHead(
+  const result = await adapter.findByHead(
     { host: "github.test", owner: "example", repository: "review-range" },
     head
   );
@@ -225,7 +225,7 @@ test("GitHub adapter rejects cross-origin pagination before forwarding authentic
     }
   });
 
-  const result = await adapter.findOpenByHead(
+  const result = await adapter.findByHead(
     { host: "github.test", owner: "example", repository: "review-range" },
     "0123456789abcdef0123456789abcdef01234567"
   );
@@ -247,7 +247,7 @@ test("GitHub adapter attempts a public API request without authentication", asyn
 
   try {
     const adapter = new FetchGitHubPullRequestAdapter({ apiBaseUrl: server.baseUrl });
-    const result = await adapter.findOpenByHead(
+    const result = await adapter.findByHead(
       { host: "github.com", owner: "example", repository: "review-range" },
       "0123456789abcdef0123456789abcdef01234567"
     );
@@ -290,7 +290,7 @@ test("T406 resolves a public PR unauthenticated and falls back to branch for Git
         throw new Error("a single PR must not need an explicit selection");
       }
     });
-    const resolution = await resolver.resolveSearchResult(await adapter.findOpenByHead(
+    const resolution = await resolver.resolveSearchResult(await adapter.findByHead(
       { host: "github.com", owner: "example", repository: "review-range" },
       head
     ));
@@ -317,7 +317,7 @@ test("T406 resolves a public PR unauthenticated and falls back to branch for Git
     try {
       const adapter = new FetchGitHubPullRequestAdapter({ apiBaseUrl: server.baseUrl });
       const resolver = new GitHubPullRequestContextResolver({ chooseCandidate: async () => undefined });
-      assert.deepEqual(await adapter.findOpenByHead(
+      assert.deepEqual(await adapter.findByHead(
         { host: "github.com", owner: "example", repository: "review-range" }, head
       ), scenario.status === 404
         ? { kind: "unavailable", reason: scenario.expectedReason, httpStatus: 404 }
@@ -335,7 +335,7 @@ test("T406 resolves a public PR unauthenticated and falls back to branch for Git
     apiBaseUrl: "https://api.github.test",
     fetch: async () => { throw new Error("network interrupted"); }
   });
-  assert.deepEqual(await networkAdapter.findOpenByHead(
+  assert.deepEqual(await networkAdapter.findByHead(
     { host: "github.com", owner: "example", repository: "review-range" }, head
   ), { kind: "unavailable", reason: "network" });
 });
@@ -352,7 +352,7 @@ test("GitHub adapter classifies rate-limit and API failures as unavailable", asy
 
   try {
     const adapter = new FetchGitHubPullRequestAdapter({ apiBaseUrl: server.baseUrl });
-    const result = await adapter.findOpenByHead(
+    const result = await adapter.findByHead(
       { host: "github.com", owner: "example", repository: "review-range" },
       "0123456789abcdef0123456789abcdef01234567"
     );
@@ -418,7 +418,7 @@ test("GitHub adapter classifies malformed elements, JSON, shapes, network errors
     const resolver = new GitHubPullRequestContextResolver({
       chooseCandidate: async () => undefined
     });
-    const result = await adapter.findOpenByHead(
+    const result = await adapter.findByHead(
       { host: "github.test", owner: "example", repository: "review-range" },
       head
     );
@@ -462,7 +462,7 @@ test("an Enterprise token is never forwarded to an unconfigured remote authority
     }
   });
 
-  const result = await adapter.findOpenByHead(
+  const result = await adapter.findByHead(
     { host: "attacker.example", owner: "example", repository: "review-range" },
     "0123456789abcdef0123456789abcdef01234567"
   );

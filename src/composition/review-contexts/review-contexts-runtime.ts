@@ -1,4 +1,4 @@
-import path from "node:path";
+﻿import path from "node:path";
 import * as vscode from "vscode";
 
 import { NodeSha256StableHash } from "../../adapters/crypto/index";
@@ -41,6 +41,7 @@ import {
   GitHubPullRequestContextResolver,
   createGitHubPullRequestContextIdFromRepositoryId,
   type GitHubPullRequestCandidate,
+  type GitHubPullRequestSearchResult,
   type GitHubRepositoryIdentity,
 } from "../../application/github-pr-context/index";
 import {
@@ -495,13 +496,14 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
         const preferredContextId = this.currentPullRequestSelection.read(
           owner.repositoryId,
           owner.headRevision,
+          owner.branchRef,
         );
         const currentPullRequest = findCurrentPullRequestContext(
           synchronized,
           owner.repositoryId,
           owner.pullRequestSynchronizationRevision,
           preferredContextId,
-          this.currentPullRequestSelection.prefersBranch(owner.repositoryId, owner.headRevision),
+          this.currentPullRequestSelection.prefersBranch(owner.repositoryId, owner.headRevision, owner.branchRef),
         );
         if (currentPullRequest !== undefined) current.unshift(currentPullRequest);
 
@@ -599,13 +601,14 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       const preferredContextId = this.currentPullRequestSelection.read(
         owner.repositoryId,
         owner.headRevision,
+        owner.branchRef,
       );
       const pullRequest = findCurrentPullRequestContext(
         synchronized,
         owner.repositoryId,
         owner.pullRequestSynchronizationRevision,
         preferredContextId,
-        this.currentPullRequestSelection.prefersBranch(owner.repositoryId, owner.headRevision),
+        this.currentPullRequestSelection.prefersBranch(owner.repositoryId, owner.headRevision, owner.branchRef),
       );
       if (pullRequest === undefined || pullRequest.pullRequest === undefined) continue;
       const progress = await this.progressFor(pullRequest, owner.repositoryRoot, signal, feedbackContext, false);
@@ -741,7 +744,7 @@ const pullRequestState = (
       owner: identity.owner,
       repository: identity.repository,
       number: candidate.number,
-      state: "open",
+      state: candidate.state ?? "open",
       title: candidate.title,
       baseSha: candidate.baseSha,
       headSha: candidate.headSha,
@@ -1257,6 +1260,11 @@ export function registerT405ReviewContextsRuntime(
     if (identity === undefined) throw new Error("GitHub remoteを解決できません。");
     const pullRequestSynchronizationRevision = await options.git.resolveIdentityRemoteTrackingRevision(local, signal) ?? local.head;
     assertDetectionCurrent();
+    const branchTarget = await options.git.resolvePullRequestBranch(local, signal);
+    assertDetectionCurrent();
+    const headRepository = branchTarget === undefined ? undefined : parseGitHubRemote(branchTarget.remoteUrl);
+    const branchIdentity = branchTarget === undefined || headRepository === undefined ? undefined
+      : { headRef: branchTarget.headRef, headRepository };
     const persistedBefore = await repository.listRepositoryContexts(local.repositoryId);
     assertDetectionCurrent();
     let synchronizationCompleted = false;
@@ -1281,13 +1289,16 @@ export function registerT405ReviewContextsRuntime(
       chooseCandidate: async (candidates) => {
         const items = candidates.map((candidate) => ({
           label: `PR #${candidate.number}: ${candidate.title}`,
-          description: candidate.url,
+          description: `${candidate.state ?? "open"} · ${candidate.url}`,
           candidate,
         }));
         return (await vscode.window.showQuickPick(items, { placeHolder: "現在HEADのPRを選択" }))?.candidate;
       },
     });
-    let search = await createPullRequestSearch(identity, token).findOpenByHead(identity, pullRequestSynchronizationRevision);
+    // branchが分かっているのにremote対応が不明ならSHAだけで別branchを選ばない。
+    let search: GitHubPullRequestSearchResult = local.branch.kind === "branch" && branchIdentity === undefined
+      ? { kind: "found", candidates: [] }
+      : await createPullRequestSearch(identity, token).findByHead(identity, pullRequestSynchronizationRevision, branchIdentity);
     assertDetectionCurrent();
     if (
       token !== undefined &&
@@ -1298,7 +1309,7 @@ export function registerT405ReviewContextsRuntime(
       const reselectedToken = await auth.getAccessToken(identity.host, signal, true, true);
       assertDetectionCurrent();
       if (reselectedToken !== undefined) {
-        search = await createPullRequestSearch(identity, reselectedToken).findOpenByHead(identity, pullRequestSynchronizationRevision);
+        search = await createPullRequestSearch(identity, reselectedToken).findByHead(identity, pullRequestSynchronizationRevision, branchIdentity);
         assertDetectionCurrent();
       }
     }
@@ -1321,7 +1332,7 @@ export function registerT405ReviewContextsRuntime(
             repositoryId: local.repositoryId,
             repositoryRoot: local.rootPath,
             headRevision: local.head,
-            pullRequestSynchronizationRevision,
+            pullRequestSynchronizationRevision: detectedPullRequest.headSha,
             ...(local.branch.kind === "branch" ? { branchRef: local.branch.fullRef } : {}),
             snapshot: {
               context: { kind: "branch", label: "active", headRevision: local.head },
@@ -1368,7 +1379,7 @@ export function registerT405ReviewContextsRuntime(
           repositoryId: local.repositoryId,
           rootPath: local.rootPath,
           branch: local.branch,
-          head: pullRequestSynchronizationRevision,
+          head: resolution.pullRequest.headSha,
         });
         const reviewRangeConfiguration = vscode.workspace.getConfiguration("reviewRange");
         const preparedGlobal = await currentGlobalForNewPullRequest(
@@ -1398,10 +1409,11 @@ export function registerT405ReviewContextsRuntime(
         local.repositoryId,
         local.head,
         state.contextId,
+        local.branch.kind === "branch" ? local.branch.fullRef : undefined,
       );
     } else {
       assertDetectionCurrent();
-      await currentPullRequestSelection.selectBranch(local.repositoryId, local.head);
+      await currentPullRequestSelection.selectBranch(local.repositoryId, local.head, local.branch.kind === "branch" ? local.branch.fullRef : undefined);
       if (search.kind === "unavailable") {
         reportActiveOperationFailure(
           "PRを再検出",
@@ -1435,8 +1447,8 @@ export function registerT405ReviewContextsRuntime(
       persisted,
       local.repositoryId,
       pullRequestSynchronizationRevision,
-      currentPullRequestSelection.read(local.repositoryId, local.head),
-      currentPullRequestSelection.prefersBranch(local.repositoryId, local.head),
+      currentPullRequestSelection.read(local.repositoryId, local.head, local.branch.kind === "branch" ? local.branch.fullRef : undefined),
+      currentPullRequestSelection.prefersBranch(local.repositoryId, local.head, local.branch.kind === "branch" ? local.branch.fullRef : undefined),
     );
     if (current !== undefined) return;
     await detectPullRequest(local, feedbackContext, signal, false);
