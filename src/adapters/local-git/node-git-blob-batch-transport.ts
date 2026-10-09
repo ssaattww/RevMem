@@ -156,10 +156,14 @@ export class NodeGitBlobBatchTransport {
     const failureListeners = new Set<(error: Error) => void>();
     const stderr: Buffer[] = [];
     let stderrBytes = 0;
-    // Keep a bounded diagnostic prefix without retaining all completed blobs.
+    // Retain the current request, not prefixes of already completed blobs.
+    // Termination has its own budget so a large response cannot hide its output.
     const stdout: Buffer[] = [];
     let stdoutBytes = 0;
     let stdoutTruncated = false;
+    const terminationStdout: Buffer[] = [];
+    let terminationStdoutBytes = 0;
+    let terminationStdoutTruncated = false;
     let timeoutDiagnostic: string | undefined;
     let capturingTerminationOutput = false;
     const lifecycleDiagnostics: string[] = [];
@@ -215,12 +219,20 @@ export class NodeGitBlobBatchTransport {
       stderrBytes += captured.byteLength;
     };
     const captureStdout = (chunk: Buffer | Uint8Array): void => {
-      const remaining = 64 * 1024 - stdoutBytes;
-      if (chunk.byteLength > remaining) stdoutTruncated = true;
+      const remaining = 64 * 1024 - (capturingTerminationOutput ? terminationStdoutBytes : stdoutBytes);
+      if (chunk.byteLength > remaining) {
+        if (capturingTerminationOutput) terminationStdoutTruncated = true;
+        else stdoutTruncated = true;
+      }
       if (remaining <= 0) return;
-      const captured = Buffer.from(chunk).subarray(0, remaining);
-      stdout.push(captured);
-      stdoutBytes += captured.byteLength;
+      const captured = Buffer.from(chunk.subarray(0, remaining));
+      if (capturingTerminationOutput) {
+        terminationStdout.push(captured);
+        terminationStdoutBytes += captured.byteLength;
+      } else {
+        stdout.push(captured);
+        stdoutBytes += captured.byteLength;
+      }
     };
 
     child.on("error", onProcessError);
@@ -354,6 +366,9 @@ export class NodeGitBlobBatchTransport {
     try {
       for (const objectId of objectIds) {
         assertActive();
+        stdout.length = 0;
+        stdoutBytes = 0;
+        stdoutTruncated = false;
         const parser = new CatFileBatchResponseParser([objectId], this.maxBlobBytes);
         const frame = await withControl((async (): Promise<CatFileBatchFrame> => {
           await writeObjectId(objectId);
@@ -405,13 +420,14 @@ export class NodeGitBlobBatchTransport {
       if (timeoutDiagnostic !== undefined) {
         throw new GitCommandFailedError(invocation, {
           exitCode: -1,
-          stdout: Buffer.concat(stdout).toString("utf8"),
+          stdout: Buffer.concat([...stdout, ...terminationStdout]).toString("utf8"),
           stderr: [
             Buffer.concat(stderr).toString("utf8"),
             timeoutDiagnostic,
             ...lifecycleDiagnostics,
             ...(closeInfo?.signal === null || closeInfo?.signal === undefined ? [] : [`Git cat-file batch terminated by ${closeInfo.signal}`]),
-            ...(stdoutTruncated ? ["Git cat-file batch stdout diagnostic truncated after 65536 bytes"] : []),
+            ...(stdoutTruncated ? ["Git cat-file batch request stdout diagnostic truncated after 65536 bytes"] : []),
+            ...(terminationStdoutTruncated ? ["Git cat-file batch termination stdout diagnostic truncated after 65536 bytes"] : []),
           ].filter((part) => part.length > 0).join("\n"),
         });
       }

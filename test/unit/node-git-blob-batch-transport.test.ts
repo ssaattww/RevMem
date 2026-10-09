@@ -801,6 +801,66 @@ for (const stage of ["request", "EOF", "close"] as const) {
   });
 }
 
+testWithCleanup("batch timeout retains active partial and termination output after a large completed blob", async () => {
+  const partial = `${secondOid} blob 1000\nACTIVE-PARTIAL`;
+  const { transport, child, clock } = setup(() => new FakeChild({
+    onObject: (objectId, fake) => {
+      if (objectId === firstOid) fake.sendBlob(objectId, Buffer.alloc(70_000, 0x78));
+      else fake.sendRaw(Buffer.from(partial));
+    },
+    closeOnTerm: true,
+    onTerminate: () => {
+      child.sendRaw(Buffer.from("TERMINATION-TAIL"));
+      child.stderr.write("termination-stderr");
+    },
+  }));
+  let callbacks = 0;
+  const running = transport.readBlobs("/repo", [firstOid, secondOid], () => { callbacks += 1; });
+  const rejection = assert.rejects(running, (error: unknown) => {
+    assert.ok(error instanceof GitCommandFailedError);
+    assert.equal(error.result.exitCode, -1);
+    assert.equal(classifyOperationFailure(error).kind, "retryable");
+    assert.equal(error.result.stdout, `${partial}TERMINATION-TAIL`);
+    assert.match(error.result.stderr, /termination-stderr/u);
+    assert.match(error.result.stderr, /request timed out/u);
+    return true;
+  });
+  await waitForCondition(() => child.objectIds.length === 2, "second object request after large blob");
+  await waitForEventLoopTurn("active partial output acquisition");
+  clock.fireNext();
+  await rejection;
+  assert.equal(callbacks, 1);
+  assert.deepEqual(child.signals, ["SIGTERM"]);
+  assert.equal(clock.size, 0);
+});
+
+for (const stage of ["request", "EOF"] as const) {
+  testWithCleanup(`batch ${stage} timeout reserves bounded diagnostic space for termination output`, async () => {
+    const { transport, child, clock } = setup(() => new FakeChild({
+      onObject: (objectId, fake) => {
+        if (stage === "EOF") fake.sendBlob(objectId, Buffer.alloc(70_000, 0x78));
+        else fake.sendRaw(Buffer.concat([Buffer.from(`${objectId} blob 100000\n`), Buffer.alloc(70_000, 0x78)]));
+      },
+      closeOnTerm: true,
+      onTerminate: () => child.sendRaw(Buffer.from("TERMINATION-TAIL")),
+    }));
+    const running = transport.readBlobs("/repo", [firstOid], () => undefined);
+    const rejection = assert.rejects(running, (error: unknown) => {
+      assert.ok(error instanceof GitCommandFailedError);
+      assert.equal(error.result.exitCode, -1);
+      assert.ok(Buffer.byteLength(error.result.stdout) <= 2 * 65_536);
+      assert.match(error.result.stdout, /TERMINATION-TAIL$/u);
+      assert.match(error.result.stderr, /request stdout diagnostic truncated after 65536 bytes/u);
+      return true;
+    });
+    if (stage === "EOF") await waitForCondition(() => child.stdin.writableEnded, "EOF deadline after large blob");
+    await waitForEventLoopTurn("large response before deadline");
+    clock.fireNext();
+    await rejection;
+    assert.equal(clock.size, 0);
+  });
+}
+
 testWithCleanup("batch abort, malformed protocol, and nonzero exit remain terminal", async () => {
   for (const kind of ["abort", "protocol", "exit"] as const) {
     const controller = new AbortController();
