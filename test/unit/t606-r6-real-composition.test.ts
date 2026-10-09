@@ -213,13 +213,15 @@ test("T606 IFR002 real T305-to-T405 composition retries only transient acquisiti
         { kind: "found", content: "second remote\n" },
       ]);
       assert.equal(maximumRemoteContentReads, 1, "remote fallback remains sequential through actual production composition");
-      for (const detailed of [false, true]) {
+      for (const { detailed, cancel } of [{ detailed: false, cancel: false }, { detailed: true, cancel: false }, { detailed: true, cancel: true }]) {
         const diagnosticHost = new FeedbackHost();
         const detailedHost = Object.assign(diagnosticHost, { isDetailedDiagnosticsEnabled: () => detailed });
         setActiveOperationFeedback(new OperationFeedback(detailedHost));
         const started = deferred<void>();
         const pendingContent = deferred<void>();
         const realReader = registration.readTextContents!;
+        let readSignal: AbortSignal | undefined;
+        let contentCalls = 0;
         const runtime = new PullRequestReviewRuntime<string>({
           repository: {
             load: async () => ({
@@ -238,20 +240,32 @@ test("T606 IFR002 real T305-to-T405 composition retries only transient acquisiti
           snapshot: { ...registration.snapshot, files: [{ fileId: "example", oldPath: "example.ts", newPath: "example.ts", status: "modified", additions: 1, deletions: 1, hunks: [{ oldStart: 1, oldCount: 1, newStart: 1, newCount: 1, lines: [{ kind: "deletion", oldLine: 1, text: "old" }, { kind: "addition", newLine: 1, text: "new" }] }] }] },
           readTextContent: async () => { throw new Error("production bulk registration must bypass the single wrapper"); },
           readTextContents: async (...args) => {
+            contentCalls += 1;
+            readSignal = args[2];
             started.resolve();
             await pendingContent.promise;
             return realReader(...args);
           },
         });
         const progress = runtime.activateProgress(contextId);
+        const outcome = cancel ? assert.rejects(progress) : progress;
         try {
           await started.promise;
           const details = diagnosticHost.logs.filter((entry) => entry.event === "detail" && entry.detail?.phase === "read-content");
           assert.equal(details.length, detailed ? 1 : 0, "existing file detail is opt-in and visible before bulk I/O resolves");
           if (detailed) assert.deepEqual(details[0]?.detail, { reason: "pull-request-file", phase: "read-content", target: "example.ts" });
+          if (cancel) {
+            runtime.clearProgress();
+            assert.equal(readSignal?.aborted, true, "supersession reaches the pending production batch reader");
+          }
         } finally {
           pendingContent.resolve();
-          await progress;
+          await outcome;
+        }
+        if (cancel) {
+          assert.ok(runtime.progress.getChildren().every((category) => runtime.progress.getChildren(category).length === 0), "late cancelled bulk work publishes no tree");
+          await runtime.activateProgress(contextId);
+          assert.equal(contentCalls, 2, "cancelled bulk work does not populate the immutable text cache");
         }
       }
     } finally {

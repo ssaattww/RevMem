@@ -14,6 +14,18 @@
 
 実T405登録を実PullRequestReviewRuntimeへ接続し、冷cacheの一括I/Oをgateで停止した回帰を追加した。旧実装は詳細ONで期待1件に対して0件となり失敗。修正後はpending中に既存detail1件、OFFで0件、単件fallbackなしで成功した。既存compositionのsupersession/abort/stale publication検証も同時に成功した。
 
+## I141-BATCH-001 / Medium
+
+polling harnessの未発生event検証が、25msの実timeoutと実測1秒上限に依存していた。時計とwaitを注入し、仮想25ms、5回の5ms waitで停止することを検証するよう修正した。必須CIからparser/transportの機能検証を除外していない。旧テストはreviewerの1回1100ms停止preloadで失敗し、新テストは同preload指定でも1件成功した（仮想時計のため実時間timerを使用しない）。
+
+## I141-BATCH-002 / Medium
+
+request/EOF/close期限切れを通常Errorから `GitCommandFailedError`、synthetic exitCode `-1` へ修正した。invocationは `cat-file --batch`、cwdは要求root。終了処理完了後に診断を構成するため、期限前とTERM中に取得したstdout/stderrを含む。timeout値、実際の終了signal、TERM/KILLの送信失敗やgrace超過を記録する。取消・protocol異常・通常非0終了の分類は変更していない。
+
+全完了blobを保持して一括読取のメモリ効率を失わないため、stdout診断は64 KiBのprefixに限定し、切捨て時はstderrに明示する。stderrは既存64 KiBの収集境界を維持する。診断はError内に保持し、新しいユーザー向けpath/body出力は追加しない。この境界を単件readerの無制限stdout保持と同一だとは主張しない。
+
+手動timerで3期限を発火させる回帰は、型・invocation・exitCode・partial stdout・終了中出力・timeout値・SIGTERM・retryable分類・残存timer0を確認する。実transportのtimeout Errorを実 `runWithBoundedRetry` へ渡し、2回目成功で回復する。さらに実PullRequestReviewRuntimeの本番 `activateProgress` 再試行経路へtransportを接続し、timeoutだけ2回で回復・tree公開、abort/protocol/non0は1回で終了・tree未公開を確認した。
+
 ## 検証と残件
 
 FA780 Windows、Node v24.20.0、既存依存を使用。依存・認証・環境・workflowを変更していない。
@@ -23,4 +35,6 @@ FA780 Windows、Node v24.20.0、既存依存を使用。依存・認証・環境
 - `npm.cmd run build`: exit 0。
 - 生ログは作者workspaceの `blob-batch-fix-green2.log`、`blob-batch-fix-003-red.log`、`blob-batch-fix-build.log` に保存。
 
-I141-BATCH-001 / MediumとI141-BATCH-002 / Mediumは別の作者修正単位で検証・公開する。最終HEADの広範囲検証・CI・通常fix verification・独立最終レビューは、この初回公開時点では未完了。旧HEADのCI成功を新HEADへ転用しない。現在mainとの性能再測定、物理VS Code UIの受入は未実施。
+追加検証: transport36件成功・失敗0、注入clockのharness1件成功、`compile:test`成功。ログは `blob-batch-fix-001-002-green.log`、`blob-batch-fix-001-scheduler-green.log` に保存。初回回帰fixtureの終了後stderr writeは終了前hookへ訂正し、初回greenで失敗した旧messageのregexは型とresult.stderrを確認する形へ変更して再実行した。これら途中の失敗を成功へ読み替えない。
+
+最終HEADの広範囲検証・CI・通常fix verification・独立最終レビューは、この公開時点では未完了。旧HEADのCI成功を新HEADへ転用しない。現在mainとの性能再測定、物理VS Code UIの受入は未実施。

@@ -2,6 +2,7 @@ import { MAX_GIT_BLOB_BATCH_OBJECTS, GitBlobBatchObjectTooLargeError } from "./g
 
 import { spawn, type ChildProcessWithoutNullStreams, type SpawnOptions } from "node:child_process";
 import type { Readable } from "node:stream";
+import { GitCommandFailedError, type GitCommandInvocation } from "./contracts.js";
 
 import {
   CatFileBatchResponseParser,
@@ -144,7 +145,8 @@ export class NodeGitBlobBatchTransport {
     if (objectIds.length === 0) return;
     if (signal?.aborted === true) throw new DOMException("Git blob batch was superseded.", "AbortError");
 
-    const child = this.spawnProcess(this.executable, ["cat-file", "--batch"], {
+    const invocation: GitCommandInvocation = { cwd: root, argumentsList: ["cat-file", "--batch"] };
+    const child = this.spawnProcess(this.executable, [...invocation.argumentsList], {
       cwd: root,
       shell: false,
       stdio: ["pipe", "pipe", "pipe"],
@@ -154,6 +156,13 @@ export class NodeGitBlobBatchTransport {
     const failureListeners = new Set<(error: Error) => void>();
     const stderr: Buffer[] = [];
     let stderrBytes = 0;
+    // Keep a bounded diagnostic prefix without retaining all completed blobs.
+    const stdout: Buffer[] = [];
+    let stdoutBytes = 0;
+    let stdoutTruncated = false;
+    let timeoutDiagnostic: string | undefined;
+    let capturingTerminationOutput = false;
+    const lifecycleDiagnostics: string[] = [];
     let closeInfo: CloseInfo | undefined;
     let stdinEnded = false;
     let processFailed = false;
@@ -205,6 +214,14 @@ export class NodeGitBlobBatchTransport {
       stderr.push(captured);
       stderrBytes += captured.byteLength;
     };
+    const captureStdout = (chunk: Buffer | Uint8Array): void => {
+      const remaining = 64 * 1024 - stdoutBytes;
+      if (chunk.byteLength > remaining) stdoutTruncated = true;
+      if (remaining <= 0) return;
+      const captured = Buffer.from(chunk).subarray(0, remaining);
+      stdout.push(captured);
+      stdoutBytes += captured.byteLength;
+    };
 
     child.on("error", onProcessError);
     child.on("close", onClose);
@@ -216,10 +233,22 @@ export class NodeGitBlobBatchTransport {
     if (signal !== undefined && readSignalAborted(signal)) onAbort();
 
     const output: AsyncIterator<Buffer | string> = (child.stdout as Readable)[Symbol.asyncIterator]() as AsyncIterator<Buffer | string>;
+    const nextOutput = async (): Promise<IteratorResult<Buffer | string>> => {
+      const next = await output.next();
+      if (!next.done && !capturingTerminationOutput) {
+        captureStdout(typeof next.value === "string" ? Buffer.from(next.value) : next.value);
+      }
+      return next;
+    };
     const withControl = async <T>(operation: Promise<T>, timeoutMs: number | undefined, timeoutMessage: string): Promise<T> => {
       let timer: TimerHandle | undefined;
       const timeout = timeoutMs === undefined ? undefined : new Promise<never>((_resolve, reject) => {
-        timer = this.setTimer(() => reject(new Error(timeoutMessage)), timeoutMs);
+        timer = this.setTimer(() => {
+          timeoutDiagnostic = timeoutMessage;
+          capturingTerminationOutput = true;
+          child.stdout.on("data", captureStdout);
+          reject(new Error(timeoutMessage));
+        }, timeoutMs);
       });
       try {
         return await raceWithFailureNotification(operation, subscribeFailure, timeout);
@@ -298,10 +327,16 @@ export class NodeGitBlobBatchTransport {
 
     const terminateAndReap = async (): Promise<void> => {
       if (closeInfo === undefined) {
-        try { child.kill("SIGTERM"); } catch { /* Continue bounded cleanup after a kill error. */ }
+        try {
+          if (!child.kill("SIGTERM")) lifecycleDiagnostics.push("Git cat-file batch SIGTERM could not be sent");
+        } catch { lifecycleDiagnostics.push("Git cat-file batch SIGTERM failed"); }
         if (!(await waitForClose(this.terminationGraceMs))) {
-          try { child.kill("SIGKILL"); } catch { /* Stream destruction below remains the final bound. */ }
+          lifecycleDiagnostics.push("Git cat-file batch did not close within the SIGTERM grace period");
+          try {
+            if (!child.kill("SIGKILL")) lifecycleDiagnostics.push("Git cat-file batch SIGKILL could not be sent");
+          } catch { lifecycleDiagnostics.push("Git cat-file batch SIGKILL failed"); }
           if (!(await waitForClose(this.terminationGraceMs))) {
+            lifecycleDiagnostics.push("Git cat-file batch did not close within the SIGKILL grace period");
             child.stdin.destroy();
             child.stdout.destroy();
             child.stderr.destroy();
@@ -324,7 +359,7 @@ export class NodeGitBlobBatchTransport {
           await writeObjectId(objectId);
           assertActive();
           while (true) {
-            const next = await output.next();
+            const next = await nextOutput();
             assertActive();
             if (next.done) {
               parser.finish();
@@ -351,7 +386,7 @@ export class NodeGitBlobBatchTransport {
       stdinEnded = true;
       child.stdin.end();
       while (true) {
-        const next = await withControl(output.next(), this.eofTimeoutMs,
+        const next = await withControl(nextOutput(), this.eofTimeoutMs,
           `Git cat-file batch timed out waiting for stdout EOF after ${this.eofTimeoutMs} ms`);
         assertActive();
         if (next.done) break;
@@ -367,11 +402,25 @@ export class NodeGitBlobBatchTransport {
       }
     } catch (error) {
       await terminateAndReap();
+      if (timeoutDiagnostic !== undefined) {
+        throw new GitCommandFailedError(invocation, {
+          exitCode: -1,
+          stdout: Buffer.concat(stdout).toString("utf8"),
+          stderr: [
+            Buffer.concat(stderr).toString("utf8"),
+            timeoutDiagnostic,
+            ...lifecycleDiagnostics,
+            ...(closeInfo?.signal === null || closeInfo?.signal === undefined ? [] : [`Git cat-file batch terminated by ${closeInfo.signal}`]),
+            ...(stdoutTruncated ? ["Git cat-file batch stdout diagnostic truncated after 65536 bytes"] : []),
+          ].filter((part) => part.length > 0).join("\n"),
+        });
+      }
       throw error;
     } finally {
       methodSettled = true;
       signal?.removeEventListener("abort", onAbort);
       child.stderr.removeListener("data", onStderr);
+      child.stdout.removeListener("data", captureStdout);
       if (closeInfo !== undefined) {
         removeErrorListeners();
         child.removeListener("close", onClose);
