@@ -1060,7 +1060,6 @@ export function registerT405ReviewContextsRuntime(
       for (const context of persisted) {
         assertCurrent();
         if (context.kind !== "pull-request" || context.pullRequest === undefined) continue;
-        if (selectedContextId !== undefined && context.contextId !== selectedContextId) continue;
         const identity = repositoryIdentity(context);
         const token = await auth.getAccessToken(identity.host, signal);
         assertCurrent();
@@ -1072,6 +1071,8 @@ export function registerT405ReviewContextsRuntime(
         );
         assertCurrent();
         if (latest.kind !== "available") return false;
+        // 未選択Contextも取得可否を確認してから、その保存状態を維持する。
+        if (selectedContextId !== undefined && context.contextId !== selectedContextId) continue;
         if (
           context.pullRequest.baseSha !== latest.metadata.baseSha ||
           context.pullRequest.headSha !== latest.metadata.headSha
@@ -1119,11 +1120,6 @@ export function registerT405ReviewContextsRuntime(
         },
         resolveUpdate: async (context, operationSignal) => {
           if (context.kind !== "pull-request" || context.pullRequest === undefined) return undefined;
-          // 選択HEADへの同期では未選択兄弟のimmutable revisionとreview/historyを固定する。
-          if (selectedContextId !== undefined && context.contextId !== selectedContextId) {
-            return { repositoryId: context.repositoryId, identity: pullRequestIdentity(context),
-              displayName: context.displayName, pullRequest: { ...context.pullRequest } };
-          }
           const identity = repositoryIdentity(context);
           const token = await auth.getAccessToken(identity.host, operationSignal);
           const latest = await createPullRequestLifecycle(identity, token).fetchCurrent(
@@ -1133,6 +1129,11 @@ export function registerT405ReviewContextsRuntime(
             operationSignal,
           );
           if (latest.kind !== "available") return undefined;
+          // 取得・認証契約を保ち、選択HEADへの同期では未選択兄弟の保存状態を固定する。
+          if (selectedContextId !== undefined && context.contextId !== selectedContextId) {
+            return { repositoryId: context.repositoryId, identity: pullRequestIdentity(context),
+              displayName: context.displayName, pullRequest: { ...context.pullRequest } };
+          }
           return {
             repositoryId: context.repositoryId,
             identity: pullRequestIdentity(context),
@@ -1345,7 +1346,8 @@ export function registerT405ReviewContextsRuntime(
               context: { kind: "branch", label: "active", headRevision: local.head },
               progress: undefined,
             },
-          }, persistedBefore, signal, feedbackContext, state.contextId);
+          }, persistedBefore, signal, feedbackContext,
+          detectedPullRequest.headSha === local.head ? undefined : state.contextId);
           assertDetectionCurrent();
           existing = await contextStateService.load(local.repositoryId, pullRequestIdentity(state));
           assertDetectionCurrent();

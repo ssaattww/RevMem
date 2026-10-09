@@ -66,3 +66,10 @@ FA780の専用checkoutのみ変更。PR138、他担当checkout/session、依存�
 - fixtureは実際のsymbolic-refを参照し、detached時はdetached selectionを返す。
 - 修正後build、compile:test、typecheck:contracts、lint、diff check成功。Issue139/T405 composition/T405 follow-up/T407の対象回帰は49/49成功（IR139-001/002を含む）。ログはcheckout外のissue139-ir002-focused.log。
 - 886a39fの全体検証はunit 896/896まで成功したが、IR139-002修正に伴い所有プロセスを停止したため全体成功には数えない。修正後の公開HEADで全体gate/CIを再実行する。独立指摘closure判定とマージ可否は親と独立reviewerの確認待ち。
+
+## CI既存契約回帰の追修正
+
+- abdd457のPR CI 37933097191はIssue106/PR108段階で既存PR108-PRODUCT-002の2件失敗。兄弟lifecycle unavailable時の中断と、認証回復後のownerHEAD同期がIR139-001修正で失われていた。成功扱いにしない。
+- 全PR lifecycleの取得・認証確認は復元し、取得不可ならrepository-ownerのcommit前に中断する。ローカルHEADと選択PR HEADが異なる場合のみ未選択兄弟の更新を固定し、ownerHEADが一致する通常同期の既存契約を維持する。
+- abdd457の全体gate47148はbuild/契約型/architecture/negative/lint成功、tooling16/16、unit897/897、Git48成功+既定skip3、GitHub48/48、T502 11/11成功後、VS Code t306起動で失敗(exit1)。診断ではvscode-updating mutexが30秒後も保持され、extension-host起動前に終了した。これは全体成功に数えない。他担当やVS Code更新プロセスは操作していない。
+- 追修正後build/compile:test/契約型/lint/diff check成功。IR001/002を含むIssue139＋PR108-002＋T405 composition＋T407は34/34成功、別実行のIssue106全3ファイル＋PR108 product全ファイルは37/37成功。ログはcheckout外のissue139-ci-fix-focused.log / issue139-ci-fix-pr108.log。
