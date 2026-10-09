@@ -31,7 +31,12 @@ PR #140で統合されたclosed/mergedの新規検出、同HEADの別PR隔離、
 - 初回focusedは139成功・1失敗・5 skip。Windowsで改行/タブ入りファイル名を作成できないfixtureを修正して再実行した。
 - 実Git比較はWindowsでspace/日本語pathを使い、symlink blobをGit indexへ直接登録する。POSIXではcolon/tab/newlineとsymlinkを確認する。
 - 新しいT606回帰では実compositionのbatch登録、local+remote結果順、remote最大同時数1を確認する。
-- 広域unit/Git/CI、Extension Host、実機UI、新mainと新候補の性能比較は公開時点のPR本文で進捗を追記する。
+- 追加のIssue139/composition/private PR/mock GitHub回帰: 44成功、0失敗。未保存open/closed/merged、同HEAD兄弟のrevision/review/history非汚染、旧v1選択の移行、fork/branch境界を含む。
+- 初回広域unit: 945成功、1失敗、5 skip。単体readerのwall-clock timeout fixtureを必須unitへ追加したことが、既存CI契約に反した。
+- 必須unitはparser/transport/LocalGitの登録へ修正し、時間依存の単体reader検証はfocusedに保持した。再実行: tooling 16成功、unit 967成功、0失敗、0 skip。
+- `npm run test:git`: 61成功、0失敗、3 skip。再build/lint/architectureも成功。
+- 最初の公開HEAD `fcd2b423b5fc4c8bd1c02495a5fb0c346ae9cf94` のCI run `37937647692` / `37937490523` は失敗。最新pushのCI進捗はPR本文へ記録する。
+- Extension Host、実機UI、新mainと新候補の性能比較は今回ローカルで未実施。
 - 過去のtiming-sensitive Extension Host 2件の失敗はbaseline/current双方で再現した既存記録があるが、今回の成功件数には含めない。今回の再実行は未実施。
 
 ## 既存の性能証拠（今回の再測定ではない）
