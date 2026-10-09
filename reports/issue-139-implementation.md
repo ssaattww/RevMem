@@ -58,3 +58,11 @@ FA780の専用checkoutのみ変更。PR138、他担当checkout/session、依存�
 - T407 fixtureを`state=all`とhead ref/repository metadataへ追随。単独11/11成功。
 - 修正後build、contract型検査、lint、diff check成功。Issue139 / T405 follow-up / T407の3ファイルで45/45成功（IR139-001を含む）。独立指摘のclosure判定は親と同一独立reviewerが行う。
 - 修正後HEADで全体検証とCIを再実行する。以前の結果・中断を新HEADの成功証拠に流用しない。
+
+## IR139-002 の修正
+
+- 独立レビューで旧v1のrepository+HEAD選択が元branch不明のまま別branchへ引き継がれるP1を指摘された。回帰テストで同SHAのunrelated branchにclosed PR候補が混入するRedを確認した。
+- branch付き読取ではbranch付き保存キーのみ使用する。旧選択がある場合はHEADのみの自動推論も抑止し、再検出による明示選択で関連付けを確立する。旧Contextの保存データは保持する。
+- fixtureは実際のsymbolic-refを参照し、detached時はdetached selectionを返す。
+- 修正後build、compile:test、typecheck:contracts、lint、diff check成功。Issue139/T405 composition/T405 follow-up/T407の対象回帰は49/49成功（IR139-001/002を含む）。ログはcheckout外のissue139-ir002-focused.log。
+- 886a39fの全体検証はunit 896/896まで成功したが、IR139-002修正に伴い所有プロセスを停止したため全体成功には数えない。修正後の公開HEADで全体gate/CIを再実行する。独立指摘closure判定とマージ可否は親と独立reviewerの確認待ち。

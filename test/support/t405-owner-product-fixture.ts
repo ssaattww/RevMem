@@ -215,10 +215,15 @@ export async function createOwnerProductFixture(numbers: readonly number[] = [52
       git: createNodeLocalGitAdapter(),
       enumerateCurrentContexts: async (): Promise<readonly CurrentContextUiSnapshot[]> => {
         acquisitionCalls.localCandidates += 1;
-        return enabled ? [{ context: {
+        if (!enabled) return [];
+        let branchRef: string | undefined;
+        try { branchRef = await git("symbolic-ref", "--quiet", "HEAD"); } catch { /* detached HEAD ではブランチ関連付けを付与しない。 */ }
+        return [{ context: {
         kind: "branch", label: "main", headRevision: ownerHead,
-        selection: { kind: "branch", repositoryId: OWNER_ID, repositoryRoot, branchRef: "refs/heads/main" },
-      }, progress: undefined }] : [];
+        selection: branchRef === undefined
+          ? { kind: "detached", repositoryId: OWNER_ID, repositoryRoot, headRevision: ownerHead }
+          : { kind: "branch", repositoryId: OWNER_ID, repositoryRoot, branchRef },
+      }, progress: undefined }];
       },
       refreshDecorations: async () => undefined, refreshCurrentContext: async () => undefined,
       registerPullRequestReviewDiff: (registration) => { acquisitionCalls.diffRuntime += 1; registrations.set(registration.snapshot.contextId, registration); review.register(registration); },
@@ -233,7 +238,7 @@ export async function createOwnerProductFixture(numbers: readonly number[] = [52
   await start();
   return {
     A, B, C, D, repositoryRoot, repository, remote, unavailable, auth, publications, history, errors, registrations, opened, git,
-    acquisitionCalls, candidatePicks,
+    acquisitionCalls, candidatePicks, workspaceState,
     resetAcquisitionCalls: () => {
       acquisitionCalls.lifecycle = 0;
       acquisitionCalls.localCandidates = 0;

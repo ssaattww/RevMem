@@ -13,6 +13,25 @@ const localCandidate = (root: string, head: string, ref = "main") => ({
   progress: undefined,
 });
 
+test("IR139-002: branch不明の旧選択を同SHAの別branchへ継承しない", async () => {
+  const fixture = await createOwnerProductFixture([52]);
+  try {
+    await fixture.git("checkout", "-B", "main", fixture.B);
+    fixture.remote.clear();
+    fixture.remote.set(52, { base: fixture.A, head: fixture.C, state: "closed" });
+    await fixture.workspaceState.update("reviewRange.currentPullRequestSelections.v1", {
+      [`${OWNER_ID}\0${fixture.B}`]: ownerContextId(52),
+    });
+    await fixture.git("checkout", "-B", "unrelated", fixture.B);
+    const candidates = await fixture.runtime.augmentCurrentContextCandidates([localCandidate(fixture.repositoryRoot, fixture.B, "unrelated")]);
+    assert.ok(candidates.every(candidate => candidate.context.kind !== "pull-request"));
+    const saved = await fixture.load(52);
+    assert.ok(saved, "旧Contextは削除しない");
+    assert.equal(saved.contextState.pullRequest?.headSha, fixture.B);
+    assert.equal(saved.contextState.pullRequest?.state, "open", "旧Contextの保存状態は変更しない");
+  } finally { await fixture.dispose(); }
+});
+
 test("IR139-001: 同じremote HEADの未選択兄弟PRのrevision・確認済み範囲・履歴を保持する", async () => {
   const fixture = await createOwnerProductFixture([52, 53]);
   try {

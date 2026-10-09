@@ -74,8 +74,8 @@ export class VscodeCurrentPullRequestSelectionStore {
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined;
     const selections = raw as Record<string, unknown>;
     const scopedKey = this.key(repositoryId, headRevision, branchRef);
-    const value = selections[scopedKey] ?? (this.hasScopedSelection(selections, repositoryId, headRevision)
-      ? undefined : selections[this.key(repositoryId, headRevision)]);
+    // 元branchを証明できない旧HEADのみの選択をbranch付き読取へ継承しない。
+    const value = selections[scopedKey];
     return typeof value === "string" && value.trim().length > 0 ? value : undefined;
   }
 
@@ -139,6 +139,7 @@ export class VscodeCurrentPullRequestSelectionStore {
     if (value !== undefined) return value === false;
     // 別branchの明示選択があるSHAは、旧HEADのみの自動推論へ戻さない。
     if (this.hasScopedSelection(selections, repositoryId, headRevision)) return true;
+    if (branchRef !== undefined && selections[this.key(repositoryId, headRevision)] !== undefined) return true;
     return selections[this.key(repositoryId, headRevision)] === false;
   }
 
