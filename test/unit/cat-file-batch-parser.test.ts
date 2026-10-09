@@ -72,7 +72,7 @@ test("cat-file batch parser drains an oversized blob frame without buffering it"
   ]);
 });
 
-test("cat-file batch parser completes frames at the blob limit, including a zero-byte limit", () => {
+test("cat-file batch parser completes frames within a positive blob limit, including a zero-byte payload", () => {
   const exactLimitOid = oid("a");
   const zeroLimitOid = oid("b");
   const parser = new CatFileBatchResponseParser([exactLimitOid, zeroLimitOid], 3);
@@ -82,6 +82,19 @@ test("cat-file batch parser completes frames at the blob limit, including a zero
   )]), [
     { kind: "blob", objectId: exactLimitOid, bytes: Buffer.from("abc", "ascii") },
     { kind: "blob", objectId: zeroLimitOid, bytes: Buffer.alloc(0) },
+  ]);
+});
+
+test("cat-file batch parser accepts zero-byte blobs and drains one-byte blobs at a zero-byte limit", () => {
+  const oversizedOid = oid("a");
+  const emptyOid = oid("b");
+  const parser = new CatFileBatchResponseParser([oversizedOid, emptyOid], 0);
+
+  assert.deepEqual(collect(parser, [Buffer.from(
+    `${oversizedOid} blob 1\nx\n${emptyOid} blob 0\n\n`, "ascii",
+  )]), [
+    { kind: "too-large", objectId: oversizedOid, size: 1 },
+    { kind: "blob", objectId: emptyOid, bytes: Buffer.alloc(0) },
   ]);
 });
 

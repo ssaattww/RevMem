@@ -647,11 +647,13 @@ testWithCleanup("batch transport rejects a normal or abnormal process close befo
     const { transport, child } = setup(() => new FakeChild({
       onObject: (_objectId, fake) => fake.close(exitCode, null),
     }));
+    let callbackCount = 0;
 
     await assert.rejects(
-      transport.readBlobs("/repo", [firstOid], async () => undefined),
+      transport.readBlobs("/repo", [firstOid], () => { callbackCount += 1; }),
       new RegExp(`closed before protocol completion \\(exit ${exitCode}\\)`),
     );
+    assert.equal(callbackCount, 0);
     assert.deepEqual(child.signals, []);
     assert.equal(child.unrefCalled, true);
   }
