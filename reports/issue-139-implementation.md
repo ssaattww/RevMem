@@ -48,3 +48,13 @@
 
 FA780の専用checkoutのみ変更。PR138、他担当checkout/session、依存、認証・権限・環境設定、workflowは変更しない。通常commit/pushのみ。
 全体検証を完了し、正確な公開HEADとログを親へ渡す。親が通常/独立最終レビューを手配する。exact-head必要CIと保護条件を照合し、親の最終連絡前にはマージしない。
+
+## IR139-001 と全体検証fixtureの修正
+
+- 独立レビュー対象`307f8484ab325ccd2b13c22290d8da19ba513aff`でP1 IR139-001を指摘された。選択PRと未選択兄弟のremote HEADが同じ場合、選択HEADへrepository全体を同期して兄弟のreview stateも再マップしていた。初回52件ではこの兄弟ケースが不足していた。
+- 指摘資料を読取のみで確認し、実production fixtureにローカルHEAD=B、PR52 closed/C、PR53 open/C、PR53確認済み[1,2)の回帰を追加。修正前に兄弟HEADがCへ変わるRedを確認した。
+- 選択後のowner同期へ対象Context IDを渡す。選択HEADへの同期では未選択Contextのmetadata/revisionを固定し、repository-level CASは維持する。未選択兄弟のHEAD、files/確認済み範囲、履歴が不変となるGreenを確認した。
+- 初回全体検証はT407 HTTP fixtureの`state=open`条件から未表示pickerを無期限待ちしていた。所有を起動コマンド・PID・作成時刻で照合した自担当検証ツリーだけを終了し、exit1として記録。成功扱いにはしない。
+- T407 fixtureを`state=all`とhead ref/repository metadataへ追随。単独11/11成功。
+- 修正後build、contract型検査、lint、diff check成功。Issue139 / T405 follow-up / T407の3ファイルで45/45成功（IR139-001を含む）。独立指摘のclosure判定は親と同一独立reviewerが行う。
+- 修正後HEADで全体検証とCIを再実行する。以前の結果・中断を新HEADの成功証拠に流用しない。

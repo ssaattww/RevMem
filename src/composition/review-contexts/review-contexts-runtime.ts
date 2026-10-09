@@ -1046,6 +1046,7 @@ export function registerT405ReviewContextsRuntime(
     persisted: readonly ReviewContextState[],
     signal?: AbortSignal,
     feedbackContext?: OperationFeedbackContext,
+    selectedContextId?: string,
   ): Promise<boolean> => {
     const assertCurrent = (): void => {
       if (signal?.aborted === true) {
@@ -1059,6 +1060,7 @@ export function registerT405ReviewContextsRuntime(
       for (const context of persisted) {
         assertCurrent();
         if (context.kind !== "pull-request" || context.pullRequest === undefined) continue;
+        if (selectedContextId !== undefined && context.contextId !== selectedContextId) continue;
         const identity = repositoryIdentity(context);
         const token = await auth.getAccessToken(identity.host, signal);
         assertCurrent();
@@ -1117,6 +1119,11 @@ export function registerT405ReviewContextsRuntime(
         },
         resolveUpdate: async (context, operationSignal) => {
           if (context.kind !== "pull-request" || context.pullRequest === undefined) return undefined;
+          // 選択HEADへの同期では未選択兄弟のimmutable revisionとreview/historyを固定する。
+          if (selectedContextId !== undefined && context.contextId !== selectedContextId) {
+            return { repositoryId: context.repositoryId, identity: pullRequestIdentity(context),
+              displayName: context.displayName, pullRequest: { ...context.pullRequest } };
+          }
           const identity = repositoryIdentity(context);
           const token = await auth.getAccessToken(identity.host, operationSignal);
           const latest = await createPullRequestLifecycle(identity, token).fetchCurrent(
@@ -1338,7 +1345,7 @@ export function registerT405ReviewContextsRuntime(
               context: { kind: "branch", label: "active", headRevision: local.head },
               progress: undefined,
             },
-          }, persistedBefore, signal, feedbackContext);
+          }, persistedBefore, signal, feedbackContext, state.contextId);
           assertDetectionCurrent();
           existing = await contextStateService.load(local.repositoryId, pullRequestIdentity(state));
           assertDetectionCurrent();

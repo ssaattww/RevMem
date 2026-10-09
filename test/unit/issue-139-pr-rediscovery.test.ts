@@ -5,12 +5,39 @@ import { FetchGitHubPullRequestAdapter } from "../../src/adapters/github/index.j
 import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index.js";
 import type { GitHubPullRequestSearchResult } from "../../src/application/github-pr-context/index.js";
 import { createTemporaryGitRepository } from "../support/temporary-git-repository.js";
-import { createOwnerProductFixture, ownerContextId } from "../support/t405-owner-product-fixture.js";
+import { createOwnerProductFixture, ownerContextId, OWNER_ID, OWNER_FILE } from "../support/t405-owner-product-fixture.js";
 
 const localCandidate = (root: string, head: string, ref = "main") => ({
   context: { kind: "branch" as const, label: ref, headRevision: head,
     selection: { kind: "branch" as const, repositoryId: "github.com/ssaattww/revmem", repositoryRoot: root, branchRef: `refs/heads/${ref}` } },
   progress: undefined,
+});
+
+test("IR139-001: 同じremote HEADの未選択兄弟PRのrevision・確認済み範囲・履歴を保持する", async () => {
+  const fixture = await createOwnerProductFixture([52, 53]);
+  try {
+    const sibling = await fixture.load(53);
+    assert.ok(sibling);
+    const file = sibling.contextState.files[OWNER_FILE];
+    assert.ok(file);
+    const target = { kind: "pull-request" as const, repositoryId: OWNER_ID, contextId: ownerContextId(53) };
+    await fixture.repository.save(target, {
+      ...sibling, contextState: { ...sibling.contextState, files: {
+        ...sibling.contextState.files, [OWNER_FILE]: { ...file, modifiedReviewed: [{ startLine: 1, endLineExclusive: 2 }] },
+      } },
+    });
+    const before = await fixture.load(53);
+    fixture.remote.set(52, { base: fixture.A, head: fixture.C, state: "closed" });
+    fixture.remote.set(53, { base: fixture.A, head: fixture.C, state: "open" });
+    await fixture.git("checkout", "-B", "main", fixture.B);
+    await fixture.invoke();
+    assert.deepEqual(fixture.errors, []);
+    assert.equal((await fixture.load(52))?.contextState.pullRequest?.headSha, fixture.C);
+    const after = await fixture.load(53);
+    assert.equal(after?.contextState.pullRequest?.headSha, fixture.B);
+    assert.deepEqual(after?.contextState.files, before?.contextState.files);
+    assert.ok(!fixture.history.some(event => event.contextId === ownerContextId(53)));
+  } finally { await fixture.dispose(); }
 });
 
 test("Issue139 production: 同じHEADの別branchへ明示選択を持ち越さない", async () => {
