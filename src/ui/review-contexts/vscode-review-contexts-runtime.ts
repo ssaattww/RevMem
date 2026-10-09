@@ -1,4 +1,4 @@
-import * as vscode from "vscode";
+﻿import * as vscode from "vscode";
 
 import {
   formatOperationFailureForUser,
@@ -71,10 +71,13 @@ export class VscodeReviewContextVisibilityStore implements ReviewContextVisibili
 export class VscodeCurrentPullRequestSelectionStore {
   public constructor(private readonly state: vscode.Memento) {}
 
-  public read(repositoryId: string, headRevision: string): string | undefined {
+  public read(repositoryId: string, headRevision: string, branchRef?: string): string | undefined {
     const raw = this.state.get<unknown>(CURRENT_PULL_REQUEST_SELECTIONS_KEY, {});
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined;
-    const value = (raw as Record<string, unknown>)[this.key(repositoryId, headRevision)];
+    const selections = raw as Record<string, unknown>;
+    const scopedKey = this.key(repositoryId, headRevision, branchRef);
+    // 元branchを証明できない旧HEADのみの選択をbranch付き読取へ継承しない。
+    const value = selections[scopedKey];
     return typeof value === "string" && value.trim().length > 0 ? value : undefined;
   }
 
@@ -82,6 +85,7 @@ export class VscodeCurrentPullRequestSelectionStore {
     repositoryId: string,
     headRevision: string,
     contextId: string,
+    branchRef?: string,
   ): Promise<void> {
     if (contextId.trim().length === 0) throw new TypeError("contextId must not be empty");
     const raw = this.state.get<unknown>(CURRENT_PULL_REQUEST_SELECTIONS_KEY, {});
@@ -93,7 +97,7 @@ export class VscodeCurrentPullRequestSelectionStore {
         }
       }
     }
-    selections[this.key(repositoryId, headRevision)] = contextId;
+    selections[this.key(repositoryId, headRevision, branchRef)] = contextId;
     await this.state.update(CURRENT_PULL_REQUEST_SELECTIONS_KEY, selections);
   }
 
@@ -102,12 +106,12 @@ export class VscodeCurrentPullRequestSelectionStore {
    * existing public UI API consumers. New branch fallback uses selectBranch().
    * @deprecated Use selectBranch() when an explicit branch/no-PR choice is required.
    */
-  public async clear(repositoryId: string, headRevision: string): Promise<void> {
+  public async clear(repositoryId: string, headRevision: string, branchRef?: string): Promise<void> {
     const raw = this.state.get<unknown>(CURRENT_PULL_REQUEST_SELECTIONS_KEY, {});
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return;
     const selections: Record<string, string | false> = {};
     for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-      if (key !== this.key(repositoryId, headRevision) &&
+      if (key !== this.key(repositoryId, headRevision, branchRef) &&
         ((typeof value === "string" && value.trim().length > 0) || value === false)) {
         selections[key] = value;
       }
@@ -116,7 +120,7 @@ export class VscodeCurrentPullRequestSelectionStore {
   }
 
   /** Records an explicit branch/no-PR choice that suppresses saved-PR auto-inference. */
-  public async selectBranch(repositoryId: string, headRevision: string): Promise<void> {
+  public async selectBranch(repositoryId: string, headRevision: string, branchRef?: string): Promise<void> {
     const raw = this.state.get<unknown>(CURRENT_PULL_REQUEST_SELECTIONS_KEY, {});
     const selections: Record<string, string | false> = {};
     if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
@@ -124,19 +128,30 @@ export class VscodeCurrentPullRequestSelectionStore {
         if ((typeof value === "string" && value.trim().length > 0) || value === false) selections[key] = value;
       }
     }
-    selections[this.key(repositoryId, headRevision)] = false;
+    selections[this.key(repositoryId, headRevision, branchRef)] = false;
     await this.state.update(CURRENT_PULL_REQUEST_SELECTIONS_KEY, selections);
   }
 
   /** Returns whether the immutable repository HEAD has an explicit branch/no-PR choice. */
-  public prefersBranch(repositoryId: string, headRevision: string): boolean {
+  public prefersBranch(repositoryId: string, headRevision: string, branchRef?: string): boolean {
     const raw = this.state.get<unknown>(CURRENT_PULL_REQUEST_SELECTIONS_KEY, {});
-    return typeof raw === "object" && raw !== null && !Array.isArray(raw) &&
-      (raw as Record<string, unknown>)[this.key(repositoryId, headRevision)] === false;
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return false;
+    const selections = raw as Record<string, unknown>;
+    const value = selections[this.key(repositoryId, headRevision, branchRef)];
+    if (value !== undefined) return value === false;
+    // 別branchの明示選択があるSHAは、旧HEADのみの自動推論へ戻さない。
+    if (this.hasScopedSelection(selections, repositoryId, headRevision)) return true;
+    if (branchRef !== undefined && selections[this.key(repositoryId, headRevision)] !== undefined) return true;
+    return selections[this.key(repositoryId, headRevision)] === false;
   }
 
-  private key(repositoryId: string, headRevision: string): string {
-    return `${repositoryId}\0${headRevision}`;
+  private hasScopedSelection(selections: Record<string, unknown>, repositoryId: string, headRevision: string): boolean {
+    const prefix = `${this.key(repositoryId, headRevision)}\0`;
+    return Object.keys(selections).some(key => key.startsWith(prefix));
+  }
+
+  private key(repositoryId: string, headRevision: string, branchRef?: string): string {
+    return `${repositoryId}\0${headRevision}${branchRef === undefined ? "" : `\0${branchRef}`}`;
   }
 }
 

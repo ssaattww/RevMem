@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import Module, { createRequire } from "node:module";
@@ -119,7 +119,10 @@ export async function createOwnerProductFixture(numbers: readonly number[] = [52
       if (auth.rejectSearchOnce) { auth.rejectSearchOnce = false; return json({ message: "Not Found" }, 404); }
       return json([...remote].map(([number, revision]) => ({ number, title: `PR ${number}`,
         html_url: `https://github.com/ssaattww/revmem/pull/${number}`,
-        head: { sha: revision.head }, base: { ref: "main", sha: revision.base } })));
+        state: revision.state === "merged" ? "closed" : revision.state,
+        merged_at: revision.state === "merged" ? timestamp : null,
+        head: { sha: revision.head, ref: "main", repo: { full_name: "ssaattww/revmem" } },
+        base: { ref: "main", sha: revision.base } })));
     }
     const comparison = /\/compare\/([a-f0-9]+)\.\.\.([a-f0-9]+)$/u.exec(url.pathname);
     if (comparison !== null) return json({ merge_base_commit: { sha: await git("merge-base", comparison[1]!, comparison[2]!) } });
@@ -135,7 +138,8 @@ export async function createOwnerProductFixture(numbers: readonly number[] = [52
           patch: diff.slice(diff.indexOf("@@")) }]);
       }
       acquisitionCalls.lifecycle += 1;
-      return json({ number, title: `PR ${number}`, state: revision.state, merged_at: null, changed_files: 1,
+      return json({ number, title: `PR ${number}`, state: revision.state === "merged" ? "closed" : revision.state,
+        merged_at: revision.state === "merged" ? timestamp : null, changed_files: 1,
         html_url: `https://github.com/ssaattww/revmem/pull/${number}`,
         base: { sha: revision.base }, head: { sha: revision.head } });
     }
@@ -146,6 +150,7 @@ export async function createOwnerProductFixture(numbers: readonly number[] = [52
   const workspaceState = new Memento();
   let ownerHead = B;
   let choice = 52;
+  const candidatePicks: Array<readonly { label: string; description: string; candidate: { number: number } }[]> = [];
   let enabled = false;
   let provider: Provider;
   let resolveStartup: () => void = () => undefined;
@@ -166,10 +171,11 @@ export async function createOwnerProductFixture(numbers: readonly number[] = [52
         const listener = provider.onDidChangeTreeData(() => resolveStartup());
         return { dispose: () => listener.dispose() };
       },
-      showQuickPick: async (items: readonly unknown[], options?: { placeHolder?: string }) =>
-        options?.placeHolder === "現在HEADのPRを選択"
-          ? items.find((item) => (item as { candidate?: { number?: number } }).candidate?.number === choice)
-          : items[0],
+      showQuickPick: async (items: readonly unknown[], options?: { placeHolder?: string }) => {
+        if (options?.placeHolder !== "現在HEADのPRを選択") return items[0];
+        candidatePicks.push(items as typeof candidatePicks[number]);
+        return items.find((item) => (item as { candidate?: { number?: number } }).candidate?.number === choice);
+      },
       showErrorMessage: async (message: string) => { errors.push(message); },
     },
     workspace: {
@@ -210,10 +216,15 @@ export async function createOwnerProductFixture(numbers: readonly number[] = [52
       git: createNodeLocalGitAdapter(),
       enumerateCurrentContexts: async (): Promise<readonly CurrentContextUiSnapshot[]> => {
         acquisitionCalls.localCandidates += 1;
-        return enabled ? [{ context: {
+        if (!enabled) return [];
+        let branchRef: string | undefined;
+        try { branchRef = await git("symbolic-ref", "--quiet", "HEAD"); } catch { /* detached HEAD ではブランチ関連付けを付与しない。 */ }
+        return [{ context: {
         kind: "branch", label: "main", headRevision: ownerHead,
-        selection: { kind: "branch", repositoryId: OWNER_ID, repositoryRoot, branchRef: "refs/heads/main" },
-      }, progress: undefined }] : [];
+        selection: branchRef === undefined
+          ? { kind: "detached", repositoryId: OWNER_ID, repositoryRoot, headRevision: ownerHead }
+          : { kind: "branch", repositoryId: OWNER_ID, repositoryRoot, branchRef },
+      }, progress: undefined }];
       },
       refreshDecorations: async () => undefined, refreshCurrentContext: async () => undefined,
       registerPullRequestReviewDiff: (registration) => { acquisitionCalls.diffRuntime += 1; registrations.set(registration.snapshot.contextId, registration); review.register(registration); },
@@ -228,7 +239,7 @@ export async function createOwnerProductFixture(numbers: readonly number[] = [52
   await start();
   return {
     A, B, C, D, repositoryRoot, repository, remote, unavailable, auth, publications, history, errors, registrations, opened, git,
-    acquisitionCalls,
+    acquisitionCalls, candidatePicks, workspaceState,
     resetAcquisitionCalls: () => {
       acquisitionCalls.lifecycle = 0;
       acquisitionCalls.localCandidates = 0;

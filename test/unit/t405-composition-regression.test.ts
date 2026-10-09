@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import Module, { createRequire } from "node:module";
@@ -398,7 +398,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     let patchNewLine = "new";
     globalThis.fetch = async (input) => {
       const url = new URL(String(input));
-      if (url.pathname === "/repos/ssaattww/revmem/pulls" && url.searchParams.get("state") === "open") {
+      if (url.pathname === "/repos/ssaattww/revmem/pulls" && url.searchParams.get("state") === "all") {
         prSearchRequestHeads.push(remoteHeadSha);
         if (discoveryTransport === "network") throw new Error("network interrupted during PR detection");
         if (discoveryTransport === "zero") return jsonResponse([]);
@@ -412,7 +412,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
           number,
           title: `PR ${number}`,
           html_url: `https://github.com/ssaattww/revmem/pull/${number}`,
-          head: { sha: remoteHeadSha },
+          head: { sha: remoteHeadSha, ref: "main", repo: { full_name: "ssaattww/revmem" } },
           base: { ref: "main", sha: remoteBaseSha },
         })));
       }
@@ -1024,7 +1024,9 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
           branchSnapshot = cell.name === "no-match"
             ? { ...savedBranch, context: { ...savedBranch.context, headRevision: sourceHeadSha } }
             : savedBranch;
-          if (["empty", "unregistered", "failed"].includes(cell.name)) await preferenceStore.select(REPOSITORY_ID, targetHeadSha, contextId53);
+          if (["empty", "unregistered", "failed"].includes(cell.name)) {
+            await preferenceStore.select(REPOSITORY_ID, targetHeadSha, contextId53, "refs/heads/main");
+          }
           const entries: OperationLogEntry[] = [];
           const feedback = new OperationFeedback({ showBusy() {}, clearBusy() {}, appendLog: (entry) => entries.push(entry), revealLog() {} });
           let accepted: CurrentContextUiSnapshot | undefined;
@@ -1622,7 +1624,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     await current.runtime.refresh();
     const closed52 = findPullRequestItem(current.provider, 52);
     const merged53 = findPullRequestItem(current.provider, 53);
-    assert.equal(closed52.group, "saved-closed-pull-request");
+    assert.equal(closed52.group, "current-pull-request", "Issue139: 明示選択したclosed PRをCurrent Contextに保持する");
     assert.equal(merged53.group, "saved-closed-pull-request");
     assert.equal(closed52.layerEnabled, false);
     assert.equal(merged53.layerEnabled, false);
@@ -1636,7 +1638,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
 
     current = await registerRuntime();
     await current.runtime.refresh();
-    assert.equal(findPullRequestItem(current.provider, 52).group, "saved-closed-pull-request");
+    assert.equal(findPullRequestItem(current.provider, 52).group, "current-pull-request", "Issue139: 再起動後も明示選択を保持する");
     assert.equal(findPullRequestItem(current.provider, 53).group, "saved-closed-pull-request");
     assert.equal(findPullRequestItem(current.provider, 53).layerEnabled, false);
 

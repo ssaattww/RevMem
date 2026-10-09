@@ -1,4 +1,4 @@
-import path from "node:path";
+﻿import path from "node:path";
 import * as vscode from "vscode";
 
 import { NodeSha256StableHash } from "../../adapters/crypto/index";
@@ -46,6 +46,7 @@ import {
   GitHubPullRequestContextResolver,
   createGitHubPullRequestContextIdFromRepositoryId,
   type GitHubPullRequestCandidate,
+  type GitHubPullRequestSearchResult,
   type GitHubRepositoryIdentity,
 } from "../../application/github-pr-context/index";
 import {
@@ -559,6 +560,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
         const preferredContextId = this.currentPullRequestSelection.read(
           owner.repositoryId,
           owner.headRevision,
+          owner.branchRef,
         );
         if (owner.branchRef !== undefined) {
           const branch = synchronized.find((context) =>
@@ -571,7 +573,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
           owner.repositoryId,
           owner.pullRequestSynchronizationRevision,
           preferredContextId,
-          this.currentPullRequestSelection.prefersBranch(owner.repositoryId, owner.headRevision),
+          this.currentPullRequestSelection.prefersBranch(owner.repositoryId, owner.headRevision, owner.branchRef),
         );
         if (currentPullRequest !== undefined) current.unshift(currentPullRequest);
 
@@ -699,13 +701,14 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       const preferredContextId = this.currentPullRequestSelection.read(
         owner.repositoryId,
         owner.headRevision,
+        owner.branchRef,
       );
       const selectionDecision = resolveCurrentPullRequestContext(
         synchronized,
         owner.repositoryId,
         owner.pullRequestSynchronizationRevision,
         preferredContextId,
-        this.currentPullRequestSelection.prefersBranch(owner.repositoryId, owner.headRevision),
+        this.currentPullRequestSelection.prefersBranch(owner.repositoryId, owner.headRevision, owner.branchRef),
       );
       const localBranch = localCandidates.find((candidate) => {
         const candidateOwner = localOwner(candidate);
@@ -860,7 +863,7 @@ const pullRequestState = (
       owner: identity.owner,
       repository: identity.repository,
       number: candidate.number,
-      state: "open",
+      state: candidate.state ?? "open",
       title: candidate.title,
       baseSha: candidate.baseSha,
       headSha: candidate.headSha,
@@ -1212,6 +1215,7 @@ export function registerT405ReviewContextsRuntime(
     signal?: AbortSignal,
     feedbackContext?: OperationFeedbackContext,
     operationCache?: PullRequestLifecycleOperationCache,
+    selectedContextId?: string,
   ): Promise<boolean> => {
     const assertCurrent = (): void => {
       if (signal?.aborted === true) {
@@ -1231,6 +1235,8 @@ export function registerT405ReviewContextsRuntime(
         const latest = await fetchPullRequestLifecycle(identity, token, context.pullRequest.number, feedbackContext, signal, operationCache);
         assertCurrent();
         if (latest.kind !== "available") return false;
+        // 未選択Contextも取得可否を確認してから、その保存状態を維持する。
+        if (selectedContextId !== undefined && context.contextId !== selectedContextId) continue;
         if (
           context.pullRequest.baseSha !== latest.metadata.baseSha ||
           context.pullRequest.headSha !== latest.metadata.headSha
@@ -1282,6 +1288,11 @@ export function registerT405ReviewContextsRuntime(
           const token = await auth.getAccessToken(identity.host, operationSignal);
           const latest = await fetchPullRequestLifecycle(identity, token, context.pullRequest.number, feedbackContext, operationSignal, operationCache);
           if (latest.kind !== "available") return undefined;
+          // 取得・認証契約を保ち、選択HEADへの同期では未選択兄弟の保存状態を固定する。
+          if (selectedContextId !== undefined && context.contextId !== selectedContextId) {
+            return { repositoryId: context.repositoryId, identity: pullRequestIdentity(context),
+              displayName: context.displayName, pullRequest: { ...context.pullRequest } };
+          }
           return {
             repositoryId: context.repositoryId,
             identity: pullRequestIdentity(context),
@@ -1446,6 +1457,11 @@ export function registerT405ReviewContextsRuntime(
     const pullRequestSynchronizationRevision = (await timed("repository-inspection", async () =>
       await options.git.resolveIdentityRemoteTrackingRevision(local, signal))) ?? localHead;
     assertDetectionCurrent();
+    const branchTarget = await timed("repository-inspection", () => options.git.resolvePullRequestBranch(local, signal));
+    assertDetectionCurrent();
+    const headRepository = branchTarget === undefined ? undefined : parseGitHubRemote(branchTarget.remoteUrl);
+    const branchIdentity = branchTarget === undefined || headRepository === undefined ? undefined
+      : { headRef: branchTarget.headRef, headRepository };
     const persistedBefore = await timed("repository-inspection", () => repository.listRepositoryContexts(local.repositoryId));
     assertDetectionCurrent();
     let synchronizationCompleted = false;
@@ -1470,7 +1486,7 @@ export function registerT405ReviewContextsRuntime(
       chooseCandidate: async (candidates) => {
         const items = candidates.map((candidate) => ({
           label: `PR #${candidate.number}: ${candidate.title}`,
-          description: candidate.url,
+          description: `${candidate.state ?? "open"} · ${candidate.url}`,
           candidate,
         }));
         const cancellation = new vscode.CancellationTokenSource();
@@ -1511,7 +1527,10 @@ export function registerT405ReviewContextsRuntime(
         ...(event.reasonCode === undefined ? {} : { reasonCode: event.reasonCode }),
       });
     };
-    let search = await createPullRequestSearch(identity, token, searchDiagnostic, lifecycleCache.mergeBaseReads, lifecycleCache.mergeBaseResults, lifecycleCache.mergeBaseGeneration).findOpenByHead(identity, pullRequestSynchronizationRevision, signal);
+    // branchが分かっているのにremote対応が不明ならSHAだけで別branchを選ばない。
+    let search: GitHubPullRequestSearchResult = local.branch.kind === "branch" && branchIdentity === undefined
+      ? { kind: "found", candidates: [] }
+      : await createPullRequestSearch(identity, token, searchDiagnostic, lifecycleCache.mergeBaseReads, lifecycleCache.mergeBaseResults, lifecycleCache.mergeBaseGeneration).findByHead(identity, pullRequestSynchronizationRevision, branchIdentity, signal);
     assertDetectionCurrent();
     if (
       token !== undefined &&
@@ -1523,7 +1542,7 @@ export function registerT405ReviewContextsRuntime(
       assertDetectionCurrent();
       if (reselectedToken !== undefined) {
         clearPullRequestLifecycleOperationCache(lifecycleCache);
-        search = await createPullRequestSearch(identity, reselectedToken, searchDiagnostic, lifecycleCache.mergeBaseReads, lifecycleCache.mergeBaseResults, lifecycleCache.mergeBaseGeneration).findOpenByHead(identity, pullRequestSynchronizationRevision, signal);
+        search = await createPullRequestSearch(identity, reselectedToken, searchDiagnostic, lifecycleCache.mergeBaseReads, lifecycleCache.mergeBaseResults, lifecycleCache.mergeBaseGeneration).findByHead(identity, pullRequestSynchronizationRevision, branchIdentity, signal);
         assertDetectionCurrent();
       }
     }
@@ -1546,13 +1565,14 @@ export function registerT405ReviewContextsRuntime(
             repositoryId: local.repositoryId,
             repositoryRoot: local.rootPath,
             headRevision: localHead,
-            pullRequestSynchronizationRevision,
+            pullRequestSynchronizationRevision: detectedPullRequest.headSha,
             ...(local.branch.kind === "branch" ? { branchRef: local.branch.fullRef } : {}),
             snapshot: {
               context: { kind: "branch", label: "active", headRevision: localHead },
               progress: undefined,
             },
-          }, persistedBefore, signal, feedbackContext, lifecycleCache));
+          }, persistedBefore, signal, feedbackContext, lifecycleCache,
+          detectedPullRequest.headSha === localHead ? undefined : state.contextId));
           assertDetectionCurrent();
           existing = await timed("context-save", () => contextStateService.load(local.repositoryId, pullRequestIdentity(state)));
           assertDetectionCurrent();
@@ -1593,7 +1613,7 @@ export function registerT405ReviewContextsRuntime(
           repositoryId: local.repositoryId,
           rootPath: local.rootPath,
           branch: local.branch,
-          head: pullRequestSynchronizationRevision,
+          head: resolution.pullRequest.headSha,
         });
         const reviewRangeConfiguration = vscode.workspace.getConfiguration("reviewRange");
         const preparedGlobal = await timed("global-state-preparation", () => currentGlobalForNewPullRequest(
@@ -1624,10 +1644,11 @@ export function registerT405ReviewContextsRuntime(
         local.repositoryId,
         local.head,
         state.contextId,
+        local.branch.kind === "branch" ? local.branch.fullRef : undefined,
       );
     } else {
       assertDetectionCurrent();
-      await currentPullRequestSelection.selectBranch(local.repositoryId, local.head);
+      await currentPullRequestSelection.selectBranch(local.repositoryId, local.head, local.branch.kind === "branch" ? local.branch.fullRef : undefined);
       if (search.kind === "unavailable") {
         reportActiveOperationFailure(
           "PRを再検出",
@@ -1669,8 +1690,8 @@ export function registerT405ReviewContextsRuntime(
       persisted,
       local.repositoryId,
       pullRequestSynchronizationRevision,
-      currentPullRequestSelection.read(local.repositoryId, local.head),
-      currentPullRequestSelection.prefersBranch(local.repositoryId, local.head),
+      currentPullRequestSelection.read(local.repositoryId, local.head, local.branch.kind === "branch" ? local.branch.fullRef : undefined),
+      currentPullRequestSelection.prefersBranch(local.repositoryId, local.head, local.branch.kind === "branch" ? local.branch.fullRef : undefined),
     );
     if (current !== undefined) return;
     await detectPullRequest(local, feedbackContext, signal, false);

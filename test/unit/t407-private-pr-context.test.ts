@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import Module, { createRequire } from "node:module";
@@ -290,7 +290,7 @@ const runScenario = async (options: {
     globalThis.fetch = async (input, init) => {
       const url = new URL(String(input));
       const authorization = new Headers(init?.headers).get("authorization");
-      if (url.pathname === "/repos/example/private-context/pulls" && url.searchParams.get("state") === "open") {
+      if (url.pathname === "/repos/example/private-context/pulls" && url.searchParams.get("state") === "all") {
         searchRequestCount += 1;
         if (options.anonymousUnavailable && authorization === null) return new Response(null, { status: 404 });
         if (options.privateApi && authorization !== "Bearer test-session-token") return new Response(null, { status: 404 });
@@ -300,7 +300,7 @@ const runScenario = async (options: {
           number,
           title: `test pull request ${number}`,
           html_url: `https://github.com/example/private-context/pull/${number}`,
-          head: { sha: headSha },
+          head: { sha: headSha, ref: "main", repo: { full_name: "example/private-context" } },
           base: { ref: "main", sha: baseSha },
         })));
       }

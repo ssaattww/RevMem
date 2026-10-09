@@ -1,4 +1,4 @@
-import {
+﻿import {
   GitHubPullRequestContextResolver,
   type GitHubPullRequestCandidate,
   type GitHubRepositoryIdentity
@@ -35,7 +35,7 @@ const authentication = new VsCodeGitHubAuthenticationProvider({
 }, ["repo"], "https://git.example.test:8443");
 
 void resolver.resolve([candidate]);
-void adapter.findOpenByHead(repository, candidate.headSha);
+void adapter.findByHead(repository, candidate.headSha);
 void authentication.getAccessToken(repository.host);
 const parsed = parseGitHubRemote("ssh://git@git.example.test:8443/Team/Review-Range.git");
 const parsedAuthority: string | undefined = parsed?.host;
