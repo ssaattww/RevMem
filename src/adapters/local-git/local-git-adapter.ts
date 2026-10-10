@@ -16,10 +16,8 @@ import {
   type LocalGitRepository,
   type LocalGitRepositoryInspection
 } from "./contracts";
-import type { GitBlobReader } from "./git-blob-reader";
-import { GitBlobBatchObjectTooLargeError } from "./node-git-blob-batch-transport.js";
+import { MAX_GIT_BLOB_BATCH_OBJECTS, GitBlobBatchObjectTooLargeError, type GitBlobReader } from "./git-blob-reader";
 import { normalizeGitRemoteUrl } from "./git-remote-normalization";
-import { MAX_GIT_BLOB_BATCH_OBJECTS } from "./cat-file-batch-parser.js";
 import type { LocalGitRevisionTextReadResult } from "./revision-text-content";
 
 const FULL_OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
@@ -150,7 +148,10 @@ const chunkPathspecs = (paths: readonly string[]): readonly (readonly string[])[
     }
     if (chunk.length > 0 && (
       chunk.length >= MAX_LS_TREE_PATHSPEC_COUNT ||
-      usedUnits + units > MAX_LS_TREE_PATHSPEC_ARGUMENT_UNITS
+      usedUnits + units > MAX_LS_TREE_PATHSPEC_ARGUMENT_UNITS ||
+      // Git expands a parent directory when the same invocation also selects
+      // its descendant. Separate overlapping paths so every result stays exact.
+      chunk.some((existing) => filePath.startsWith(`${existing}/`) || existing.startsWith(`${filePath}/`))
     )) {
       chunks.push(chunk);
       chunk = [];

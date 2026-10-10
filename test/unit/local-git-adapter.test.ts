@@ -1,3 +1,4 @@
+import { GitBlobBatchObjectTooLargeError } from "../../src/adapters/local-git/git-blob-reader";
 import assert from "node:assert/strict";
 import test from "node:test";
 import path from "node:path";
@@ -11,7 +12,6 @@ import {
   type GitCommandResult,
   type GitBlobReader
 } from "../../src/adapters/local-git/index";
-import { GitBlobBatchObjectTooLargeError } from "../../src/adapters/local-git/node-git-blob-batch-transport";
 import {
   normalizeInspectionStartPath,
   resolveCanonicalInspectionIdentity

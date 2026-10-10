@@ -1,3 +1,4 @@
+import { GitBlobBatchObjectTooLargeError } from "../../src/adapters/local-git/git-blob-reader.js";
 import assert from "node:assert/strict";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { EventEmitter } from "node:events";
@@ -5,9 +6,13 @@ import { PassThrough, Writable } from "node:stream";
 import test from "node:test";
 
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import { GitCommandFailedError } from "../../src/adapters/local-git/contracts.js";
+import { classifyOperationFailure, runWithBoundedRetry } from "../../src/application/operation-feedback/index.js";
+import { PullRequestReviewRuntime } from "../../src/composition/pull-request/pull-request-review-runtime.js";
+import { REVIEW_RANGE_SCHEMA_VERSION, type ReviewContextState } from "../../src/core/contracts/index.js";
+import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
 
 import {
-  GitBlobBatchObjectTooLargeError,
   NodeGitBlobBatchTransport,
   raceWithFailureNotification,
   type NodeGitBlobBatchTransportOptions,
@@ -46,12 +51,16 @@ const waitForCondition = async (
   condition: () => boolean,
   description: string,
   timeoutMs = WAIT_TIMEOUT_MS,
+  clock: { readonly now: () => number; readonly wait: (delayMs: number) => Promise<void> } = {
+    now: Date.now,
+    wait: (delayMs) => new Promise<void>((resolve) => setTimeout(resolve, delayMs)),
+  },
 ): Promise<void> => {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = clock.now() + timeoutMs;
   while (!condition()) {
-    const remainingMs = deadline - Date.now();
+    const remainingMs = deadline - clock.now();
     if (remainingMs <= 0) throw new Error(`Timed out after ${timeoutMs} ms waiting for ${description}`);
-    await new Promise<void>((resolve) => setTimeout(resolve, Math.min(remainingMs, 5)));
+    await clock.wait(Math.min(remainingMs, 5));
   }
 };
 
@@ -123,6 +132,7 @@ interface FakeChildOptions {
   readonly syncWriteReturnsFalse?: boolean;
   readonly deferWriteCallback?: boolean;
   readonly onClosing?: () => void;
+  readonly onTerminate?: () => void;
 }
 
 class FakeChild extends EventEmitter {
@@ -181,6 +191,7 @@ class FakeChild extends EventEmitter {
 
   public kill(signal = "SIGTERM"): boolean {
     this.signals.push(signal);
+    this.options.onTerminate?.();
     if ((signal === "SIGTERM" && this.options.closeOnTerm === true) ||
         (signal === "SIGKILL" && this.options.closeOnKill === true)) {
       queueMicrotask(() => this.close(null, signal));
@@ -462,6 +473,13 @@ const setup = (
   return { transport, child, clock };
 };
 
+const gitTimeout = (pattern: RegExp): ((error: unknown) => boolean) => (error) => {
+  assert.ok(error instanceof GitCommandFailedError);
+  assert.equal(error.result.exitCode, -1);
+  assert.match(error.result.stderr, pattern);
+  return true;
+};
+
 testWithCleanup("batch transport waits for each callback before writing the next OID", async () => {
   const { transport, child } = setup(() => new FakeChild({
     onObject: (objectId, fake) => fake.sendBlob(objectId, Buffer.from(objectId === firstOid ? "one" : "two")),
@@ -533,7 +551,7 @@ testWithCleanup("batch transport applies a separate deadline waiting for process
   clock.fireNext();
   await waitForCondition(() => child.signals.length > 0, "TERM signal after close deadline");
   clock.fireNext();
-  await assert.rejects(running, /close timed out/u);
+  await assert.rejects(running, gitTimeout(/close timed out/u));
   assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
 });
 
@@ -576,7 +594,7 @@ testWithCleanup("batch transport request deadline triggers bounded cleanup befor
   await waitForCondition(() => child.signals.length > 0, "TERM signal after request timeout");
   clock.fireNext();
 
-  await assert.rejects(running, /request timed out after 30000 ms/u);
+  await assert.rejects(running, gitTimeout(/request timed out after 30000 ms/u));
   assert.equal(callbackCount, 0);
   assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
 });
@@ -725,8 +743,197 @@ testWithCleanup("batch transport has a separate bound while waiting for stdout E
   await waitForCondition(() => child.signals.length > 0, "TERM signal after stdout EOF timeout");
   clock.fireNext();
 
-  await assert.rejects(running, /waiting for stdout EOF after 10000 ms/u);
+  await assert.rejects(running, gitTimeout(/waiting for stdout EOF after 10000 ms/u));
   assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
+});
+
+for (const stage of ["request", "EOF", "close"] as const) {
+  testWithCleanup(`batch ${stage} timeout preserves Git failure diagnostics and retries`, async () => {
+    const partial = `${firstOid} blob 7\npart`;
+    const { transport, child, clock } = setup(() => new FakeChild({
+      onObject: (objectId, fake) => {
+        fake.stderr.write("before timeout\n");
+        if (stage === "request") fake.sendRaw(Buffer.from(partial));
+        else fake.sendBlob(objectId, Buffer.from("payload"));
+      },
+      endStdoutOnStdinEnd: stage === "close",
+      closeOnTerm: true,
+      onTerminate: () => {
+        child.stderr.write("during termination\n");
+        if (stage !== "close") child.sendRaw(Buffer.from("termination tail"));
+      },
+    }));
+    const running = transport.readBlobs("/repo", [firstOid], () => undefined);
+    const rejection = assert.rejects(running, (error: unknown) => {
+      assert.ok(error instanceof GitCommandFailedError);
+      assert.equal(error.result.exitCode, -1);
+      assert.deepEqual(error.invocation, { cwd: "/repo", argumentsList: ["cat-file", "--batch"] });
+      assert.match(error.result.stderr, /before timeout/u);
+      assert.match(error.result.stderr, /during termination/u);
+      assert.match(error.result.stderr, /timed out.*30000|timed out.*2000/u);
+      assert.match(error.result.stdout, /part|payload/u);
+      if (stage !== "close") assert.match(error.result.stdout, /termination tail/u);
+      assert.match(error.result.stderr, /terminated by SIGTERM/u);
+      assert.equal(classifyOperationFailure(error).kind, "retryable");
+      return true;
+    });
+    if (stage === "request") await waitForEventLoopTurn("partial response before request timeout");
+    else {
+      await waitForCondition(() => child.stdin.writableEnded, "stdin completion before deadline");
+      await waitForEventLoopTurn("EOF or close deadline");
+    }
+    clock.fireNext();
+    await rejection;
+    assert.equal(clock.size, 0);
+
+    let attempts = 0;
+    const success = setup(() => new FakeChild({
+      onObject: (objectId, fake) => fake.sendBlob(objectId, Buffer.from("recovered")),
+      closeOnStdinEnd: true,
+    }));
+    const failure = await running.catch((error: unknown) => error);
+    await runWithBoundedRetry(async () => {
+      attempts += 1;
+      if (attempts === 1) throw failure;
+      await success.transport.readBlobs("/repo", [firstOid], () => undefined);
+    }, { maxAttempts: 3, sleep: async () => undefined });
+    assert.equal(attempts, 2);
+  });
+}
+
+testWithCleanup("batch timeout retains active partial and termination output after a large completed blob", async () => {
+  const partial = `${secondOid} blob 1000\nACTIVE-PARTIAL`;
+  const { transport, child, clock } = setup(() => new FakeChild({
+    onObject: (objectId, fake) => {
+      if (objectId === firstOid) fake.sendBlob(objectId, Buffer.alloc(70_000, 0x78));
+      else fake.sendRaw(Buffer.from(partial));
+    },
+    closeOnTerm: true,
+    onTerminate: () => {
+      child.sendRaw(Buffer.from("TERMINATION-TAIL"));
+      child.stderr.write("termination-stderr");
+    },
+  }));
+  let callbacks = 0;
+  const running = transport.readBlobs("/repo", [firstOid, secondOid], () => { callbacks += 1; });
+  const rejection = assert.rejects(running, (error: unknown) => {
+    assert.ok(error instanceof GitCommandFailedError);
+    assert.equal(error.result.exitCode, -1);
+    assert.equal(classifyOperationFailure(error).kind, "retryable");
+    assert.equal(error.result.stdout, `${partial}TERMINATION-TAIL`);
+    assert.match(error.result.stderr, /termination-stderr/u);
+    assert.match(error.result.stderr, /request timed out/u);
+    return true;
+  });
+  await waitForCondition(() => child.objectIds.length === 2, "second object request after large blob");
+  await waitForEventLoopTurn("active partial output acquisition");
+  clock.fireNext();
+  await rejection;
+  assert.equal(callbacks, 1);
+  assert.deepEqual(child.signals, ["SIGTERM"]);
+  assert.equal(clock.size, 0);
+});
+
+for (const stage of ["request", "EOF"] as const) {
+  testWithCleanup(`batch ${stage} timeout reserves bounded diagnostic space for termination output`, async () => {
+    const { transport, child, clock } = setup(() => new FakeChild({
+      onObject: (objectId, fake) => {
+        if (stage === "EOF") fake.sendBlob(objectId, Buffer.alloc(70_000, 0x78));
+        else fake.sendRaw(Buffer.concat([Buffer.from(`${objectId} blob 100000\n`), Buffer.alloc(70_000, 0x78)]));
+      },
+      closeOnTerm: true,
+      onTerminate: () => child.sendRaw(Buffer.from("TERMINATION-TAIL")),
+    }));
+    const running = transport.readBlobs("/repo", [firstOid], () => undefined);
+    const rejection = assert.rejects(running, (error: unknown) => {
+      assert.ok(error instanceof GitCommandFailedError);
+      assert.equal(error.result.exitCode, -1);
+      assert.ok(Buffer.byteLength(error.result.stdout) <= 2 * 65_536);
+      assert.match(error.result.stdout, /TERMINATION-TAIL$/u);
+      assert.match(error.result.stderr, /request stdout diagnostic truncated after 65536 bytes/u);
+      return true;
+    });
+    if (stage === "EOF") await waitForCondition(() => child.stdin.writableEnded, "EOF deadline after large blob");
+    await waitForEventLoopTurn("large response before deadline");
+    clock.fireNext();
+    await rejection;
+    assert.equal(clock.size, 0);
+  });
+}
+
+testWithCleanup("batch abort, malformed protocol, and nonzero exit remain terminal", async () => {
+  for (const kind of ["abort", "protocol", "exit"] as const) {
+    const controller = new AbortController();
+    const { transport } = setup(() => new FakeChild({
+      onObject: (objectId, fake) => {
+        if (kind === "abort") controller.abort();
+        else if (kind === "protocol") fake.sendRaw(Buffer.from("malformed\n"));
+        else fake.sendBlob(objectId, Buffer.from("payload"));
+      },
+      closeOnTerm: true,
+      closeOnStdinEnd: kind === "exit",
+      exitCode: 7,
+    }));
+    let attempts = 0;
+    await assert.rejects(runWithBoundedRetry(async () => {
+      attempts += 1;
+      await transport.readBlobs("/repo", [firstOid], () => undefined, controller.signal);
+    }, { maxAttempts: 3, sleep: async () => undefined }));
+    assert.equal(attempts, 1, `${kind} must not retry`);
+  }
+});
+
+testWithCleanup("actual PR Progress composition retries batch timeout and fences cancellation and permanent failure", async () => {
+  for (const kind of ["timeout", "abort", "protocol", "exit"] as const) {
+    const contextId = "github-pr:github.com/example/repo#141";
+    const repositoryId = "github.com/example/repo";
+    const state: ReviewContextState = {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, contextId, repositoryId, kind: "pull-request", displayName: "PR #141",
+      pullRequest: { host: "github.com", owner: "example", repository: "repo", number: 141, state: "open", title: "Fixture", baseSha: firstOid, headSha: secondOid },
+      files: {}, createdAt: "2026-10-09T00:00:00Z", updatedAt: "2026-10-09T00:00:00Z",
+    };
+    const runtime = new PullRequestReviewRuntime<string>({
+      repository: {
+        load: async () => ({ schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, contextState: state, globalState: { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, repositoryId, currentRevisionId: secondOid, files: {}, updatedAt: state.updatedAt } }),
+        commit: async () => undefined,
+      },
+      requestHistory: async () => undefined,
+      diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
+      getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+    });
+    const first = setup(() => new FakeChild({
+      onObject: (objectId, fake) => {
+        if (kind === "abort") runtime.clearProgress();
+        if (kind === "protocol") fake.sendRaw(Buffer.from("malformed\n"));
+        if (kind === "exit") fake.sendBlob(objectId, Buffer.from("new\n"));
+      },
+      closeOnTerm: true, closeOnStdinEnd: kind === "exit", exitCode: 7,
+    }));
+    const success = setup(() => new FakeChild({ onObject: (objectId, fake) => fake.sendBlob(objectId, Buffer.from("new\n")), closeOnStdinEnd: true }));
+    let attempts = 0;
+    runtime.register({
+      repositoryId, repositoryRoot: "/repo", fileSystemPathSemantics: "posix",
+      snapshot: { contextId, baseSha: firstOid, headSha: secondOid, originalDiffId: `${firstOid}..${secondOid}`, files: [{ fileId: "file", oldPath: "file.ts", newPath: "file.ts", status: "modified", additions: 1, deletions: 1, hunks: [{ oldStart: 1, oldCount: 1, newStart: 1, newCount: 1, lines: [{ kind: "deletion", oldLine: 1, text: "old" }, { kind: "addition", newLine: 1, text: "new" }] }] }] },
+      readTextContent: async () => { throw new Error("single fallback must not run"); },
+      readTextContents: async (descriptors, feedback, signal) => {
+        const transport = ++attempts === 1 ? first.transport : success.transport;
+        await transport.readBlobs("/repo", [firstOid, secondOid], () => undefined, signal, feedback);
+        return descriptors.map(() => ({ kind: "found" as const, content: "new\n" }));
+      },
+    });
+    const running = runtime.activateProgress(contextId);
+    const outcome = kind === "timeout" ? running : assert.rejects(running);
+    if (kind === "timeout") {
+      await waitForCondition(() => first.child.objectIds.length > 0, "composition first request");
+      first.clock.fireNext();
+    }
+    await outcome;
+    assert.equal(attempts, kind === "timeout" ? 2 : 1);
+    const files = runtime.progress.getChildren().flatMap((category) => runtime.progress.getChildren(category));
+    assert.equal(files.length > 0, kind === "timeout", "only recovered current work publishes the tree");
+    assert.equal(first.clock.size, 0);
+    assert.equal(success.clock.size, 0);
+  }
 });
 
 testWithCleanup("batch transport aborts an outstanding object request and reaps the process", async () => {
@@ -833,7 +1040,7 @@ testWithCleanup("batch transport does not resume after a write callback arrives 
   clock.fireNext();
   await waitForCondition(() => child.signals.length > 0, "TERM signal after write timeout");
   clock.fireNext();
-  await assert.rejects(running, /request timed out/u);
+  await assert.rejects(running, gitTimeout(/request timed out/u));
 
   child.releaseWriteCallback();
   await waitForEventLoopTurn("late write callback after timeout cleanup");
@@ -881,12 +1088,17 @@ testWithCleanup("batch transport destroys streams and unreferences after bounded
 });
 
 test("transport test harness fails finitely when a wait condition never occurs", async () => {
-  const startedAt = Date.now();
+  let elapsed = 0;
+  const delays: number[] = [];
   await assert.rejects(
-    waitForCondition(() => false, "deliberately absent event", 25),
+    waitForCondition(() => false, "deliberately absent event", 25, {
+      now: () => elapsed,
+      wait: async (delayMs) => { delays.push(delayMs); elapsed += delayMs; },
+    }),
     /Timed out after 25 ms waiting for deliberately absent event/u,
   );
-  assert.ok(Date.now() - startedAt < 1_000, "a missing event must not leave a polling loop running");
+  assert.equal(elapsed, 25);
+  assert.deepEqual(delays, [5, 5, 5, 5, 5], "polling stops exactly at the injected deadline");
 });
 
 test("transport test harness preserves body failure and attempts every cleanup", async () => {

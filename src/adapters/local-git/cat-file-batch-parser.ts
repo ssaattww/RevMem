@@ -1,10 +1,12 @@
+import { MAX_GIT_BLOB_BATCH_OBJECTS } from "./git-blob-reader.js";
+
 const OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const MISSING_FRAME_PATTERN = /^([0-9a-f]{40}|[0-9a-f]{64}) missing$/u;
 const OBJECT_FRAME_PATTERN = /^([0-9a-f]{40}|[0-9a-f]{64}) ([a-z][a-z0-9-]*) (0|[1-9][0-9]*)$/u;
 const MAX_HEADER_BYTES = 128;
 const OBJECT_TYPES = new Set(["blob", "tree", "commit", "tag"]);
 
-export const MAX_GIT_BLOB_BATCH_OBJECTS = 128;
+
 
 export type CatFileBatchFrame =
   | { readonly kind: "blob"; readonly objectId: string; readonly bytes: Uint8Array }

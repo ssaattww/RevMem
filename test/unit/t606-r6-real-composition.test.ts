@@ -8,8 +8,11 @@ import { promisify } from "node:util";
 import test from "node:test";
 
 import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index.js";
+import { PullRequestReviewRuntime } from "../../src/composition/pull-request/pull-request-review-runtime.js";
+import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
 import {
   OperationFeedback,
+  formatOperationLogEntry,
   setActiveOperationFeedback,
   type OperationFeedbackHost,
   type OperationLogEntry,
@@ -83,6 +86,9 @@ test("T606 IFR002 real T305-to-T405 composition retries only transient acquisiti
     const commands = new Map<string, () => Promise<void>>();
     const errors: unknown[] = [];
     const fetches: string[] = [];
+    const registrations: import("../../src/composition/pull-request/pull-request-review-runtime.js").PullRequestReviewRuntimeRegistration[] = [];
+    let activeRemoteContentReads = 0;
+    let maximumRemoteContentReads = 0;
     let phase: "initial" | "transient" | "permanent" | "pending" | "success" = "initial";
     let transientAttempts = 0;
     const pendingWrite = deferred<void>();
@@ -104,6 +110,13 @@ test("T606 IFR002 real T305-to-T405 composition retries only transient acquisiti
     globalThis.fetch = async (input) => {
       const url = String(input);
       fetches.push(url);
+      if (url.includes("/contents/remote-first.ts") || url.includes("/contents/remote-second.ts")) {
+        activeRemoteContentReads += 1;
+        maximumRemoteContentReads = Math.max(maximumRemoteContentReads, activeRemoteContentReads);
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        activeRemoteContentReads -= 1;
+        return new Response(url.includes("remote-first.ts") ? "first remote\n" : "second remote\n", { status: 200 });
+      }
       if (url.includes(`/compare/${baseSha}...${headSha}`)) {
         return new Response(JSON.stringify({ merge_base_commit: { sha: baseSha } }), { status: 200 });
       }
@@ -134,7 +147,7 @@ test("T606 IFR002 real T305-to-T405 composition retries only transient acquisiti
       enumerateCurrentContexts: async () => [branch],
       refreshDecorations: async () => undefined,
       refreshCurrentContext: async () => undefined,
-      registerPullRequestReviewDiff: () => undefined,
+      registerPullRequestReviewDiff: (registration) => { registrations.push(registration); },
       openPullRequestReviewDiff: async () => undefined,
       getPullRequestReviewProgress: async () => ({ reviewedLineCount: 0, totalLineCount: 0, progress: 0 }),
       reviewStateRepository: stateRepository,
@@ -185,6 +198,90 @@ test("T606 IFR002 real T305-to-T405 composition retries only transient acquisiti
       assert.equal(errors.length, 1, "only the permanent terminal reaches the redacted command boundary");
       assert.equal(accepted.at(-1)?.context.kind, "pull-request", "only the current composition may publish the fresh T405 candidate");
       assert.ok(host.logs.filter((entry) => entry.event === "failed" || entry.event === "succeeded").length >= 4, "each real command lifecycle has one typed terminal");
+      const registration = registrations.at(-1)!;
+      assert.equal(typeof registration.readTextContents, "function", "production registration wires the optional batch reader");
+      const results = await registration.readTextContents!(["example.ts", "remote-first.ts", "remote-second.ts"].map((filePath) => ({
+        contextId: registration.snapshot.contextId,
+        filePath,
+        fileSystemPathSemantics: "posix" as const,
+        side: "modified" as const,
+        revisionSource: "git-commit" as const,
+        revision: headSha,
+      })));
+      assert.deepEqual(results, [
+        { kind: "found", content: "export const value = 1;\n" },
+        { kind: "found", content: "first remote\n" },
+        { kind: "found", content: "second remote\n" },
+      ]);
+      assert.equal(maximumRemoteContentReads, 1, "remote fallback remains sequential through actual production composition");
+      for (const { detailed, cancel } of [{ detailed: false, cancel: false }, { detailed: true, cancel: false }, { detailed: true, cancel: true }]) {
+        const diagnosticHost = new FeedbackHost();
+        const detailedHost = Object.assign(diagnosticHost, { isDetailedDiagnosticsEnabled: () => detailed });
+        setActiveOperationFeedback(new OperationFeedback(detailedHost));
+        const started = deferred<void>();
+        const pendingContent = deferred<void>();
+        const realReader = registration.readTextContents!;
+        let readSignal: AbortSignal | undefined;
+        let contentCalls = 0;
+        const runtime = new PullRequestReviewRuntime<string>({
+          repository: {
+            load: async () => ({
+              schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+              contextState: pullRequest,
+              globalState: { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, repositoryId, currentRevisionId: headSha, files: {}, updatedAt: pullRequest.updatedAt },
+            }),
+            commit: async () => undefined,
+          },
+          requestHistory: async () => undefined,
+          diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
+          getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+        });
+        runtime.register({
+          ...registration,
+          snapshot: { ...registration.snapshot, files: [{ fileId: "example", oldPath: "example.ts", newPath: "example.ts", status: "modified", additions: 1, deletions: 1, hunks: [{ oldStart: 1, oldCount: 1, newStart: 1, newCount: 1, lines: [{ kind: "deletion", oldLine: 1, text: "old" }, { kind: "addition", newLine: 1, text: "new" }] }] }] },
+          readTextContent: async () => { throw new Error("production bulk registration must bypass the single wrapper"); },
+          readTextContents: async (...args) => {
+            contentCalls += 1;
+            readSignal = args[2];
+            started.resolve();
+            await pendingContent.promise;
+            return realReader(...args);
+          },
+        });
+        const progress = runtime.activateProgress(contextId);
+        const outcome = cancel ? assert.rejects(progress) : progress;
+        try {
+          await started.promise;
+          const details = diagnosticHost.logs.filter((entry) => entry.event === "detail" && entry.detail?.phase === "read-content");
+          assert.equal(details.length, detailed ? 1 : 0, "existing file detail is opt-in and visible before bulk I/O resolves");
+          if (detailed) assert.deepEqual(details[0]?.detail, { reason: "pull-request-file", phase: "read-content" });
+          assert.ok(diagnosticHost.logs.every((entry) => entry.detail?.target === undefined),
+            "PR138 privacy contract forbids private PR file targets even in detailed diagnostics");
+          assert.ok(diagnosticHost.logs.every((entry) => !formatOperationLogEntry(entry).includes("example.ts")),
+            "the production formatter must keep file paths private in OFF and ON modes");
+          if (cancel) {
+            runtime.clearProgress();
+            assert.equal(readSignal?.aborted, true, "supersession reaches the pending production batch reader");
+          }
+        } finally {
+          pendingContent.resolve();
+          await outcome;
+        }
+        if (cancel) {
+          assert.ok(runtime.progress.getChildren().every((category) => runtime.progress.getChildren(category).length === 0), "late cancelled bulk work publishes no tree");
+          await runtime.activateProgress(contextId);
+          assert.equal(contentCalls, 2, "cancelled bulk work does not populate the immutable text cache");
+        }
+        const files = runtime.progress.getChildren().flatMap((category) => runtime.progress.getChildren(category));
+        assert.equal(files.length, 1, "current successful work publishes the actual registered file");
+        const file = files[0]!;
+        assert.equal(file.kind, "file");
+        if (file.kind === "file") {
+          assert.equal(file.path, "example.ts");
+          assert.deepEqual([file.openTarget.contextId, file.openTarget.baseSha, file.openTarget.headSha],
+            [registration.snapshot.contextId, registration.snapshot.baseSha, registration.snapshot.headSha]);
+        }
+      }
     } finally {
       setActiveOperationFeedback(undefined);
       globalThis.fetch = originalFetch;

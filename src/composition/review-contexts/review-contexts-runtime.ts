@@ -1067,7 +1067,10 @@ export function registerT405ReviewContextsRuntime(
     signal?: AbortSignal,
   ): Promise<readonly RevisionTextContentReadResult[]> => {
     if (descriptors.length === 0) return [];
-    if (signal?.aborted) throw new DOMException("PR content acquisition was superseded.", "AbortError");
+    const assertActive = (): void => {
+      if (signal?.aborted) throw new DOMException("PR content acquisition was superseded.", "AbortError");
+    };
+    assertActive();
     const first = descriptors[0]!;
     if (descriptors.some((descriptor) => descriptor.revision !== first.revision ||
       descriptor.fileSystemPathSemantics !== first.fileSystemPathSemantics)) {
@@ -1081,7 +1084,7 @@ export function registerT405ReviewContextsRuntime(
       feedbackContext,
       signal,
     );
-    if (signal?.aborted) throw new DOMException("PR content acquisition was superseded.", "AbortError");
+    assertActive();
     const remote = createPullRequestRemote(identity, token);
     return readReviewDiffContentsSequentially(
       descriptors,
@@ -1176,15 +1179,10 @@ export function registerT405ReviewContextsRuntime(
             registrationSignal,
           );
         },
-        readTextContents: (descriptors, registrationFeedbackContext, registrationSignal) =>
-          readReviewDiffContents(
-            root,
-            identity,
-            token,
-            descriptors,
-            registrationFeedbackContext,
-            registrationSignal,
-          ),
+        ...(typeof options.git.readTextFilesAtRevision !== "function" ? {} : {
+          readTextContents: (descriptors, registrationFeedbackContext, registrationSignal) =>
+            readReviewDiffContents(root, identity, token, descriptors, registrationFeedbackContext, registrationSignal),
+        }),
       });
     }
     return { result, root, identity, token };

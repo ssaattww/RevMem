@@ -1,9 +1,9 @@
+import { MAX_GIT_BLOB_BATCH_OBJECTS } from "../../src/adapters/local-git/git-blob-reader.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
   CatFileBatchResponseParser,
-  MAX_GIT_BLOB_BATCH_OBJECTS,
   type CatFileBatchFrame,
 } from "../../src/adapters/local-git/cat-file-batch-parser.js";
 
