@@ -171,10 +171,10 @@ PR Progress と Global Understanding は同じ除外設定 `reviewRange.exclude`
 | `reviewRange.ignoreEolChanges` | `false` | 改行コードだけの編集を確認済み範囲の追従で無視します。 |
 | `reviewRange.showGutterIcon` | `true` | 確認済み行のガターアイコンを表示します。 |
 | `reviewRange.showOverviewRuler` | `false` | 確認済み範囲を Overview Ruler に表示します。 |
-| `reviewRange.globalUnderstanding.autoStartDescendants` | `false` | 開いたファイルより深い Global Understanding scope を自動開始します。停止済み scope は再開しません。 |
 | `reviewRange.diagnostics.detailed` | `false` | 詳細診断を有効にし、再計算理由・処理段階を Review Range Output と進捗 tooltip へ表示します。通常・詳細のいずれも対象ファイル名/パスは出力しません。 |
 | `reviewRange.exclude` | `**/.git/**`、`**/node_modules/**`、`**/bin/**`、`**/obj/**`、`**/dist/**`、`**/build/**` | PR 進捗と Global 理解率の集計対象から除外する glob 配列です。有効な配列は既定値を上書きし、空配列では binary と `.git` 以外を再包含します。 |
 | `reviewRange.maxSnapshotFileSizeBytes` | `5242880` | Git 管理外ファイルの 1 snapshot で許可する圧縮後の最大 byte 数です。 |
+| `reviewRange.globalUnderstanding.autoStartDescendants` | `false` | 開いたファイルより深い Global Understanding scope を自動開始します。停止済み scope は再開しません。 |
 
 
 
