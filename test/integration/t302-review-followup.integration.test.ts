@@ -138,7 +138,8 @@ test("fatal file lookup exit 128 is preserved instead of reported as missing", a
   const adapter = new LocalGitAdapter(
     new SequenceGitCommandExecutor([
       success(`${immutableRevision}\n`),
-      failure(128, "fatal: object database is corrupt")
+      failure(128, "fatal: object database is corrupt"),
+      success(`${immutableRevision}\n`)
     ]),
     unreachableGitBlobReader
   );

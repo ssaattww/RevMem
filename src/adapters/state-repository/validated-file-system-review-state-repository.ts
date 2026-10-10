@@ -241,9 +241,11 @@ extends CoherentFileSystemReviewStateRepository {
     );
 
     await this.serializeOuterWrite(route.rootPath, async (lease) => {
+      transaction.signal?.throwIfAborted();
       if (await this.prepareTarget(target, "commit") === "uncertain") {
         throw new StaleReviewStateError(target);
       }
+      transaction.signal?.throwIfAborted();
       await super.create(transaction, lease);
       this.clearUncertain(target, route.rootPath);
     });

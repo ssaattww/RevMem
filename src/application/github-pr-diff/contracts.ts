@@ -46,6 +46,7 @@ export type PullRequestDiffUnavailableReason =
   | "rate-limit"
   | "authentication"
   | "network"
+  | "timeout"
   | "api"
   | "missing-file"
   | "invalid-encoding"

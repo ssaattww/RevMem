@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 
 import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
+import { linkAbortSignal } from "../../src/composition/review-contexts/link-abort-signal.js";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
   type RepositoryGlobalState,
@@ -32,6 +33,11 @@ import {
 import { recordPullRequestReviewHistory } from "../../src/composition/pull-request/pull-request-review-history.js";
 import { buildSnapshotFromLocalGitDiff } from "../../src/application/github-pr-diff/pull-request-diff-builders.js";
 import { deriveDocumentLineContract } from "../../src/core/intervals/index.js";
+import { OperationFeedback, formatOperationLogEntry, type OperationLogEntry } from "../../src/application/operation-feedback/index.js";
+import type { RevisionTextContentReadResult } from "../../src/application/diff-document/index.js";
+import { readReviewDiffContentsSequentially } from "../../src/composition/review-contexts/read-review-diff-contents.js";
+import type { PullRequestDiffUnavailableReason } from "../../src/application/github-pr-diff/contracts.js";
+import { createPr108ProductionFixture, pr108ContextId } from "../helpers/pr108-production-fixture.js";
 
 const A = "a".repeat(40);
 const B = "b".repeat(40);
@@ -40,6 +46,30 @@ const REPOSITORY_ID = "github.com/ssaattww/revmem";
 const CONTEXT_ID = `github-pr:${REPOSITORY_ID}#52`;
 const FILE_ID = "file-1";
 const contentHash = (content: string): string => createHash("sha256").update(content, "utf8").digest("hex");
+const withTestTimeout = async <T>(promise: Promise<T>, message: string, timeoutMs = 5_000): Promise<T> => {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+};
+
+test("remote fallback test deadlines bound missing-start and unsettled-reader waits", async () => {
+  await assert.rejects(
+    withTestTimeout(new Promise<void>(() => {}), "remote fallback did not start", 10),
+    /remote fallback did not start/,
+  );
+  await assert.rejects(
+    withTestTimeout(new Promise<void>(() => {}), "remote reader did not settle", 10),
+    /remote reader did not settle/,
+  );
+});
 
 const contextState = (): ReviewContextState => ({
   schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
@@ -73,6 +103,207 @@ const contextState = (): ReviewContextState => ({
   },
   createdAt: "2026-08-16T00:00:00.000Z",
   updatedAt: "2026-08-16T00:00:00.000Z",
+});
+
+test("T405 Quick Pick cancellation is applied when abort lands before its listener registration", () => {
+  const controller = new AbortController();
+  controller.abort();
+  let cancellationCount = 0;
+  const dispose = linkAbortSignal(controller.signal, () => { cancellationCount += 1; });
+
+  assert.equal(cancellationCount, 1);
+  dispose();
+  assert.equal(cancellationCount, 1);
+});
+
+test("PR Progress batches immutable content reads and reuses the results during line reviewability", async () => {
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository: new MemoryRepository(),
+    requestHistory: async () => undefined,
+    diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+  });
+  const requested: string[][] = [];
+  let singleReadCount = 0;
+  runtime.register({
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/repo",
+    fileSystemPathSemantics: "posix",
+    snapshot,
+    readTextContent: async () => {
+      singleReadCount += 1;
+      return { kind: "found", content: "new" };
+    },
+    readTextContents: async (descriptors) => {
+      requested.push(descriptors.map((descriptor) => descriptor.filePath));
+      return descriptors.map((descriptor) => ({
+        kind: "found" as const,
+        content: descriptor.revision === A ? "old" : "new",
+      }));
+    },
+  });
+
+  await runtime.activateProgress(CONTEXT_ID);
+
+  assert.deepEqual(requested, [["src/example.ts"]]);
+  assert.equal(singleReadCount, 0, "the line-reviewability pass must consume the completed batch cache");
+  assert.deepEqual(await runtime.getProgress(CONTEXT_ID), {
+    reviewedLineCount: 0,
+    totalLineCount: 2,
+    progress: 0,
+  });
+});
+
+test("PR remote content fallbacks run sequentially and preserve local and remote result order", async () => {
+  const descriptors = ["cached.ts", "first.ts", "second.ts", "invalid.ts"].map((filePath) => ({
+    contextId: CONTEXT_ID,
+    filePath,
+    fileSystemPathSemantics: "posix" as const,
+    side: "modified" as const,
+    revisionSource: "git-commit" as const,
+    revision: B,
+  }));
+  const local = new Map<string, RevisionTextContentReadResult>([
+    ["cached.ts", { kind: "found" as const, content: "local" }],
+    ["first.ts", { kind: "missing-file" as const }],
+    ["second.ts", { kind: "missing-revision" as const }],
+    ["invalid.ts", { kind: "invalid-encoding", encoding: "utf-8" }],
+  ]);
+  const calls: string[] = [];
+  let active = 0;
+  let maximumActive = 0;
+
+  const read = readReviewDiffContentsSequentially(descriptors, local, async (descriptor) => {
+    calls.push(descriptor.filePath);
+    active += 1;
+    maximumActive = Math.max(maximumActive, active);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    active -= 1;
+    return descriptor.filePath === "first.ts"
+      ? { kind: "found", content: "remote" }
+      : { kind: "unavailable", reason: "missing-revision" };
+  });
+  const results = await withTestTimeout(read, "sequential remote fallback timed out");
+
+  assert.deepEqual(calls, ["first.ts", "second.ts"]);
+  assert.equal(maximumActive, 1);
+  assert.deepEqual(results, [
+    { kind: "found", content: "local" },
+    { kind: "found", content: "remote" },
+    { kind: "missing-revision" },
+    { kind: "invalid-encoding", encoding: "utf-8" },
+  ]);
+});
+
+test("PR remote unavailable classification preserves remote file/revision evidence for both local revision states", async () => {
+  const reasons: readonly PullRequestDiffUnavailableReason[] = [
+    "git-unavailable", "git-timeout", "missing-revision", "git-failure", "rate-limit", "authentication",
+    "network", "timeout", "api", "missing-file", "invalid-encoding", "missing-patch", "incomplete-patch",
+    "identity-mismatch", "invalid-data", "diff-too-large",
+  ];
+  for (const localKind of ["missing-file", "missing-revision"] as const) {
+    for (const reason of reasons) {
+      const descriptor = {
+        contextId: CONTEXT_ID, filePath: "missing-file.ts", fileSystemPathSemantics: "posix" as const,
+        side: "modified" as const, revisionSource: "git-commit" as const, revision: B,
+      };
+      const results = await readReviewDiffContentsSequentially([descriptor],
+        new Map([[descriptor.filePath, { kind: localKind }]]),
+        async () => ({ kind: "unavailable", reason }));
+      const expected = reason === "missing-file" || reason === "missing-revision" ? reason : localKind;
+      assert.deepEqual(results, [{ kind: expected }], `local=${localKind}, remote=${reason}`);
+    }
+  }
+});
+
+test("registered production PR single/bulk readers agree for local revision presence and remote HTTP failures", async () => {
+  const fixture = await createPr108ProductionFixture({ contexts: [52], operationFeedback: true, includePullRequestProgress: true });
+  try {
+    await fixture.invoke("reviewRange.refreshReviewContexts");
+    const contextId = pr108ContextId(52);
+    const registration = fixture.registeredReaders.get(contextId);
+    assert.ok(registration?.readTextContents);
+    const fixtureFetch = globalThis.fetch;
+    try {
+      for (const locallyPresent of [true, false]) {
+        for (const status of [404, 401, 429, 503]) {
+          globalThis.fetch = async (input) => {
+            assert.ok(new URL(String(input)).pathname.includes("/contents/"), "this case must use the actual Contents reader");
+            return new Response("unavailable", { status });
+          };
+          const descriptor = {
+            contextId, filePath: "missing-file.ts", fileSystemPathSemantics: "posix" as const,
+            side: "modified" as const, revisionSource: "git-commit" as const,
+            revision: locallyPresent ? fixture.revisions.B : "f".repeat(40),
+          };
+          const expected = { kind: status === 404 || locallyPresent ? "missing-file" : "missing-revision" };
+          const single = await registration.readTextContent(descriptor);
+          const bulk: readonly RevisionTextContentReadResult[] = await registration.readTextContents([descriptor]);
+          assert.deepEqual(single, expected, `single: local=${locallyPresent}, HTTP=${status}`);
+          assert.deepEqual(bulk, [expected], `bulk: local=${locallyPresent}, HTTP=${status}`);
+        }
+      }
+    } finally { globalThis.fetch = fixtureFetch; }
+  } finally { await fixture.dispose(); }
+});
+
+test("PR remote content fallback stops before the next descriptor after cancellation", async () => {
+  const descriptors = ["first.ts", "second.ts"].map((filePath) => ({
+    contextId: CONTEXT_ID,
+    filePath,
+    fileSystemPathSemantics: "posix" as const,
+    side: "modified" as const,
+    revisionSource: "git-commit" as const,
+    revision: B,
+  }));
+  const local = new Map<string, RevisionTextContentReadResult>(descriptors.map((descriptor) => [
+    descriptor.filePath,
+    { kind: "missing-file" },
+  ]));
+  let resolveRemote!: () => void;
+  const remoteGate = new Promise<void>((resolve) => { resolveRemote = resolve; });
+  let markStarted!: () => void;
+  const remoteStarted = new Promise<void>((resolve) => { markStarted = resolve; });
+  const controller = new AbortController();
+  const calls: string[] = [];
+
+  const read = readReviewDiffContentsSequentially(descriptors, local, async (descriptor) => {
+    calls.push(descriptor.filePath);
+    markStarted();
+    await remoteGate;
+    return { kind: "found", content: "remote" };
+  }, controller.signal);
+  const outcome = read.then(
+    (value) => ({ kind: "fulfilled" as const, value }),
+    (error: unknown) => ({ kind: "rejected" as const, error }),
+  );
+  let failed = false;
+  let failure: unknown;
+  try {
+    await withTestTimeout(remoteStarted, "remote fallback did not start");
+    controller.abort();
+    resolveRemote();
+
+    const result = await withTestTimeout(outcome, "cancelled remote fallback did not settle");
+    assert.equal(result.kind, "rejected");
+    if (result.kind === "rejected") assert.equal((result.error as Error).name, "AbortError");
+    assert.deepEqual(calls, ["first.ts"]);
+  } catch (error) {
+    failed = true;
+    failure = error;
+  } finally {
+    controller.abort();
+    resolveRemote();
+    try {
+      await withTestTimeout(outcome, "remote reader cleanup timed out");
+    } catch (cleanupError) {
+      if (!failed) {
+        failed = true;
+        failure = cleanupError;
+      }
+    }
+  }
+  if (failed) throw failure;
 });
 
 const globalState = (): RepositoryGlobalState => ({
@@ -538,6 +769,107 @@ test("R405-5 PR runtime exposes T304 progress for Review Contexts", async () => 
     totalLineCount: 2,
     progress: 0,
   });
+});
+
+test("Issue #137 actual T405 PR activation never emits acquired file paths in detailed Output", async () => {
+  const logs: OperationLogEntry[] = [];
+  const host = {
+    isDetailedDiagnosticsEnabled: () => true,
+    showBusy: () => undefined,
+    clearBusy: () => undefined,
+    appendLog: (entry: OperationLogEntry) => logs.push(entry),
+    revealLog: () => undefined,
+  };
+  const feedback = new OperationFeedback(host);
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository: new MemoryRepository(),
+    requestHistory: async () => undefined,
+    diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+  });
+  runtime.register({
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/private/fixture/repository",
+    fileSystemPathSemantics: "posix",
+    snapshot,
+    readTextContent: async () => ({ kind: "found", content: "new" }),
+  });
+  await feedback.run("Current Contextを更新", async (context) => runtime.activateProgress(CONTEXT_ID, context));
+  const rendered = logs.map(formatOperationLogEntry).join("\n");
+  assert.match(rendered, /DETAIL op=1 .*reason=pull-request-file/u);
+  assert.doesNotMatch(rendered, /private\/fixture|src\/example\.ts|target=/u);
+});
+
+test("Issue #136 keeps the newest PR Progress refresh when an older read finishes later", async () => {
+  const repository = new MemoryRepository();
+  const oldRead = (() => {
+    let resolve!: (value: { kind: "found"; content: string }) => void;
+    const promise = new Promise<{ kind: "found"; content: string }>((complete) => { resolve = complete; });
+    return { promise, resolve };
+  })();
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository,
+    requestHistory: async () => undefined,
+    diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+  });
+  const registration = {
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/repo",
+    fileSystemPathSemantics: "posix" as const,
+    snapshot,
+    readTextContent: async () => oldRead.promise,
+  };
+  runtime.register(registration);
+
+  const staleRefresh = runtime.activateProgress(CONTEXT_ID);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+
+  const newerSnapshot: PullRequestDiffSnapshot = {
+    ...snapshot,
+    headSha: C,
+    originalDiffId: `${A}..${C}`,
+  };
+  repository.current = {
+    ...repository.current,
+    contextState: {
+      ...repository.current.contextState,
+      pullRequest: { ...repository.current.contextState.pullRequest!, headSha: C },
+      files: Object.fromEntries(Object.entries(repository.current.contextState.files).map(([fileId, file]) => [
+        fileId,
+        { ...file, revisionId: C, contentHash: contentHash("newer") },
+      ])),
+    },
+    globalState: {
+      ...repository.current.globalState,
+      currentRevisionId: C,
+      files: Object.fromEntries(Object.entries(repository.current.globalState.files).map(([fileId, file]) => [
+        fileId,
+        { ...file, revisionId: C, contentHash: contentHash("newer") },
+      ])),
+    },
+  };
+  runtime.unregister(CONTEXT_ID);
+  runtime.register({
+    ...registration,
+    snapshot: newerSnapshot,
+    readTextContent: async () => ({ kind: "found", content: "newer" }),
+  });
+  await runtime.activateProgress(CONTEXT_ID);
+
+  oldRead.resolve({ kind: "found", content: "older" });
+  await assert.rejects(
+    () => staleRefresh,
+    (error: unknown) => error instanceof Error && error.name === "OperationCancelledError",
+  );
+
+  const files = runtime.progress.getChildren().flatMap((category) =>
+    category.kind === "category" ? runtime.progress.getChildren(category) : [],
+  );
+  assert.equal(files.length, 1);
+  assert.equal(files[0]?.kind, "file");
+  assert.equal(files[0]?.kind === "file" ? files[0].openTarget.headSha : undefined, C,
+    "the accepted tree belongs to the newer snapshot");
 });
 
 test("R405-3 binary PR changes are not opened as text review diffs", async () => {

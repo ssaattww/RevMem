@@ -74,6 +74,21 @@ test("T609-NR-004 preserves the existing provider projection for multi-root Quic
   assert.equal(reportCount, 0);
 });
 
+test("Issue #136 superseded redetection cancellation preserves the accepted projection without reporting a failure", async () => {
+  const acceptedProjection = ["accepted"];
+  let clearCount = 0;
+  let reportCount = 0;
+  const outcome = await settleReviewContextsRepositorySelection(new DOMException("superseded", "AbortError"), {
+    clear: () => { clearCount += 1; acceptedProjection.length = 0; },
+    reportTerminalFailure: async () => { reportCount += 1; },
+  });
+
+  assert.equal(outcome, "cancelled");
+  assert.deepEqual(acceptedProjection, ["accepted"]);
+  assert.equal(clearCount, 0);
+  assert.equal(reportCount, 0);
+});
+
 test("T609-NR-004 cancel and stale typed outcomes run one command without terminal reporting, clear, or post-cancel refresh", async () => {
   for (const selection of ["cancel", "stale"] as const) {
     const { commands, runtime } = loadReviewContextsRuntime();
@@ -110,4 +125,36 @@ test("T609-NR-004 cancel and stale typed outcomes run one command without termin
       `${selection} must not clear the accepted provider projection`,
     );
   }
+});
+
+test("Issue #136 coalesces concurrent PR redetection commands into one operation and refresh", async () => {
+  const { commands, runtime } = loadReviewContextsRuntime();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let redetectRequests = 0;
+  let redetectionOperations = 0;
+  let loads = 0;
+  let activeRedetection: Promise<"completed"> | undefined;
+  runtime.registerReviewContextsRuntime({ subscriptions: [] } as never, {
+    source: { load: async () => { loads += 1; return []; } },
+    controller: { redetectPullRequest: () => {
+      redetectRequests += 1;
+      if (activeRedetection !== undefined) return activeRedetection.then(() => "coalesced" as const);
+      redetectionOperations += 1;
+      activeRedetection = gate.then(() => "completed" as const);
+      return activeRedetection;
+    } } as never,
+    refreshDecorations: async () => undefined,
+    reportError: async () => undefined,
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  const command = commands.get("reviewRange.redetectPullRequest")!;
+  const first = command();
+  const second = command();
+  assert.equal(redetectRequests, 2, "the runtime must inspect the repository generation for a repeated trigger");
+  assert.equal(redetectionOperations, 1, "same-generation requests still coalesce to one active operation");
+  release();
+  await Promise.all([first, second]);
+  assert.equal(redetectionOperations, 1);
+  assert.equal(loads, 2, "startup and one post-operation refresh are the only provider reads");
 });

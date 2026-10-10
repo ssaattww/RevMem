@@ -27,8 +27,10 @@ import {
   currentContextSelectionKey,
   CurrentContextCandidateSelection,
   CurrentContextRuntimeComposition,
+  augmentCurrentContextCandidatesWithBranchFallback,
   type CurrentContextNonDestructiveOutcome,
-  type CurrentContextUiSnapshot
+  type CurrentContextUiSnapshot,
+  type CurrentContextRefreshContext
 } from "../ui/current-context/index";
 import {
   gitCurrentContextSnapshot,
@@ -36,6 +38,7 @@ import {
   resolveMissingRepositoryFallback,
   selectedCurrentContextRepositoryRoot
 } from "./current-context/git-context-inspection";
+import { refreshCurrentContextPullRequestViews } from "./current-context/current-context-pull-request-views";
 import { createCurrentContextInspectionSession } from "./current-context/current-context-inspection-session";
 import { resolveCurrentContextRepositories, workspaceUriToFilesystemPath } from "../application/review-context/repository-resolution";
 import { resolveT305RepositoryRootUri } from "../application/repository-path/repository-root-uri";
@@ -48,7 +51,6 @@ import {
 } from "../ui/global-understanding/index";
 import {
   refreshAfterDocumentEdit,
-  refreshCurrentContextDependents,
   refreshSelectedPullRequestProgress
 } from "../application/review-context/projection-refresh";
 import { type GlobalUnderstandingFileOpenTarget } from "../ui/global-understanding/global-understanding-ui-model";
@@ -102,6 +104,8 @@ export interface PullRequestReviewRuntimeTestFixture {
   readonly repositoryRoot: string;
   readonly pullRequestNumber: number;
   readonly snapshot: PullRequestDiffSnapshot;
+  /** Opts a checkout fixture into accepted Current Context ownership. */
+  readonly followCurrentContextSelection?: boolean;
   readonly texts: readonly {
     readonly revision: string;
     readonly filePath: string;
@@ -178,7 +182,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   let testCurrentContextSelectionRequestCount = 0;
   let testCurrentContextStaleAfterPick = false;
   let testCurrentContextDependentRefreshCount = 0;
-  let testPullRequestRuntimeTarget: { readonly repositoryId: string; readonly contextId: string } | undefined;
+  let testPullRequestRuntimeTarget: {
+    readonly repositoryId: string;
+    readonly contextId: string;
+    readonly followCurrentContextSelection?: boolean;
+  } | undefined;
   const pullRequestReviewRuntimeRef: { current?: PullRequestReviewRuntime<vscode.Uri> } = {};
   const acceptSelectedContext = (next: SelectedReviewContext | undefined): void => {
     selectedContext = next;
@@ -430,7 +438,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     if (signal?.aborted === true) return [];
     const reviewContextsRuntime = reviewContextsRuntimeRef.current;
     if (reviewContextsRuntime === undefined) return local;
-    const augmented = await reviewContextsRuntime.augmentCurrentContextCandidates(local, signal, feedbackContext);
+    const augmented = await augmentCurrentContextCandidatesWithBranchFallback(
+      local,
+      () => reviewContextsRuntime.augmentCurrentContextCandidates(local, signal, feedbackContext),
+      signal,
+    );
     // The Current Context owner is authoritative: an aborted composition must
     // never publish candidates returned by an in-flight T405 acquisition.
     return signal?.aborted ? [] : [...augmented];
@@ -590,19 +602,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   } as PullRequestReviewRuntimeOptions<vscode.Uri> & {
     readonly reportDerivedProjectionError: (error: unknown) => void | Promise<void>;
   });
-  const refreshPullRequestProgressForSelection = async (): Promise<void> => {
-    const testContextId = context.extensionMode === vscode.ExtensionMode.Test
+  const refreshPullRequestProgressForSelection = async (feedbackContext?: OperationFeedbackContext, owner?: CurrentContextRefreshContext, selection: SelectedReviewContext | undefined = selectedContext): Promise<void> => {
+    // Existing immutable-PR fixtures stay pinned. Checkout fixtures explicitly
+    // follow the accepted identity during coordinated branch/no-PR refreshes.
+    const testContextId = context.extensionMode === vscode.ExtensionMode.Test &&
+      (owner === undefined || testPullRequestRuntimeTarget?.followCurrentContextSelection !== true)
       ? testPullRequestRuntimeTarget?.contextId
       : undefined;
-    const contextId = testContextId ?? (selectedContext?.kind === "pull-request" &&
-      pullRequestReviewRuntime.hasContext(selectedContext.contextId)
-      ? selectedContext.contextId
+    const contextId = testContextId ?? (selection?.kind === "pull-request" &&
+      pullRequestReviewRuntime.hasContext(selection.contextId)
+      ? selection.contextId
       : undefined);
     await refreshSelectedPullRequestProgress({
       contextId,
+      shouldContinue: () => owner?.isCurrent() ?? true,
       source: pullRequestReviewRuntime.progress,
-      activateProgress: (selectedContextId) =>
-        pullRequestReviewRuntime.activateProgress(selectedContextId),
+      feedbackContext,
+      activateProgress: (selectedContextId, parentFeedbackContext) =>
+        pullRequestReviewRuntime.activateProgress(selectedContextId, parentFeedbackContext, owner?.signal),
       clearProgress: () => pullRequestReviewRuntime.clearProgress(),
       setSource: (source) => runtimePort.setPullRequestProgressSource(source),
       refreshTree: () => runtimePort.refreshPullRequestProgressTree()
@@ -719,7 +736,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     });
     testPullRequestRuntimeTarget = {
       repositoryId: input.repositoryId,
-      contextId: snapshot.contextId
+      contextId: snapshot.contextId,
+      followCurrentContextSelection: input.followCurrentContextSelection,
     };
     await refreshPullRequestProgressForSelection();
   };
@@ -803,10 +821,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       setSelectedContext: acceptSelectedContext,
       acceptCurrentContextPreparation: (selection) =>
         reviewContextsRuntimeRef.current?.acceptCurrentContextPreparation?.(selection),
-      refreshDependents: async () => {
+      clearPullRequestProgress: async () => {
+        testPullRequestRuntimeTarget = undefined;
+        await refreshPullRequestProgressForSelection();
+      },
+      refreshDependents: async (refreshContext) => {
         testCurrentContextDependentRefreshCount += 1;
-        await refreshCurrentContextDependents({
-          refreshPullRequestProgress: refreshPullRequestProgressForSelection,
+        const acceptedSelection = selectedContext;
+        await refreshCurrentContextPullRequestViews({
+          selection: acceptedSelection,
+          runtime: pullRequestReviewRuntime,
+          refreshProgress: (owner) => refreshPullRequestProgressForSelection(owner, refreshContext, acceptedSelection),
+          refreshList: (owner) => reviewContextsRuntimeRef.current?.refreshListOnly?.(owner, refreshContext?.signal) ?? Promise.resolve(),
           refreshDecorations: () => runtimePort.refreshVisibleEditorDecorations(),
           refreshGlobal: async () => {
             await Promise.all(vscode.workspace.textDocuments
@@ -814,11 +840,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
               .map(observeCurrentGlobalUnderstandingDocument));
             await refreshGlobalUnderstandingForMutation({ reason: "current-context-changed", phase: "global-refresh-trigger" });
           },
-          refreshReviewContexts: async () => {
-            await reviewContextsRuntimeRef.current?.refresh();
-          },
-          reportPullRequestProgressError
-        });
+          reportProgressError: reportPullRequestProgressError,
+        }, refreshContext);
       }
     },
     async (error) => {
@@ -835,7 +858,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     git,
     enumerateCurrentContexts: (signal) => enumerateLocalContexts(signal),
     refreshDecorations: () => runtimePort.refreshVisibleEditorDecorations(),
-    refreshCurrentContext: () => currentContextRuntime.refresh(),
+    refreshCurrentContext: (feedbackContext) => currentContextRuntime.refreshFromReviewContexts(feedbackContext),
     registerPullRequestReviewDiff: (registration) => {
       pullRequestReviewRuntime.register(registration);
       if (selectedContext?.kind === "pull-request" && selectedContext.contextId === registration.snapshot.contextId) {

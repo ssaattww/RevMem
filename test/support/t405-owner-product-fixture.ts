@@ -156,6 +156,7 @@ export async function createOwnerProductFixture(numbers: readonly number[] = [52
   let resolveStartup: () => void = () => undefined;
   const subscriptions: Disposable[] = [];
   const fakeVscode = {
+    CancellationTokenSource: class { public readonly token = { isCancellationRequested: false, onCancellationRequested: () => ({ dispose: () => undefined }) }; public cancel(): void {} public dispose(): void {} },
     EventEmitter: Emitter,
     TreeItem: class { public constructor(public readonly label: string, public readonly collapsibleState: number) {} },
     ThemeIcon: class { public constructor(public readonly id: string) {} },

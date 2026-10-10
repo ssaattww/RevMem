@@ -220,6 +220,91 @@ test("Issue #106 same-target PR contexts publish through one owner CAS and only 
   }
 });
 
+test("Issue #106 resolves owner lifecycle reads with bounded concurrency and preserves one ordered publication", async () => {
+  const harness = await createHarness();
+  try {
+    for (const number of [54, 55, 56, 57, 58, 59]) {
+      await harness.atomic.save(target(number), {
+        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+        contextState: contextState(number),
+        globalState: globalState(),
+      });
+    }
+    const started: number[] = [];
+    let active = 0;
+    let peakActive = 0;
+    const result = await synchronizePullRequestOwner(
+      { repositoryId: REPOSITORY_ID, headRevision: SHA_C },
+      {
+        repository: harness.repository,
+        resolveUpdate: async (context) => {
+          const number = context.pullRequest!.number;
+          started.push(number);
+          active += 1;
+          peakActive = Math.max(peakActive, active);
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          active -= 1;
+          return updateInput(context, SHA_C);
+        },
+        prepareUpdate: (input, current) => harness.service.prepareUpdate(input, current),
+        recordPreparedUpdateHistory: (prepared) => harness.service.recordPreparedUpdateHistory(prepared),
+      },
+    );
+
+    assert.equal(peakActive, 4, "lifecycle reads are capped at four concurrent requests");
+    assert.deepEqual(started, [52, 53, 54, 55, 56, 57, 58, 59]);
+    assert.equal(result.committed, true);
+    assert.deepEqual(result.mappedContextIds, [52, 53, 54, 55, 56, 57, 58, 59].map(contextId).sort());
+    assert.equal(harness.ownerCommits(), 1);
+    assert.deepEqual(harness.histories, [52, 53, 54, 55, 56, 57, 58, 59].map(contextId).sort());
+  } finally {
+    await harness.repository.dispose();
+    await rm(harness.root, { recursive: true, force: true });
+  }
+});
+
+test("Issue #106 a failed lifecycle read in a bounded batch prevents later reads and all publication", async () => {
+  const harness = await createHarness();
+  try {
+    for (const number of [54, 55, 56, 57]) {
+      await harness.atomic.save(target(number), {
+        schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+        contextState: contextState(number),
+        globalState: globalState(),
+      });
+    }
+    const started: number[] = [];
+    await assert.rejects(
+      () => synchronizePullRequestOwner(
+        { repositoryId: REPOSITORY_ID, headRevision: SHA_C },
+        {
+          repository: harness.repository,
+          resolveUpdate: async (context) => {
+            const number = context.pullRequest!.number;
+            started.push(number);
+            await new Promise((resolve) => setTimeout(resolve, 2));
+            if (number === 53) throw new Error("lifecycle read failed");
+            return updateInput(context, SHA_C);
+          },
+          prepareUpdate: (input, current) => harness.service.prepareUpdate(input, current),
+          recordPreparedUpdateHistory: (prepared) => harness.service.recordPreparedUpdateHistory(prepared),
+        },
+      ),
+      /lifecycle read failed/u,
+    );
+
+    assert.deepEqual(started, [52, 53, 54, 55], "the failed batch settles, then later batches are not started");
+    assert.equal(harness.ownerCommits(), 0);
+    assert.deepEqual(harness.histories, []);
+    for (const number of [52, 53, 54, 55, 56, 57]) {
+      assert.equal((await harness.repository.load(target(number)))?.contextState.pullRequest?.headSha, SHA_B);
+    }
+  } finally {
+    await harness.repository.dispose();
+    await rm(harness.root, { recursive: true, force: true });
+  }
+});
+
 test("Issue #106 different remote HEAD stays dormant until that HEAD becomes the owner synchronization revision", async () => {
   const harness = await createHarness();
   try {

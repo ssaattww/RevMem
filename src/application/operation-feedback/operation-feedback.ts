@@ -1,4 +1,5 @@
 import type { PullRequestDiffAcquisitionAttempt } from "../github-pr-diff/contracts";
+import { formatPullRequestRefreshAliases, validatePullRequestRefreshAliases, type PullRequestRefreshAliases } from "./pull-request-refresh-aliases";
 
 /** Privacy-safe, count-only stages accepted by the shared operation feedback boundary. */
 export type OperationProgressStage =
@@ -14,7 +15,90 @@ export interface OperationProgress {
 }
 
 /** Lifecycle event written to the Review Range diagnostic output. */
-export type OperationLogEvent = "started" | "progress" | "succeeded" | "failed";
+export type OperationLogEvent = "started" | "progress" | "refresh" | "succeeded" | "failed" | "cancelled";
+
+export type PullRequestRefreshTrigger =
+  | "current-context-refresh"
+  | "review-contexts-refresh"
+  | "current-context-selection"
+  | "startup"
+  | "active-editor-change"
+  | "review-state-change"
+  | "retry"
+  | "pr-redetection";
+
+export type PullRequestRefreshStage =
+  | "current-context"
+  | "pr-acquisition"
+  | "repository-identity"
+  | "review-contexts-list"
+  | "diff-registration"
+  | "pr-selection"
+  | "pr-progress"
+  | "tree-publication"
+  | "refresh-request"
+  | "repository-inspection"
+  | "repository-sync"
+  | "authentication"
+  | "pr-search-page"
+  | "merge-base"
+  | "candidate-selection"
+  | "context-save"
+  | "global-state-preparation";
+
+export type PullRequestRefreshStatus = "started" | "progress" | "succeeded" | "failed" | "cancelled" | "superseded" | "coalesced";
+
+export type PullRequestRefreshReasonCode =
+  | "explicit-selection-kept"
+  | "unique-pr-match"
+  | "ambiguous-pr-match"
+  | "no-matching-pr"
+  | "no-selected-pr"
+  | "snapshot-unavailable"
+  | "no-pr-files"
+  | "identity-changed"
+  | "verified-branch-preserved"
+  | "refresh-failed"
+  | "superseded"
+  | "duplicate-trigger-coalesced"
+  | "superseded-by-newer-generation"
+  | "request-timeout"
+  | "network-failure"
+  | "api-failure"
+  | "authentication-required"
+  | "rate-limited"
+  | "quick-pick-cancelled";
+
+export interface PullRequestRefreshCounts {
+  readonly repositories?: number;
+  readonly pullRequestCandidates?: number;
+  readonly registeredPullRequests?: number;
+  readonly snapshotFiles?: number;
+  readonly processedFiles?: number;
+  readonly treeItems?: number;
+  /** Selection/snapshot presence counts retained for compatibility; identities use aliases. */
+  readonly selectedContextOrdinal?: number;
+  readonly snapshotOrdinal?: number;
+}
+
+/** Allowlisted lifecycle detail for PR Progress refresh. It accepts no free-form text. */
+export interface PullRequestRefreshDiagnostic {
+  readonly generation: number;
+  readonly trigger: PullRequestRefreshTrigger;
+  readonly stage: PullRequestRefreshStage;
+  readonly status: PullRequestRefreshStatus;
+  readonly durationMs?: number;
+  readonly counts?: PullRequestRefreshCounts;
+  readonly aliases?: PullRequestRefreshAliases;
+  readonly reasonCode?: PullRequestRefreshReasonCode;
+  /** Numeric-only causal links between refresh owners; never an identity value. */
+  readonly relatedOperationId?: number;
+  readonly relatedGeneration?: number;
+  readonly supersededByGeneration?: number;
+  readonly causedByOperationId?: number;
+  /** One-based request/page ordinal within the owning operation. */
+  readonly ordinal?: number;
+}
 
 /** One source-content-free diagnostic entry for an extension operation. */
 export interface OperationLogEntry {
@@ -32,6 +116,11 @@ export interface OperationLogEntry {
   readonly errorName?: string;
   /** Failure message sanitized for source-content-free Output diagnostics. */
   readonly message?: string;
+  /** Safe classifier outcome for a failed operation; never includes dependency text. */
+  readonly failureCategory?: OperationFailureCategory;
+  /** Numeric correlation to the owning operation, present on PR refresh detail. */
+  readonly operationId?: number;
+  readonly pullRequestRefresh?: PullRequestRefreshDiagnostic;
 }
 
 /** Runtime-neutral UI boundary for operation status and diagnostic output. */
@@ -66,7 +155,7 @@ export type OperationDiagnostic = {
   readonly attempts: readonly PullRequestDiffAcquisitionAttempt[];
 } | {
   readonly code: "GITHUB_PR_DETECTION_UNAVAILABLE";
-  readonly reason: "rate-limit" | "network" | "api" | "authentication";
+  readonly reason: "rate-limit" | "network" | "api" | "authentication" | "timeout";
 };
 
 /** Stable disposition used by the shared retry and UI failure boundary. */
@@ -123,6 +212,8 @@ interface ActiveOperation {
   progress?: OperationProgress;
   /** A handled child failure makes the enclosing lifecycle terminally failed. */
   boundaryFailure?: unknown;
+  /** A superseded refresh makes the enclosing operation finish as cancelled. */
+  boundaryCancelled?: boolean;
 }
 
 const MAX_OPERATION_LABEL_LENGTH = 96;
@@ -254,10 +345,82 @@ const SAFE_PR_PROGRESS_REASONS = new Set([
   "diff-too-large"
 ]);
 
-const SAFE_GITHUB_PR_DETECTION_REASONS = new Set(["rate-limit", "network", "api", "authentication"]);
+const SAFE_GITHUB_PR_DETECTION_REASONS = new Set(["rate-limit", "network", "api", "authentication", "timeout"]);
 const SAFE_GLOBAL_UNDERSTANDING_STAGES = new Set<GlobalUnderstandingFailureStage>(["path-discovery", "owner-capture", "scope-processing", "content-read", "calculation"]);
 const SAFE_GLOBAL_UNDERSTANDING_SCOPES = new Set(["repository-root", "folder"]);
 const SAFE_OPERATION_FAILURE_CATEGORIES = new Set<OperationFailureCategory>(["retryable", "permanent", "stale", "authentication", "validation"]);
+const SAFE_PULL_REQUEST_REFRESH_TRIGGERS = new Set<PullRequestRefreshTrigger>([
+  "current-context-refresh", "review-contexts-refresh", "current-context-selection",
+  "startup", "active-editor-change", "review-state-change", "retry", "pr-redetection",
+]);
+const SAFE_PULL_REQUEST_REFRESH_STAGES = new Set<PullRequestRefreshStage>([
+  "current-context", "pr-acquisition", "repository-identity", "review-contexts-list", "diff-registration",
+  "pr-selection", "pr-progress", "tree-publication", "refresh-request", "repository-inspection",
+  "repository-sync", "authentication", "pr-search-page", "merge-base", "candidate-selection",
+  "context-save", "global-state-preparation",
+]);
+const SAFE_PULL_REQUEST_REFRESH_STATUSES = new Set<PullRequestRefreshStatus>([
+  "started", "progress", "succeeded", "failed", "cancelled", "superseded", "coalesced",
+]);
+const SAFE_PULL_REQUEST_REFRESH_REASONS = new Set<PullRequestRefreshReasonCode>([
+  "explicit-selection-kept", "unique-pr-match", "ambiguous-pr-match", "no-matching-pr",
+  "no-selected-pr", "snapshot-unavailable", "no-pr-files", "identity-changed",
+  "verified-branch-preserved", "refresh-failed", "superseded", "duplicate-trigger-coalesced",
+  "superseded-by-newer-generation", "request-timeout", "network-failure", "api-failure",
+  "authentication-required", "rate-limited", "quick-pick-cancelled",
+]);
+const SAFE_PULL_REQUEST_REFRESH_COUNT_KEYS = new Set<keyof PullRequestRefreshCounts>([
+  "repositories", "pullRequestCandidates", "registeredPullRequests", "snapshotFiles",
+  "processedFiles", "treeItems", "selectedContextOrdinal", "snapshotOrdinal",
+]);
+
+const validatePullRequestRefreshDiagnostic = (
+  value: PullRequestRefreshDiagnostic,
+): PullRequestRefreshDiagnostic => {
+  if (!Number.isSafeInteger(value.generation) || value.generation < 1) {
+    throw new RangeError("PR Progress refresh generation must be a positive safe integer");
+  }
+  if (!SAFE_PULL_REQUEST_REFRESH_TRIGGERS.has(value.trigger)) throw new TypeError("PR Progress refresh trigger is not allowlisted");
+  if (!SAFE_PULL_REQUEST_REFRESH_STAGES.has(value.stage)) throw new TypeError("PR Progress refresh stage is not allowlisted");
+  if (!SAFE_PULL_REQUEST_REFRESH_STATUSES.has(value.status)) throw new TypeError("PR Progress refresh status is not allowlisted");
+  if (value.reasonCode !== undefined && !SAFE_PULL_REQUEST_REFRESH_REASONS.has(value.reasonCode)) {
+    throw new TypeError("PR Progress refresh reason is not allowlisted");
+  }
+  if (value.durationMs !== undefined && (!Number.isSafeInteger(value.durationMs) || value.durationMs < 0)) {
+    throw new RangeError("PR Progress refresh duration must be a non-negative safe integer");
+  }
+  for (const [name, number] of [
+    ["relatedOperationId", value.relatedOperationId], ["relatedGeneration", value.relatedGeneration],
+    ["supersededByGeneration", value.supersededByGeneration], ["causedByOperationId", value.causedByOperationId],
+    ["ordinal", value.ordinal],
+  ] as const) {
+    if (number !== undefined && (!Number.isSafeInteger(number) || number < 1)) {
+      throw new RangeError(`PR Progress refresh ${name} must be a positive safe integer`);
+    }
+  }
+  const counts: Partial<Record<keyof PullRequestRefreshCounts, number>> = {};
+  const aliases = validatePullRequestRefreshAliases(value.aliases, value.generation);
+  for (const [rawKey, rawValue] of Object.entries(value.counts ?? {})) {
+    const key = rawKey as keyof PullRequestRefreshCounts;
+    if (!SAFE_PULL_REQUEST_REFRESH_COUNT_KEYS.has(key)) throw new TypeError("PR Progress refresh count is not allowlisted");
+    counts[key] = validateOperationProgressCount(rawValue, `PR Progress refresh ${key}`);
+  }
+  return Object.freeze({
+    generation: value.generation,
+    trigger: value.trigger,
+    stage: value.stage,
+    status: value.status,
+    ...(value.durationMs === undefined ? {} : { durationMs: value.durationMs }),
+    ...(Object.keys(counts).length === 0 ? {} : { counts: Object.freeze(counts) }),
+    ...(aliases === undefined ? {} : { aliases }),
+    ...(value.reasonCode === undefined ? {} : { reasonCode: value.reasonCode }),
+    ...(value.relatedOperationId === undefined ? {} : { relatedOperationId: value.relatedOperationId }),
+    ...(value.relatedGeneration === undefined ? {} : { relatedGeneration: value.relatedGeneration }),
+    ...(value.supersededByGeneration === undefined ? {} : { supersededByGeneration: value.supersededByGeneration }),
+    ...(value.causedByOperationId === undefined ? {} : { causedByOperationId: value.causedByOperationId }),
+    ...(value.ordinal === undefined ? {} : { ordinal: value.ordinal }),
+  });
+};
 
 const validatePrProgressAttempts = (
   attempts: readonly PullRequestDiffAcquisitionAttempt[]
@@ -275,11 +438,11 @@ const validatePrProgressAttempts = (
 
 const validateGitHubPullRequestDetectionReason = (
   reason: unknown
-): "rate-limit" | "network" | "api" | "authentication" => {
+): "rate-limit" | "network" | "api" | "authentication" | "timeout" => {
   if (typeof reason !== "string" || !SAFE_GITHUB_PR_DETECTION_REASONS.has(reason)) {
     throw new TypeError("GitHub PR detection diagnostic reason is not allowlisted");
   }
-  return reason as "rate-limit" | "network" | "api" | "authentication";
+  return reason as "rate-limit" | "network" | "api" | "authentication" | "timeout";
 };
 
 /**
@@ -348,7 +511,8 @@ export const classifyOperationFailure = (error: unknown): OperationFailureClassi
       switch (error.diagnostic.reason) {
         case "authentication": return { kind: "authentication" };
         case "rate-limit":
-        case "network": return { kind: "retryable" };
+        case "network":
+        case "timeout": return { kind: "retryable" };
         case "api": return { kind: "validation" };
       }
     }
@@ -512,10 +676,17 @@ export const formatOperationFailureForUser = (error: unknown): string => {
   }
 };
 
-const failureDetails = (error: unknown): Pick<OperationLogEntry, "errorName" | "message"> =>
+const failureDetails = (error: unknown): Pick<OperationLogEntry, "errorName" | "message" | "failureCategory"> =>
   error instanceof Error
-    ? { errorName: safeErrorName(error), message: sanitizedFailureMessage(error) }
-    : { message: sanitizedFailureMessage(error) };
+    ? {
+      errorName: safeErrorName(error),
+      message: sanitizedFailureMessage(error),
+      failureCategory: classifyOperationFailure(error).kind,
+    }
+    : {
+      message: sanitizedFailureMessage(error),
+      failureCategory: classifyOperationFailure(error).kind,
+    };
 
 const errorIdentity = (error: unknown): object | undefined =>
   (typeof error === "object" && error !== null) || typeof error === "function"
@@ -532,7 +703,8 @@ const errorIdentity = (error: unknown): object | undefined =>
 export class OperationFeedback {
   private readonly active: ActiveOperation[] = [];
   private readonly pendingBoundaryDuplicates = new WeakSet<object>();
-  private nextId = 0;
+  private readonly operationFinishedListeners = new Map<number, Set<() => void>>();
+  protected nextId = 0;
   private readonly reportedStorageLockScopes = new Set<string>();
 
   public constructor(
@@ -552,18 +724,28 @@ export class OperationFeedback {
     this.host.appendLog({
       timestamp: new Date(active.startedAt).toISOString(),
       label: active.label,
-      event: "started"
+      event: "started",
+      operationId: active.id
     });
     this.publishStatus();
 
     try {
       const result = await operation({ owner: this, id: active.id });
       const finishedAt = this.now();
-      if (active.boundaryFailure === undefined) {
+      if (active.boundaryFailure === undefined && active.boundaryCancelled === true) {
+        this.host.appendLog({
+          timestamp: new Date(finishedAt).toISOString(),
+          label: active.label,
+          event: "cancelled",
+          operationId: active.id,
+          durationMs: Math.max(0, finishedAt - active.startedAt)
+        });
+      } else if (active.boundaryFailure === undefined) {
         this.host.appendLog({
           timestamp: new Date(finishedAt).toISOString(),
           label: active.label,
           event: "succeeded",
+          operationId: active.id,
           durationMs: Math.max(0, finishedAt - active.startedAt)
         });
       } else {
@@ -571,24 +753,53 @@ export class OperationFeedback {
           active.label,
           active.boundaryFailure,
           finishedAt,
-          Math.max(0, finishedAt - active.startedAt)
+          Math.max(0, finishedAt - active.startedAt),
+          active.id
         );
       }
       return result;
     } catch (error) {
       const finishedAt = this.now();
-      this.recordRunFailure(
-        active.label,
-        error,
-        finishedAt,
-        Math.max(0, finishedAt - active.startedAt)
-      );
+      const durationMs = Math.max(0, finishedAt - active.startedAt);
+      if (active.boundaryFailure !== undefined) {
+        this.recordRunFailure(active.label, active.boundaryFailure, finishedAt, durationMs, active.id);
+      } else if (active.boundaryCancelled === true && errorField(error, "name") === "AbortError") {
+        this.host.appendLog({
+          timestamp: new Date(finishedAt).toISOString(),
+          label: active.label,
+          event: "cancelled",
+          operationId: active.id,
+          durationMs
+        });
+      } else {
+        this.recordRunFailure(active.label, error, finishedAt, durationMs, active.id);
+      }
       throw error;
     } finally {
       const index = this.active.findIndex((candidate) => candidate.id === active.id);
       if (index >= 0) this.active.splice(index, 1);
+      const listeners = this.operationFinishedListeners.get(active.id);
+      this.operationFinishedListeners.delete(active.id);
+      for (const listener of listeners ?? []) {
+        try {
+          listener();
+        } catch {
+          // Cleanup must not replace the operation's success/failure/cancellation result.
+        }
+      }
       this.publishStatus();
     }
+  }
+
+  /** Registers operation-local cleanup that runs after success, failure, or cancellation. */
+  public onOperationFinished(context: OperationFeedbackContext, listener: () => void): void {
+    if (context.owner !== this || !this.active.some((operation) => operation.id === context.id)) {
+      listener();
+      return;
+    }
+    const listeners = this.operationFinishedListeners.get(context.id) ?? new Set<() => void>();
+    listeners.add(listener);
+    this.operationFinishedListeners.set(context.id, listeners);
   }
 
   /** Updates one active operation with an anonymous count-only stage. */
@@ -606,9 +817,36 @@ export class OperationFeedback {
       timestamp: new Date(this.now()).toISOString(),
       label: active.label,
       event: "progress",
+      operationId: active.id,
       progress: validated,
     });
     this.publishStatus();
+  }
+
+  /** Appends one validated PR Progress refresh event to its owning operation. */
+  public reportPullRequestRefresh(
+    context: OperationFeedbackContext | undefined,
+    diagnostic: PullRequestRefreshDiagnostic,
+  ): void {
+    const validated = validatePullRequestRefreshDiagnostic(diagnostic);
+    const active = context?.owner === this
+      ? this.active.find((candidate) => candidate.id === context.id)
+      : context === undefined
+        ? this.active.at(-1)
+        : undefined;
+    if (active === undefined) return;
+    validatePullRequestRefreshAliases(validated.aliases, validated.generation, { owner: this, id: active.id });
+    if (validated.status === "cancelled" || validated.status === "superseded") {
+      active.boundaryCancelled = true;
+    }
+    const event: OperationLogEvent = "refresh";
+    this.host.appendLog({
+      timestamp: new Date(this.now()).toISOString(),
+      label: "PR Progress refresh",
+      event,
+      operationId: active.id,
+      pullRequestRefresh: validated,
+    });
   }
 
   /** Records an error intentionally handled by a fail-closed or UI boundary. */
@@ -627,8 +865,9 @@ export class OperationFeedback {
     }
     const timestamp = this.now();
     const normalizedLabel = requireLabel(label);
-    this.host.appendLog({ timestamp: new Date(timestamp).toISOString(), label: normalizedLabel, event: "started" });
-    this.appendFailure(normalizedLabel, error, timestamp);
+    const id = ++this.nextId;
+    this.host.appendLog({ timestamp: new Date(timestamp).toISOString(), label: normalizedLabel, event: "started", operationId: id });
+    this.appendFailure(normalizedLabel, error, timestamp, undefined, id);
   }
 
   /** Returns whether an explicit parent operation already has a terminal handled failure. */
@@ -670,13 +909,14 @@ export class OperationFeedback {
     label: string,
     error: unknown,
     timestamp: number,
-    durationMs: number
+    durationMs: number,
+    operationId: number,
   ): void {
     const identity = errorIdentity(error);
     if (identity !== undefined) {
       this.pendingBoundaryDuplicates.delete(identity);
     }
-    this.appendFailure(label, error, timestamp, durationMs);
+    this.appendFailure(label, error, timestamp, durationMs, operationId);
     if (identity !== undefined) this.pendingBoundaryDuplicates.add(identity);
   }
 
@@ -684,12 +924,14 @@ export class OperationFeedback {
     label: string,
     error: unknown,
     timestamp: number,
-    durationMs?: number
+    durationMs?: number,
+    operationId?: number,
   ): void {
     this.host.appendLog({
       timestamp: new Date(timestamp).toISOString(),
       label,
       event: "failed",
+      ...(operationId === undefined ? {} : { operationId }),
       ...(durationMs === undefined ? {} : { durationMs }),
       ...failureDetails(error)
     });
@@ -712,17 +954,42 @@ export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
     ? "START"
     : entry.event === "progress"
       ? "PROGRESS"
+      : entry.event === "refresh"
+        ? "REFRESH"
       : entry.event === "succeeded"
         ? "OK"
+        : entry.event === "cancelled"
+          ? "CANCEL"
         : "ERROR";
   const progress = entry.event === "progress" && entry.progress !== undefined
     ? ` stage=${entry.progress.stage} progress=${entry.progress.completed}${entry.progress.total === undefined ? "" : `/${entry.progress.total}`}`
     : "";
+  const operation = entry.operationId === undefined ? "" : ` op=${entry.operationId}`;
   const duration = entry.durationMs === undefined ? "" : ` (${entry.durationMs} ms)`;
   const error = entry.event !== "failed" || entry.message === undefined
     ? ""
     : `: ${entry.errorName === undefined ? "" : `${boundedSingleLine(entry.errorName, 80)}: `}${boundedSingleLine(entry.message, 320)}`;
-  return boundedSingleLine(`[${entry.timestamp}] ${stage} ${boundedSingleLine(entry.label, MAX_OPERATION_LABEL_LENGTH)}${progress}${duration}${error}`);
+  const failureCategory = entry.event === "failed" && entry.failureCategory !== undefined
+    ? ` category=${entry.failureCategory}`
+    : "";
+  const refresh = entry.pullRequestRefresh;
+  const refreshDetails = refresh === undefined
+    ? ""
+    : ` generation=${refresh.generation}` +
+      ` trigger=${refresh.trigger} stage=${refresh.stage} status=${refresh.status}` +
+      formatPullRequestRefreshAliases(refresh.aliases, refresh.generation) +
+      (refresh.ordinal === undefined ? "" : ` ordinal=${refresh.ordinal}`) +
+      (refresh.relatedOperationId === undefined ? "" : ` relatedOp=${refresh.relatedOperationId}`) +
+      (refresh.relatedGeneration === undefined ? "" : ` relatedGeneration=${refresh.relatedGeneration}`) +
+      (refresh.supersededByGeneration === undefined ? "" : ` supersededByGeneration=${refresh.supersededByGeneration}`) +
+      (refresh.causedByOperationId === undefined ? "" : ` causedByOp=${refresh.causedByOperationId}`) +
+      (refresh.durationMs === undefined ? "" : ` duration=${refresh.durationMs}ms`) +
+      Object.entries(refresh.counts ?? {}).map(([key, value]) => ` ${key}=${value}`).join("") +
+      (refresh.reasonCode === undefined ? "" : ` reason=${refresh.reasonCode}`);
+  return boundedSingleLine(
+    `[${entry.timestamp}] ${stage}${operation} ${boundedSingleLine(entry.label, MAX_OPERATION_LABEL_LENGTH)}` +
+    `${progress}${duration}${refreshDetails}${error}${failureCategory}`,
+  );
 };
 
 let activeOperationFeedback: OperationFeedback | undefined;
@@ -758,6 +1025,19 @@ export const reportActiveOperationProgress = (
   context?: OperationFeedbackContext,
 ): void => {
   (context?.owner ?? activeOperationFeedback)?.reportProgress(progress, context);
+};
+
+/** Reports one validated PR Progress lifecycle stage through the shared Output boundary. */
+export const reportActivePullRequestRefresh = (
+  context: OperationFeedbackContext | undefined,
+  diagnostic: PullRequestRefreshDiagnostic,
+): void => {
+  const feedback = context === undefined
+    ? activeOperationFeedback
+    : context.owner instanceof OperationFeedback
+      ? context.owner
+      : undefined;
+  feedback?.reportPullRequestRefresh(context, diagnostic);
 };
 
 /** Reports a handled failure to active diagnostics when the UI host is installed. */

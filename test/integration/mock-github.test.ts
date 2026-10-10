@@ -41,6 +41,40 @@ test("mock GitHub server returns fixtures, records requests, and closes", async 
   assert.equal(server.isClosed, true);
 });
 
+test("Issue #136 unresponsive PR search has a bounded, redacted timeout phase", async () => {
+  let requestSignal: AbortSignal | null | undefined;
+  const diagnostics: unknown[] = [];
+  const Adapter = FetchGitHubPullRequestAdapter as unknown as new (options: Record<string, unknown>) => FetchGitHubPullRequestAdapter;
+  const adapter = new Adapter({
+    apiBaseUrl: "https://api.fixture.invalid",
+    requestTimeoutMs: 15,
+    fetch: (async (_input: URL, init: RequestInit): Promise<Response> => {
+      requestSignal = init.signal;
+      return await new Promise<Response>(() => {});
+    }) as typeof globalThis.fetch,
+    onDiagnostic: (event: unknown) => diagnostics.push(event),
+  });
+  const search = adapter.findByHead(
+    { host: "github.com", owner: "private-owner", repository: "private-repository" },
+    "a".repeat(40),
+  );
+  const outcome = await new Promise<{ kind: "result"; value: unknown } | { kind: "hung" }>((resolve) => {
+    const watchdog = setTimeout(() => resolve({ kind: "hung" }), 250);
+    void search.then((value) => {
+      clearTimeout(watchdog);
+      resolve({ kind: "result", value });
+    });
+  });
+  assert.equal(outcome.kind, "result", "the request must stop at its deadline instead of waiting indefinitely");
+  if (outcome.kind !== "result") return;
+  const result = outcome.value as { kind?: string; reason?: string };
+  assert.equal(result.kind, "unavailable");
+  assert.equal(String(result.reason), "timeout");
+  assert.equal(requestSignal?.aborted, true, "timeout should also abort the underlying fetch");
+  assert.match(JSON.stringify(diagnostics), /pr-search-page|request-timeout|timeout/u);
+  assert.doesNotMatch(JSON.stringify(diagnostics), /private-owner|private-repository|a{40}|fixture\.invalid/u);
+});
+
 test("GitHub remote parser reuses the T202 canonical remote identity for HTTPS, SCP-like SSH, ports, and GitHub.com casing", () => {
   assert.deepEqual(parseGitHubRemote("https://github.com/example/review-range.git"), {
     host: "github.com",

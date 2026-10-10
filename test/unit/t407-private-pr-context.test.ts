@@ -62,6 +62,32 @@ class FakeThemeIcon {
   public constructor(public readonly id: string) {}
 }
 
+class FakeCancellationTokenSource {
+  private readonly cancellation = new FakeEventEmitter<void>();
+  private cancelled = false;
+  public readonly token: {
+    readonly isCancellationRequested: boolean;
+    readonly onCancellationRequested: (listener: (event: void) => void) => DisposableLike;
+  };
+
+  public constructor() {
+    this.token = Object.defineProperties({}, {
+      isCancellationRequested: { get: () => this.cancelled, enumerable: true },
+      onCancellationRequested: { value: this.cancellation.event, enumerable: true },
+    }) as typeof this.token;
+  }
+
+  public cancel(): void {
+    if (this.cancelled) return;
+    this.cancelled = true;
+    this.cancellation.fire();
+  }
+
+  public dispose(): void {
+    this.cancellation.dispose();
+  }
+}
+
 class FeedbackHost implements OperationFeedbackHost {
   public readonly logs: OperationLogEntry[] = [];
   public reveals = 0;
@@ -93,6 +119,7 @@ const runScenario = async (options: {
   readonly retryFails?: boolean;
   readonly anonymousUnavailable?: boolean;
   readonly abortDuringPicker?: boolean;
+  readonly latePickerResultAfterCancellation?: boolean;
   readonly supersedeDuringPicker?: boolean;
 }): Promise<{
   readonly candidates: readonly CurrentContextUiSnapshot[];
@@ -104,6 +131,7 @@ const runScenario = async (options: {
   readonly reviewStateMutationCount: number;
   readonly preferenceMutationCount: number;
   readonly operationErrorName: string | undefined;
+  readonly pickerCancellationObserved: boolean;
   readonly currentContextQuickPickKinds: readonly string[];
   readonly mutationCountBeforeOldPickerCompletion: number | undefined;
   readonly operationLogs: readonly OperationLogEntry[];
@@ -160,6 +188,7 @@ const runScenario = async (options: {
     const currentContextQuickPickKinds: string[] = [];
     let resolvePendingPicker: (() => void) | undefined;
     let delayedPickerCount = options.abortDuringPicker || options.supersedeDuringPicker ? 1 : 0;
+    let pickerCancellationObserved = false;
     let signalPickerStarted: (() => void) | undefined;
     const pickerStarted = new Promise<void>((resolve) => { signalPickerStarted = resolve; });
     const selectedPullRequestNumbers = [...(options.selectedPullRequestNumbers ?? [])];
@@ -168,6 +197,7 @@ const runScenario = async (options: {
     let sessionPreferenceCleared = false;
     const fakeVscode = {
       EventEmitter: FakeEventEmitter,
+      CancellationTokenSource: FakeCancellationTokenSource,
       TreeItem: FakeTreeItem,
       ThemeIcon: FakeThemeIcon,
       TreeItemCollapsibleState: { None: 0 },
@@ -187,6 +217,9 @@ const runScenario = async (options: {
         showQuickPick: async (
           items: readonly { readonly candidate?: { readonly number: number }; readonly snapshot?: CurrentContextUiSnapshot }[],
           quickPickOptions?: { readonly placeHolder?: string },
+          cancellationToken?: {
+            readonly onCancellationRequested: (listener: (event: void) => void) => DisposableLike;
+          },
         ): Promise<{ readonly candidate?: { readonly number: number }; readonly snapshot?: CurrentContextUiSnapshot } | undefined> => {
           if (quickPickOptions?.placeHolder === "レビューコンテキストを選択") {
             currentContextQuickPickKinds.push(...items.flatMap((item) => item.snapshot === undefined ? [] : [item.snapshot.context.kind]));
@@ -197,7 +230,21 @@ const runScenario = async (options: {
             delayedPickerCount -= 1;
             signalPickerStarted?.();
             return new Promise((resolve) => {
-              resolvePendingPicker = () => resolve(items[0]);
+              let settled = false;
+              let cancellationSubscription: DisposableLike | undefined;
+              const settle = (result: typeof items[number] | undefined): void => {
+                if (settled) return;
+                settled = true;
+                cancellationSubscription?.dispose();
+                resolve(result);
+              };
+              if (options.latePickerResultAfterCancellation !== true) {
+                cancellationSubscription = cancellationToken?.onCancellationRequested(() => {
+                  pickerCancellationObserved = true;
+                  settle(undefined);
+                });
+              }
+              resolvePendingPicker = () => settle(items[0]);
             });
           }
           const number = selectedPullRequestNumbers.shift();
@@ -370,6 +417,7 @@ const runScenario = async (options: {
         reviewStateMutationCount,
         preferenceMutationCount: workspaceState.updateCount,
         operationErrorName,
+        pickerCancellationObserved,
         currentContextQuickPickKinds,
         mutationCountBeforeOldPickerCompletion: undefined,
         operationLogs: feedbackHost.logs,
@@ -419,6 +467,7 @@ const runScenario = async (options: {
           reviewStateMutationCount,
           preferenceMutationCount: workspaceState.updateCount,
           operationErrorName: undefined,
+          pickerCancellationObserved,
           currentContextQuickPickKinds,
           mutationCountBeforeOldPickerCompletion,
           operationLogs: feedbackHost.logs,
@@ -445,6 +494,7 @@ const runScenario = async (options: {
       reviewStateMutationCount,
       preferenceMutationCount: workspaceState.updateCount,
       operationErrorName: undefined,
+      pickerCancellationObserved,
       currentContextQuickPickKinds,
       mutationCountBeforeOldPickerCompletion: undefined,
       operationLogs: feedbackHost.logs,
@@ -503,15 +553,31 @@ test("T407 public Current Context supersession cancels the old picker without ol
     selectedPullRequestNumbers: [77],
     operation: "public-context",
     supersedeDuringPicker: true,
+    // Preserve a late Quick Pick result to verify the stale selection is fenced after it returns.
+    latePickerResultAfterCancellation: true,
   });
   const selectionEvents = result.operationLogs.filter((entry) => entry.label === "Current Contextを選択");
-  assert.equal(selectionEvents.filter((entry) => entry.event === "started").length, 2, "the old and latest public commands each start once");
+  const started = selectionEvents.filter((entry) => entry.event === "started");
+  assert.equal(started.length, 2, "the old and latest public commands each start once");
   const cancellation = selectionEvents.filter((entry) => entry.event === "cancelled");
   assert.equal(cancellation.length, 1, "the old public operation records one CANCEL terminal");
-  assert.equal(cancellation[0]?.errorName, "OperationCancelledError");
-  assert.equal(selectionEvents.filter((entry) => entry.event === "failed").length, 0, "typed cancellation is not an ERROR terminal");
-  assert.equal(result.revealCount, 0, "typed cancellation does not reveal Output");
+  assert.equal(cancellation[0]?.operationId, started[0]?.operationId, "the handled supersession cancels the old operation");
+  assert.equal(typeof cancellation[0]?.durationMs, "number");
+  assert.equal(cancellation[0]?.errorName, undefined, "handled supersession does not invent an exception name");
+  assert.equal(cancellation[0]?.message, undefined, "handled supersession does not publish arbitrary exception text");
+  const interruptedStages = result.operationLogs.filter((entry) =>
+    entry.operationId === cancellation[0]?.operationId
+    && entry.pullRequestRefresh?.trigger === "current-context-selection"
+    && (entry.pullRequestRefresh.status === "cancelled" || entry.pullRequestRefresh.status === "superseded"));
+  assert.equal(interruptedStages.length, 3, "all three pending selection stages record interruption once");
+  assert.deepEqual(interruptedStages.map((entry) => entry.pullRequestRefresh?.stage).sort(),
+    ["current-context", "pr-acquisition", "repository-identity"]);
+  assert.ok(interruptedStages.every((entry) => entry.pullRequestRefresh?.reasonCode === "superseded-by-newer-generation"));
+  assert.equal(selectionEvents.filter((entry) => entry.event === "failed").length, 0, "handled supersession is not an ERROR terminal");
+  assert.equal(result.revealCount, 0, "handled supersession does not reveal Output");
   assert.equal(selectionEvents.filter((entry) => entry.event === "succeeded").length, 1, "the latest public operation records one OK terminal");
+  assert.equal(selectionEvents.find((entry) => entry.event === "succeeded")?.operationId, started[1]?.operationId);
+  assert.notEqual(started[0]?.operationId, started[1]?.operationId);
   assert.equal(result.reviewStateMutationCount + result.preferenceMutationCount, result.mutationCountBeforeOldPickerCompletion, "old picker completion cannot add Review State or preference mutation after the latest owner publishes");
   assert.equal(result.candidates.filter((candidate) => candidate.context.kind === "pull-request").length, 1, "the latest public operation retains one PR candidate owner");
 });
@@ -600,11 +666,24 @@ test("T407 superseded explicit preparation cannot publish stale state or prefere
     multiplePullRequests: true,
     operation: "prepare",
     abortDuringPicker: true,
+    latePickerResultAfterCancellation: true,
   });
   assert.equal(result.operationErrorName, "AbortError");
   assert.equal(result.reviewStateMutationCount, 0);
   assert.equal(result.preferenceMutationCount, 0);
   assert.equal(result.candidates.some((candidate) => candidate.context.kind === "pull-request"), false);
+});
+
+test("T407 cancellation token closes a pending private PR picker", async () => {
+  const result = await runScenario({
+    privateApi: true,
+    interactiveSession: true,
+    multiplePullRequests: true,
+    operation: "prepare",
+    abortDuringPicker: true,
+  });
+  assert.equal(result.operationErrorName, "AbortError");
+  assert.equal(result.pickerCancellationObserved, true);
 });
 
 test("T407 private PR redetect switches the Current Context owner through the production Quick Pick", async () => {

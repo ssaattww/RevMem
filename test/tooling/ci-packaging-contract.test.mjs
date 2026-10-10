@@ -25,8 +25,9 @@ test("CI uses the resolved version in the VSIX and filenames without modifying t
 });
 
 test("new regression tests and packaging diagnostics are wired into the required gate", () => {
-  assert.equal(manifest.scripts["test:tooling"], "node --test test/tooling/*.test.mjs");
-  assert.match(manifest.scripts["test:unit"], /npm run test:tooling/u);
+  assert.equal(manifest.scripts["test:tooling"], "npm run compile:test && node --test test/tooling/*.test.mjs");
+  assert.match(manifest.scripts["test:unit"], /^npm run test:tooling && node --test /u);
+  assert.doesNotMatch(manifest.scripts["test:unit"], /npm run compile:test/u, "tooling owns the single compilation before both suites");
   assert.match(workflow, /node tools\/run-ci-command\.mjs ci-vsix-package npm run package/u);
   assert.match(workflow, /node tools\/run-ci-command\.mjs ci-source-archive git archive/u);
   assert.match(workflow, /- name: Upload failure diagnostics[\s\S]*?if: failure\(\)[\s\S]*?test-output\//u);

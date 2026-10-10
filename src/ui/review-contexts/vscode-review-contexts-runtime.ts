@@ -26,13 +26,15 @@ export interface ReviewContextsRuntimeSource {
   /** Loads read-only tree data and must stop downstream acquisition when aborted. */
   load(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<readonly ReviewContextListItem[]>;
   /** Commits a successful pure acquisition once, immediately before tree publication. */
-  publishLoaded?(): Promise<readonly ReviewContextListItem[] | undefined>;
+  publishLoaded?(signal?: AbortSignal): Promise<readonly ReviewContextListItem[] | undefined>;
 }
 
 export interface ReviewContextsRuntimeDependencies {
   readonly source: ReviewContextsRuntimeSource;
   readonly controller: ReviewContextsController;
   readonly refreshDecorations: () => Promise<void>;
+  /** Routes an explicit list refresh through the shared Current Context coordinator. */
+  readonly refreshCurrentContext?: (feedbackContext?: OperationFeedbackContext) => Promise<void>;
   readonly reportError: (error: unknown) => Promise<void>;
 }
 
@@ -193,10 +195,13 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
     return [...this.items];
   }
 
-  public async refresh(feedbackContext?: OperationFeedbackContext): Promise<void> {
+  public async refresh(feedbackContext?: OperationFeedbackContext, signal?: AbortSignal): Promise<void> {
     this.refreshController?.abort();
     const controller = new AbortController();
     this.refreshController = controller;
+    const abort = (): void => controller.abort();
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
     const generation = ++this.generation;
     try {
       if (feedbackContext !== undefined) {
@@ -209,12 +214,14 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
         () => this.source.load(controller.signal, feedbackContext),
         controller.signal,
       );
+      if (controller.signal.aborted || generation !== this.generation) return;
       if (hasOperationFeedbackFailure(feedbackContext)) {
         if (generation === this.generation) this.clear();
         return;
       }
       if (generation !== this.generation) return;
-      const published = await this.source.publishLoaded?.();
+      const published = await this.source.publishLoaded?.(controller.signal);
+      if (controller.signal.aborted || generation !== this.generation) return;
       // A deferred cache write can change cache status or record a terminal
       // storage failure. Never publish the pre-write projection in either case.
       if (hasOperationFeedbackFailure(feedbackContext)) {
@@ -235,8 +242,11 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
       this.changed.fire();
     } catch (error) {
       // An old operation must never erase the newer accepted projection.
-      if (generation === this.generation) this.clear();
+      if (generation === this.generation && !controller.signal.aborted) this.clear();
       throw error;
+    } finally {
+      signal?.removeEventListener("abort", abort);
+      if (this.refreshController === controller) this.refreshController = undefined;
     }
   }
   /** Clears the list when its replacement cannot be proven current. */
@@ -274,8 +284,10 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
 }
 
 export interface RegisteredReviewContextsRuntime {
-  /** Recalculates the projection and propagates terminal acquisition failures to Current Context callers. */
+  /** Runs the shared Current Context, PR-list, and PR Progress refresh sequence. */
   refresh(): Promise<void>;
+  /** Internal projection refresh used by the shared coordinator; never calls the external refresh command. */
+  refreshListOnly?(feedbackContext?: OperationFeedbackContext, signal?: AbortSignal): Promise<void>;
   refreshWithErrorBoundary(): Promise<void>;
   /** Optional Test-only read-only snapshot of the accepted tree projection. */
   getProjectionSnapshotForTest?(): readonly ReviewContextListItem[];
@@ -314,29 +326,63 @@ export function registerReviewContextsRuntime(
       return "terminal";
     }
   };
+  const refreshFromSharedCoordinator = (feedbackContext: OperationFeedbackContext | undefined): Promise<void> =>
+    dependencies.refreshCurrentContext === undefined
+      ? provider.refresh(feedbackContext)
+      : dependencies.refreshCurrentContext(feedbackContext);
   const refreshWithErrorBoundary = async (): Promise<void> => {
-    await runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true, false);
+    await runOperation("Review Contextsを更新", refreshFromSharedCoordinator, false, true);
   };
+  const refreshListAtStartup = (): Promise<"completed" | "cancelled" | "terminal"> =>
+    runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true, false);
   const mutate = async (
-    operation: (feedbackContext: OperationFeedbackContext | undefined) => Promise<void>,
+    operation: (feedbackContext: OperationFeedbackContext | undefined) => Promise<void | "coalesced">,
     refreshDecorations = false,
   ): Promise<void> => {
     let terminalFailure = false;
     const outcome = await runOperation("Review Contextsを更新", async (feedbackContext) => {
-      await operation(feedbackContext);
+      const disposition = await operation(feedbackContext);
       if (refreshDecorations) await dependencies.refreshDecorations();
       terminalFailure = hasOperationFeedbackFailure(feedbackContext);
+      // A typed failure may still produce an authoritative branch fallback;
+      // refresh the shared context before preserving the terminal failure.
+      if (disposition !== "coalesced") await refreshFromSharedCoordinator(feedbackContext);
+      terminalFailure ||= hasOperationFeedbackFailure(feedbackContext);
     }, false, false);
     if (outcome === "cancelled") return;
-    if (outcome === "terminal") {
+    if (outcome === "terminal" || terminalFailure) {
       provider.clear();
       return;
     }
-    if (terminalFailure) {
-      provider.clear();
-      return;
-    }
-    await runOperation("Review Contextsを更新", (feedbackContext) => provider.refresh(feedbackContext), true, false);
+  };
+  let activeRedetectionCommand: {
+    readonly requestHint: string | undefined;
+    readonly cancellation: AbortController;
+    readonly promise: Promise<void>;
+  } | undefined;
+  const redetectPullRequest = (): Promise<void> => {
+    const document = vscode.window.activeTextEditor?.document;
+    const requestHint = document === undefined
+      ? undefined
+      : `${document.uri.fsPath}\u0000${document.version}`;
+    const active = activeRedetectionCommand;
+    const sameRequest = active !== undefined && active.requestHint === requestHint;
+    if (!sameRequest) activeRedetectionCommand?.cancellation.abort();
+    const cancellation = new AbortController();
+    const record: {
+      readonly requestHint: string | undefined;
+      readonly cancellation: AbortController;
+      promise: Promise<void>;
+    } = { requestHint, cancellation, promise: Promise.resolve() };
+    const promise = mutate(async (feedbackContext) => {
+      const disposition = await dependencies.controller.redetectPullRequest(feedbackContext, cancellation.signal);
+      return disposition === "coalesced" ? "coalesced" : undefined;
+    });
+    record.promise = promise.finally(() => {
+      if (activeRedetectionCommand === record) activeRedetectionCommand = undefined;
+    });
+    activeRedetectionCommand = record;
+    return record.promise;
   };
   const requireItem = (item: ReviewContextListItem | undefined): ReviewContextListItem => {
     if (item === undefined) throw new Error("Review Contextsの項目を選択してください。");
@@ -347,8 +393,7 @@ export function registerReviewContextsRuntime(
     tree,
     provider,
     vscode.commands.registerCommand("reviewRange.refreshReviewContexts", refreshWithErrorBoundary),
-    vscode.commands.registerCommand("reviewRange.redetectPullRequest", () =>
-      mutate((feedbackContext) => dependencies.controller.redetectPullRequest(feedbackContext))),
+    vscode.commands.registerCommand("reviewRange.redetectPullRequest", redetectPullRequest),
     vscode.commands.registerCommand("reviewRange.reconnectGitHub", () =>
       mutate((feedbackContext) => dependencies.controller.reconnectGitHub(feedbackContext))),
     vscode.commands.registerCommand("reviewRange.refreshReviewContextCache", (raw?: ReviewContextListItem) => {
@@ -376,19 +421,22 @@ export function registerReviewContextsRuntime(
     }),
   );
 
-  void refreshWithErrorBoundary();
+  // Activation keeps its existing read-only list load. User refresh commands
+  // enter the shared Current Context coordinator above.
+  void refreshListAtStartup();
   return {
     refresh: async () => {
       const outcome = await runOperation(
         "Review Contextsを更新",
-        (feedbackContext) => provider.refresh(feedbackContext),
-        true,
+        refreshFromSharedCoordinator,
         false,
+        true,
       );
       if (outcome === "terminal") {
-        throw new Error("Review Contextsの更新に失敗しました。");
+        throw new Error("PR Progressの再計算に失敗しました。");
       }
     },
+    refreshListOnly: (feedbackContext, signal) => provider.refresh(feedbackContext, signal),
     refreshWithErrorBoundary,
     getProjectionSnapshotForTest: () => provider.getChildren(),
     dispose: () => provider.dispose(),

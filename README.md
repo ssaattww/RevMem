@@ -76,7 +76,10 @@ VS Code の設定で次の項目を変更できます。
 | `reviewRange.ignoreEolChanges` | `false` | `true` のとき、通常エディタの改行コードのみの編集では確認済み範囲を無効化しません。 |
 | `reviewRange.showGutterIcon` | `true` | 確認済み行のガターアイコンを表示します。 |
 | `reviewRange.showOverviewRuler` | `false` | 確認済み範囲を Overview Ruler に表示します。 |
+| `reviewRange.diagnostics.detailed` | `false` | 詳細診断を有効にし、再計算理由・処理段階を Review Range Output と進捗 tooltip へ表示します。通常・詳細のいずれも対象ファイル名/パスは出力しません。 |
 | `reviewRange.exclude` | `**/.git/**`、`**/node_modules/**`、`**/bin/**`、`**/obj/**`、`**/dist/**`、`**/build/**` | PR 進捗と Global 理解率の集計対象から除外する glob 配列です。有効な配列は既定値を上書きし、空配列では binary と `.git` 以外を再包含します。 |
+
+PR Progress の refresh 診断では、operation/generation と `repository=repo-N`、`branch=branch-N`、`pullRequest=pr-N`、`context=context-N`、`snapshot=snapshot-N` によって、検証済み選択から登録・Progress・Tree 公開までを追跡できます。未検証の対象は省略されます。alias は実行中の owner 内だけで有効で、完了・取消時に対応表を破棄し、別更新では同じ対象にも新しい参照を発行します。通常・詳細とも、生の repository/branch/PR番号/URL/revision/context/file/path、source/diff、例外文や秘密値を出力しません。
 
 ## 開発・検証
 

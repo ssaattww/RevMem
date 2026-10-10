@@ -214,7 +214,7 @@ test("PR85-IFR-001 propagates a terminal public Review Contexts refresh outcome 
       refreshGlobal: async () => { globalCalls += 1; },
       reportPullRequestProgressError: async () => undefined,
     }),
-    /Review Contexts/u,
+    { message: "PR Progressの再計算に失敗しました。" },
   );
 
   assert.equal(progressCalls, 0, "terminal Review Contexts refresh must block PR Progress bootstrap");

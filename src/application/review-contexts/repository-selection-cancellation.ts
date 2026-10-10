@@ -12,7 +12,10 @@ export const settleReviewContextsRepositorySelection = async (
   error: unknown,
   boundary: ReviewContextsCancellationBoundary,
 ): Promise<ReviewContextsCancellationOutcome> => {
-  if (error instanceof ReviewContextsRepositorySelectionCancelled) return "cancelled";
+  if (
+    error instanceof ReviewContextsRepositorySelectionCancelled ||
+    (error instanceof Error && (error.name === "AbortError" || error.name === "OperationCancelledError"))
+  ) return "cancelled";
   boundary.clear();
   await boundary.reportTerminalFailure();
   return "terminal";

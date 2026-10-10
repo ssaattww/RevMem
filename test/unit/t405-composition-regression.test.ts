@@ -22,6 +22,7 @@ import { NormalEditorReviewCommandService } from "../../src/application/review-c
 import type { SelectedReviewContext } from "../../src/application/review-context/index.js";
 import { isPullRequestDecorationEnabled } from "../../src/application/github-pr-context/index.js";
 import {
+  augmentCurrentContextCandidatesWithBranchFallback,
   CurrentContextCandidateSelection,
   CurrentContextRuntimeComposition,
   CurrentContextRuntimeCoordinator,
@@ -33,6 +34,8 @@ import {
   OperationDiagnosticError,
   OperationFeedback,
   setActiveOperationFeedback,
+  type OperationFeedbackContext,
+  type OperationLogEntry,
 } from "../../src/application/operation-feedback/index.js";
 import {
   REVIEW_RANGE_SCHEMA_VERSION,
@@ -45,6 +48,7 @@ import {
   type ReviewStateTransaction,
 } from "../../src/core/review-state/index.js";
 import { PullRequestReviewRuntime } from "../../src/composition/pull-request/pull-request-review-runtime.js";
+import { refreshCurrentContextPullRequestViews } from "../../src/composition/current-context/current-context-pull-request-views.js";
 import type { ReviewContextListItem } from "../../src/application/review-contexts/index.js";
 
 const execFileAsync = promisify(execFile);
@@ -307,7 +311,7 @@ test("T405-IFR-1 shared production owner rejects one stale lifecycle/mark race w
   }
 });
 
-test("T406 executes the T405 production seam across PR selection, failure fallback, cache recovery, closed state, and isolation", async () => {
+test("T406 executes the T405 production seam across PR selection, failure fallback, cache recovery, closed state, and isolation", async (t) => {
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "revmem-t405-composition-"));
   const repositoryRoot = path.join(temporaryRoot, "repository");
   const globalStorageRoot = path.join(temporaryRoot, "global-storage");
@@ -379,10 +383,15 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       },
     );
 
+    let earlyLifecycleFailures = 0;
+    let earlyAcquisitionInterrupt: (() => Promise<void>) | undefined;
+    const unsafeAcquisitionError = "token=ghp_private /private/customer/source.ts https://private.invalid/pr";
     let lifecycle52: "open" | "closed" | "merged" = "open";
     let lifecycle53: "open" | "closed" | "merged" = "open";
     let refreshTransport: "live" | "offline" = "live";
     let discoveryTransport: "live" | "network" | "zero" = "live";
+    const prSearchRequestHeads: string[] = [];
+    let nextPrSearchGate: { readonly announce: () => void; readonly wait: Promise<void> } | undefined;
     let remoteBaseSha = baseSha;
     let remoteHeadSha = targetHeadSha;
     let patchOldLine = "old";
@@ -390,8 +399,15 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     globalThis.fetch = async (input) => {
       const url = new URL(String(input));
       if (url.pathname === "/repos/ssaattww/revmem/pulls" && url.searchParams.get("state") === "all") {
+        prSearchRequestHeads.push(remoteHeadSha);
         if (discoveryTransport === "network") throw new Error("network interrupted during PR detection");
         if (discoveryTransport === "zero") return jsonResponse([]);
+        const gate = nextPrSearchGate;
+        nextPrSearchGate = undefined;
+        if (gate !== undefined) {
+          gate.announce();
+          await gate.wait;
+        }
         return jsonResponse([52, 53].map((number) => ({
           number,
           title: `PR ${number}`,
@@ -415,6 +431,13 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       }
       const lifecycleMatch = /^\/repos\/ssaattww\/revmem\/pulls\/(52|53)$/u.exec(url.pathname);
       if (lifecycleMatch !== null) {
+        const interrupt = earlyAcquisitionInterrupt;
+        earlyAcquisitionInterrupt = undefined;
+        await interrupt?.();
+        if (earlyLifecycleFailures > 0) {
+          earlyLifecycleFailures -= 1;
+          throw new Error(unsafeAcquisitionError);
+        }
         if (refreshTransport === "offline" && lifecycleMatch[1] === "52") {
           throw new Error("offline for cache fallback");
         }
@@ -463,6 +486,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     const workspaceState = new MemoryMemento();
     let redetectChoice: 52 | 53 | undefined = 53;
     const fakeVscode = {
+      CancellationTokenSource: class { public readonly token = { isCancellationRequested: false, onCancellationRequested: () => ({ dispose: () => undefined }) }; public cancel(): void {} public dispose(): void {} },
       EventEmitter: FakeEventEmitter,
       TreeItem: FakeTreeItem,
       ThemeIcon: FakeThemeIcon,
@@ -581,7 +605,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     let registered: ReturnType<typeof runtimeModule.registerT405ReviewContextsRuntime> | undefined;
     const selectedContexts: Array<SelectedReviewContext | undefined> = [];
 
-    const refreshCurrentContext = async (): Promise<void> => {
+    const refreshCurrentContext = async (feedbackContext?: OperationFeedbackContext): Promise<void> => {
       assert.ok(registered);
       const selection = new CurrentContextCandidateSelection();
       const composition = new CurrentContextRuntimeComposition(selection, {
@@ -606,9 +630,10 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       );
       const coordinator = new CurrentContextRuntimeCoordinator(controller, {
         setSelectedContext: (selected) => selectedContexts.push(selected),
-        refreshDependents: () => undefined,
+        refreshDependents: (refreshContext) =>
+          registered?.refreshListOnly?.(refreshContext?.feedbackContext),
       });
-      await coordinator.refresh();
+      await coordinator.refresh(undefined, feedbackContext, { allowInteraction: false }, "review-contexts-refresh");
     };
 
     const createExtensionContext = (): {
@@ -641,7 +666,8 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
         registerPullRequestReviewDiff: (registration) => pullRequestReviewRuntime.register(registration),
         openPullRequestReviewDiff: (contextId, fileId, title) =>
           pullRequestReviewRuntime.openReviewDiff(contextId, fileId, title),
-        getPullRequestReviewProgress: (contextId) => pullRequestReviewRuntime.getProgress(contextId),
+        getPullRequestReviewProgress: (contextId, feedbackContext, signal) =>
+          pullRequestReviewRuntime.getProgress(contextId, feedbackContext, signal),
         reviewStateRepository: stateRepository,
         reviewHistoryRecorder: historyRecorder,
         createPullRequestDiffAcquisition: ({ local, remote }) => new PullRequestDiffAcquisitionService({
@@ -696,6 +722,395 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
       contextId53,
       "same-HEAD redetection must preserve the user-selected PR into normal-editor ownership",
     );
+
+    const assertClosedStages = (entries: readonly OperationLogEntry[]): void => {
+      const records = entries.flatMap((entry) => entry.pullRequestRefresh === undefined ? [] : [{ ...entry.pullRequestRefresh, operationId: entry.operationId }]);
+      for (const started of records.filter((record) => record.status === "started")) {
+        const terminals = records.filter((record) => record.operationId === started.operationId && record.generation === started.generation &&
+          record.stage === started.stage && !["started", "progress"].includes(record.status));
+        assert.equal(terminals.length, 1, `${started.stage} must have exactly one terminal for its owner/generation`);
+        assert.equal(typeof terminals[0]?.durationMs, "number", `${started.stage} must close with duration`);
+      }
+      assert.doesNotMatch(JSON.stringify(entries), /ghp_private|private\.invalid|customer\/source|repositoryRoot|contextId|baseSha|headSha/u);
+    };
+
+    await t.test("R3 NR-006 early actual T405 acquisition failure retains safe verified-branch recovery provenance", async () => {
+      for (const trigger of ["current-context-refresh", "review-contexts-refresh"] as const) {
+        const entries: OperationLogEntry[] = [];
+        const feedback = new OperationFeedback({ showBusy() {}, clearBusy() {}, appendLog: (entry) => entries.push(entry), revealLog() {} });
+        let accepted: CurrentContextUiSnapshot | undefined;
+        let listRecovered = false;
+        const composition = new CurrentContextRuntimeComposition(new CurrentContextCandidateSelection(), {
+          enumerateCandidates: (signal, owner) => augmentCurrentContextCandidatesWithBranchFallback([branchSnapshot],
+            () => current.runtime.augmentCurrentContextCandidates([branchSnapshot], signal, owner), signal),
+          resolveFallback: async (available) => available.find((candidate) => candidate.context.kind === "pull-request") ?? available[0],
+          requestSelection: async () => undefined,
+        });
+        const controller = new CurrentContextUiController({ setCurrentContext() {}, setStatusBar() {}, clearCurrentContext() {}, clearStatusBar() {} }, {
+          recompute: (signal, owner, options) => composition.recompute(signal, owner, options),
+          selectContext: (signal, owner) => composition.selectContext(signal, owner),
+          acceptRecomputed: (snapshot) => { accepted = snapshot; composition.acceptRecomputed(snapshot); },
+        });
+        const coordinator = new CurrentContextRuntimeCoordinator(controller, {
+          acceptCurrentContextPreparation: (selection) => current.runtime.acceptCurrentContextPreparation?.(selection),
+          refreshDependents: (owner) => refreshCurrentContextPullRequestViews({
+            selection: accepted?.context.selection, runtime: pullRequestReviewRuntime,
+            refreshList: async (parent) => { await current.runtime.refreshListOnly?.(parent, owner?.signal); listRecovered = true; },
+            refreshProgress: async () => pullRequestReviewRuntime.clearProgress(),
+            refreshDecorations: async () => undefined, refreshGlobal: async () => undefined, reportProgressError() {},
+          }, owner),
+        });
+        earlyLifecycleFailures = 1;
+        await feedback.run("Current Contextを更新", (owner) => coordinator.refresh(undefined, owner, undefined, trigger));
+        assert.equal(earlyLifecycleFailures, 0, "actual lifecycle adapter must consume the early failure");
+        assert.equal(accepted?.context.kind, "branch");
+        assert.equal(listRecovered, true, "later real list acquisition recovers in the same operation");
+        const acquisition = entries.find((entry) => entry.pullRequestRefresh?.stage === "pr-acquisition" && entry.pullRequestRefresh?.status === "failed");
+        assert.equal(acquisition?.pullRequestRefresh?.reasonCode, "verified-branch-preserved", `${trigger}: retain the initial failure and recovery cause`);
+        assert.equal(entries.filter((entry) => entry.event === "succeeded").length, 1);
+        assertClosedStages(entries);
+      }
+    });
+
+    await t.test("R3 NR-006 actual acquisition exception closes repository identity for both entries and explicit selection", async () => {
+      for (const trigger of ["current-context-refresh", "review-contexts-refresh", "current-context-selection"] as const) {
+        const entries: OperationLogEntry[] = [];
+        const feedback = new OperationFeedback({ showBusy() {}, clearBusy() {}, appendLog: (entry) => entries.push(entry), revealLog() {} });
+        const composition = new CurrentContextRuntimeComposition(new CurrentContextCandidateSelection(), {
+          enumerateCandidates: (signal, owner) => current.runtime.augmentCurrentContextCandidates([branchSnapshot], signal, owner),
+          resolveFallback: async (available) => available[0], requestSelection: async (available) => available[0],
+        });
+        const controller = new CurrentContextUiController({ setCurrentContext() {}, setStatusBar() {}, clearCurrentContext() {}, clearStatusBar() {} }, {
+          recompute: (signal, owner, options) => composition.recompute(signal, owner, options),
+          selectContext: (signal, owner) => composition.selectContext(signal, owner),
+        });
+        let dependents = 0;
+        const coordinator = new CurrentContextRuntimeCoordinator(controller, { refreshDependents: async () => { dependents += 1; } });
+        earlyLifecycleFailures = trigger === "current-context-selection" ? 1 : 3;
+        await assert.rejects(feedback.run("Current Contextを更新", (owner) => trigger === "current-context-selection"
+          ? coordinator.selectContext(undefined, owner) : coordinator.refresh(undefined, owner, undefined, trigger)));
+        assert.equal(dependents, 0);
+        assert.equal(entries.some((entry) => entry.pullRequestRefresh?.aliases !== undefined), false,
+          "rejected acquisition must not invent an alias for an unaccepted identity");
+        assert.equal(entries.filter((entry) => entry.pullRequestRefresh?.stage === "repository-identity" && entry.pullRequestRefresh.status === "failed").length, 1,
+          `${trigger}: rejected acquisition must close started identity`);
+        assertClosedStages(entries);
+      }
+    });
+
+    await t.test("R3 NR-006 interrupted actual T405 acquisition closes every started owner stage once", async () => {
+      for (const trigger of ["current-context-refresh", "review-contexts-refresh", "current-context-selection"] as const) {
+        for (const interruption of ["cancelled", "superseded"] as const) {
+          const entries: OperationLogEntry[] = [];
+          const feedback = new OperationFeedback({ showBusy() {}, clearBusy() {}, appendLog: (entry) => entries.push(entry), revealLog() {} });
+          const cancellation = new AbortController();
+          let started!: () => void;
+          let release!: () => void;
+          const began = new Promise<void>((resolve) => { started = resolve; });
+          const gate = new Promise<void>((resolve) => { release = resolve; });
+          earlyAcquisitionInterrupt = async () => { started(); await gate; throw new Error(unsafeAcquisitionError); };
+          const composition = new CurrentContextRuntimeComposition(new CurrentContextCandidateSelection(), {
+            enumerateCandidates: (signal, owner) => current.runtime.augmentCurrentContextCandidates([branchSnapshot], signal, owner),
+            resolveFallback: async (available) => available.find((candidate) => candidate.context.kind === "pull-request") ?? available[0],
+            requestSelection: async (available) => available[0],
+          });
+          const controller = new CurrentContextUiController({ setCurrentContext() {}, setStatusBar() {}, clearCurrentContext() {}, clearStatusBar() {} }, {
+            recompute: (signal, owner, options) => composition.recompute(signal, owner, options),
+            selectContext: (signal, owner) => composition.selectContext(signal, owner),
+          });
+          const coordinator = new CurrentContextRuntimeCoordinator(controller, { refreshDependents: async () => undefined });
+          const old = feedback.run("Current Contextを更新", (owner) => trigger === "current-context-selection"
+            ? coordinator.selectContext(cancellation.signal, owner) : coordinator.refresh(cancellation.signal, owner, undefined, trigger));
+          await began;
+          if (interruption === "cancelled") cancellation.abort();
+          else await feedback.run("Current Contextを更新", (owner) => coordinator.refresh(undefined, owner));
+          release();
+          await old;
+          assert.equal(entries.some((entry) => entry.operationId === 1 && entry.pullRequestRefresh?.aliases !== undefined), false,
+            "interrupted acquisition has no verified accepted identity to alias");
+          for (const stage of ["repository-identity", "pr-acquisition", "current-context"] as const) {
+            assert.equal(entries.filter((entry) => entry.operationId === 1 && entry.pullRequestRefresh?.stage === stage && entry.pullRequestRefresh.status === interruption).length, 1,
+              `${trigger}/${interruption}: acquisition must close ${stage}`);
+          }
+          assertClosedStages(entries);
+        }
+      }
+    });
+
+    await t.test("R3 NR-006 actual explicit-selection PR publication failure closes its started stage once", async () => {
+      for (const interruption of ["failed", "cancelled", "superseded"] as const) {
+        const cancellation = new AbortController();
+        let chooseBranch = false;
+        const entries: OperationLogEntry[] = [];
+        const feedback = new OperationFeedback({ showBusy() {}, clearBusy() {}, appendLog: (entry) => entries.push(entry), revealLog() {} });
+        let accepted: CurrentContextUiSnapshot | undefined;
+        const outcomeRuntime = new PullRequestReviewRuntime<string>({
+          repository: { load: async () => {
+            if (interruption === "cancelled") cancellation.abort();
+            if (interruption === "superseded") {
+              chooseBranch = true;
+              await feedback.run("Current Contextを選択", (owner) => coordinator.selectContext(undefined, owner));
+            }
+            throw new Error(unsafeAcquisitionError);
+          }, commit: (transaction) => stateRepository.commit(transaction) },
+          requestHistory: async () => undefined, diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
+          getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+        });
+        const composition = new CurrentContextRuntimeComposition(new CurrentContextCandidateSelection(), {
+          enumerateCandidates: (signal, owner) => current.runtime.augmentCurrentContextCandidates([branchSnapshot], signal, owner),
+          resolveFallback: async (available) => available[0],
+          requestSelection: async (available) => chooseBranch ? available.find((candidate) => candidate.context.kind === "branch") : available.find((candidate) => candidate.context.selection?.kind === "pull-request" && candidate.context.selection.contextId === contextId53),
+        });
+        const controller = new CurrentContextUiController({ setCurrentContext() {}, setStatusBar() {}, clearCurrentContext() {}, clearStatusBar() {} }, {
+          recompute: (signal, owner, options) => composition.recompute(signal, owner, options),
+          selectContext: (signal, owner) => composition.selectContext(signal, owner),
+          acceptExplicit: (snapshot) => { accepted = snapshot; composition.acceptExplicit(snapshot); },
+        });
+        const coordinator = new CurrentContextRuntimeCoordinator(controller, {
+          acceptCurrentContextPreparation: (selection) => current.runtime.acceptCurrentContextPreparation?.(selection),
+          refreshDependents: async (owner) => {
+            const snapshot = pullRequestReviewRuntime.snapshotForContext(contextId53);
+            assert.ok(snapshot);
+            outcomeRuntime.register({ repositoryId: REPOSITORY_ID, repositoryRoot, fileSystemPathSemantics: "posix", snapshot,
+              readTextContent: async () => ({ kind: "found", content: "" }) });
+            await refreshCurrentContextPullRequestViews({
+              selection: accepted?.context.selection, runtime: outcomeRuntime,
+              refreshList: (parent) => current.runtime.refreshListOnly?.(parent, owner?.signal) ?? Promise.resolve(),
+              refreshProgress: async (parent) => {
+                if (accepted?.context.selection?.kind === "pull-request") await outcomeRuntime.activateProgress(contextId53, parent, owner?.signal);
+                else outcomeRuntime.clearProgress();
+              },
+              refreshDecorations: async () => undefined, refreshGlobal: async () => undefined, reportProgressError() {},
+            }, owner);
+          },
+        });
+        const operation = feedback.run("Current Contextを選択", (owner) => coordinator.selectContext(cancellation.signal, owner));
+        if (interruption === "failed") await assert.rejects(operation); else await operation;
+        assert.equal(accepted?.context.pullRequestCandidateCount, 2, "selection metadata must come from real T405 resolver");
+        const identityAliases = entries.find((entry) => entry.operationId === 1 && entry.pullRequestRefresh?.stage === "repository-identity" &&
+          entry.pullRequestRefresh.status === "succeeded")?.pullRequestRefresh?.aliases;
+        const registeredAliases = entries.find((entry) => entry.operationId === 1 && entry.pullRequestRefresh?.stage === "diff-registration" &&
+          entry.pullRequestRefresh.status === "succeeded")?.pullRequestRefresh?.aliases;
+        assert.ok(identityAliases?.repository && identityAliases.context && identityAliases.pullRequest);
+        assert.ok(registeredAliases?.snapshot, "actual matched registration must allocate snapshot identity before publication failure");
+        assert.deepEqual(registeredAliases.context, identityAliases.context);
+        for (const stage of ["pr-progress", "tree-publication"] as const) {
+          const terminals = entries.filter((entry) => entry.operationId === 1 && entry.pullRequestRefresh?.stage === stage && !["started", "progress"].includes(entry.pullRequestRefresh.status));
+          assert.equal(terminals.length, 1, `${stage}/${interruption}: explicit publication must terminate once`);
+          assert.equal(terminals[0]?.pullRequestRefresh?.status, interruption === "failed" ? "failed" : "superseded");
+          if (interruption === "failed") {
+            assert.deepEqual(terminals[0]?.pullRequestRefresh?.aliases, registeredAliases,
+              "failed publication retains the expected verified identity without claiming successful Tree output");
+          } else {
+            assert.equal(terminals[0]?.pullRequestRefresh?.aliases, undefined,
+              "cancelled/superseded owners discard their alias mapping before late terminal work");
+          }
+        }
+        assert.equal(entries.filter((entry) => entry.event === "failed").length, interruption === "failed" ? 1 : 0);
+        if (interruption === "superseded") {
+          assert.equal(accepted?.context.kind, "branch", "new explicit branch must remain accepted");
+          assert.equal(outcomeRuntime.progress.getEffectiveProgress().files.length, 0);
+        }
+        assertClosedStages(entries);
+      }
+    });
+
+    await t.test("R2 NR-006 actual T405 recompute closes Current Context and repository identity stages", async () => {
+      const entries: OperationLogEntry[] = [];
+      const feedback = new OperationFeedback({ showBusy() {}, clearBusy() {}, appendLog: (entry) => entries.push(entry), revealLog() {} });
+      const composition = new CurrentContextRuntimeComposition(new CurrentContextCandidateSelection(), {
+        enumerateCandidates: (signal, owner) => current.runtime.augmentCurrentContextCandidates([branchSnapshot], signal, owner),
+        resolveFallback: async (available) => available.find((candidate) => candidate.context.kind === "pull-request") ?? available[0],
+        requestSelection: async () => undefined,
+      });
+      const controller = new CurrentContextUiController({ setCurrentContext() {}, setStatusBar() {}, clearCurrentContext() {}, clearStatusBar() {} }, {
+        recompute: (signal, owner, options) => composition.recompute(signal, owner, options),
+        selectContext: (signal, owner) => composition.selectContext(signal, owner),
+      });
+      const coordinator = new CurrentContextRuntimeCoordinator(controller, { refreshDependents: async () => undefined });
+      await feedback.run("Current Contextを更新", (owner) => coordinator.refresh(undefined, owner));
+      for (const stage of ["repository-identity", "current-context"] as const) {
+        assert.ok(entries.some((entry) => entry.pullRequestRefresh?.stage === stage && entry.pullRequestRefresh.status === "started"), `${stage} recompute must start`);
+        const completed = entries.find((entry) => entry.pullRequestRefresh?.stage === stage && entry.pullRequestRefresh.status === "succeeded");
+        assert.equal(typeof completed?.pullRequestRefresh?.durationMs, "number", `${stage} recompute must close`);
+      }
+    });
+
+    await t.test("R2 NR-006 actual T405 explicit multiple-candidate selection retains provenance and completes identity stages", async () => {
+      const entries: OperationLogEntry[] = [];
+      const feedback = new OperationFeedback({
+        showBusy: () => undefined, clearBusy: () => undefined,
+        appendLog: (entry) => entries.push(entry), revealLog: () => undefined,
+      });
+      let acceptedSnapshot: CurrentContextUiSnapshot | undefined;
+      let observedProvenance: Readonly<{ reason?: string; candidateCount?: number }> | undefined;
+      const composition = new CurrentContextRuntimeComposition(new CurrentContextCandidateSelection(), {
+        enumerateCandidates: (signal, owner) => current.runtime.augmentCurrentContextCandidates([branchSnapshot], signal, owner),
+        resolveFallback: async (available) => available[0],
+        requestSelection: async (available) => available.find((candidate) =>
+          candidate.context.selection?.kind === "pull-request" && candidate.context.selection.contextId === contextId53),
+      });
+      const controller = new CurrentContextUiController({
+        setCurrentContext: () => undefined, setStatusBar: () => undefined,
+        clearCurrentContext: () => undefined, clearStatusBar: () => undefined,
+      }, {
+        recompute: (signal, owner, options) => composition.recompute(signal, owner, options),
+        selectContext: (signal, owner) => composition.selectContext(signal, owner),
+        acceptExplicit: (snapshot) => { acceptedSnapshot = snapshot; composition.acceptExplicit(snapshot); },
+      });
+      const coordinator = new CurrentContextRuntimeCoordinator(controller, {
+        setSelectedContext: () => undefined,
+        acceptCurrentContextPreparation: (selected) => current.runtime.acceptCurrentContextPreparation?.(selected),
+        refreshDependents: async (owner) => {
+          observedProvenance = owner?.selectionProvenance();
+          await refreshCurrentContextPullRequestViews({
+            selection: acceptedSnapshot?.context.selection,
+            runtime: pullRequestReviewRuntime,
+            refreshList: (feedbackContext) => current.runtime.refreshListOnly?.(feedbackContext, owner?.signal) ?? Promise.resolve(),
+            refreshProgress: async (feedbackContext) => {
+              const selected = acceptedSnapshot?.context.selection;
+              if (selected?.kind === "pull-request") await pullRequestReviewRuntime.activateProgress(selected.contextId, feedbackContext, owner?.signal);
+              else pullRequestReviewRuntime.clearProgress();
+            },
+            refreshDecorations: async () => undefined, refreshGlobal: async () => undefined,
+            reportProgressError: () => undefined,
+          }, owner);
+        },
+      });
+      await feedback.run("Current Contextを選択", (owner) => coordinator.selectContext(undefined, owner));
+      // Candidate metadata is produced by real resolver -> T405 synchronization,
+      // then revalidated and accepted through the real explicit-selection path.
+      assert.equal(acceptedSnapshot?.context.pullRequestCandidateCount, 2);
+      assert.equal(acceptedSnapshot?.context.selectionReason, "explicit-selection-kept");
+      const refreshes = entries.filter((entry) => entry.event === "refresh");
+      const identity = refreshes.find((entry) => entry.pullRequestRefresh?.stage === "repository-identity" &&
+        entry.pullRequestRefresh.status === "succeeded");
+      const completion = refreshes.find((entry) => entry.pullRequestRefresh?.stage === "current-context" && entry.pullRequestRefresh.status === "succeeded");
+      const terminal = entries.find((entry) => entry.event === "succeeded");
+      assert.deepEqual({
+        provenance: observedProvenance,
+        identityStatus: identity?.pullRequestRefresh?.status,
+        contextCompletion: completion?.pullRequestRefresh?.status,
+        sameOwner: identity !== undefined && completion !== undefined && terminal !== undefined &&
+          identity.operationId === terminal.operationId && completion.operationId === terminal.operationId,
+        sameGeneration: identity !== undefined && completion !== undefined &&
+          identity.pullRequestRefresh?.generation === completion.pullRequestRefresh?.generation,
+      }, {
+        provenance: { reason: "explicit-selection-kept", candidateCount: 2 },
+        identityStatus: "succeeded", contextCompletion: "succeeded", sameOwner: true, sameGeneration: true,
+      }, "explicit selection must retain two real PR candidates and complete correlated identity/context stages");
+      const selectionStage = refreshes.find((entry) => entry.pullRequestRefresh?.stage === "pr-selection" && entry.pullRequestRefresh.status === "succeeded");
+      assert.equal(selectionStage?.pullRequestRefresh?.counts?.pullRequestCandidates, 2);
+      for (const stage of ["pr-selection", "pr-progress", "diff-registration", "review-contexts-list", "tree-publication"] as const) {
+        assert.ok(refreshes.some((entry) => entry.pullRequestRefresh?.stage === stage && entry.pullRequestRefresh.status === "started"), `${stage} must start`);
+        const completed = refreshes.find((entry) => entry.pullRequestRefresh?.stage === stage && entry.pullRequestRefresh.status === "succeeded");
+        assert.equal(typeof completed?.pullRequestRefresh?.durationMs, "number", `${stage} must close with duration`);
+      }
+      entries.length = 0;
+      await feedback.run("Current Contextを更新", (owner) => coordinator.refresh(undefined, owner));
+      for (const stage of ["repository-identity", "current-context"] as const) {
+        assert.ok(entries.some((entry) => entry.pullRequestRefresh?.stage === stage && entry.pullRequestRefresh.status === "started"), `${stage} recompute must start`);
+        const completed = entries.find((entry) => entry.pullRequestRefresh?.stage === stage && entry.pullRequestRefresh.status === "succeeded");
+        assert.equal(typeof completed?.pullRequestRefresh?.durationMs, "number", `${stage} recompute must close`);
+      }
+    });
+
+    await t.test("R2 NR-006 actual T405 decisions and production emitted outcomes cover unique ambiguous no-match empty unregistered and failed snapshots", async () => {
+      const savedPreferences = workspaceState.get<unknown>("reviewRange.currentPullRequestSelections.v1");
+      const savedBranch = branchSnapshot;
+      const savedBaseSha = remoteBaseSha;
+      const saved53 = await stateRepository.load({ kind: "pull-request", repositoryId: REPOSITORY_ID, contextId: contextId53 });
+      assert.ok(saved53?.contextState.pullRequest);
+      const cases = [
+        { name: "unique", reason: "unique-pr-match", candidates: 1, files: 1 },
+        { name: "ambiguous", reason: "ambiguous-pr-match", candidates: 2, files: 0 },
+        { name: "no-match", reason: "no-matching-pr", candidates: 0, files: 0 },
+        { name: "empty", reason: "explicit-selection-kept", candidates: 2, files: 0 },
+        { name: "unregistered", reason: "explicit-selection-kept", candidates: 2, files: 0 },
+        { name: "failed", reason: "explicit-selection-kept", candidates: 2, files: 0 },
+      ] as const;
+      try {
+        for (const cell of cases) for (const trigger of ["current-context-refresh", "review-contexts-refresh"] as const) {
+          await workspaceState.update("reviewRange.currentPullRequestSelections.v1", {});
+          lifecycle53 = cell.name === "unique" ? "closed" : "open";
+          remoteBaseSha = ["empty", "unregistered", "failed"].includes(cell.name) ? targetHeadSha : savedBaseSha;
+          // Seed a genuine empty comparison in the real repository before T405
+          // resolves and acquires it; the Git adapter still produces its snapshot.
+          await stateRepository.save({ kind: "pull-request", repositoryId: REPOSITORY_ID, contextId: contextId53 }, {
+            ...saved53, contextState: { ...saved53.contextState, pullRequest: { ...saved53.contextState.pullRequest!, baseSha: remoteBaseSha } },
+          });
+          branchSnapshot = cell.name === "no-match"
+            ? { ...savedBranch, context: { ...savedBranch.context, headRevision: sourceHeadSha } }
+            : savedBranch;
+          if (["empty", "unregistered", "failed"].includes(cell.name)) {
+            await preferenceStore.select(REPOSITORY_ID, targetHeadSha, contextId53, "refs/heads/main");
+          }
+          const entries: OperationLogEntry[] = [];
+          const feedback = new OperationFeedback({ showBusy() {}, clearBusy() {}, appendLog: (entry) => entries.push(entry), revealLog() {} });
+          let accepted: CurrentContextUiSnapshot | undefined;
+          const composition = new CurrentContextRuntimeComposition(new CurrentContextCandidateSelection(), {
+            enumerateCandidates: (signal, owner) => current.runtime.augmentCurrentContextCandidates([branchSnapshot], signal, owner),
+            resolveFallback: async (available) => available.find((candidate) => candidate.context.kind === "pull-request") ?? available[0],
+            requestSelection: async () => undefined,
+          });
+          const outcomeRuntime = ["unregistered", "failed"].includes(cell.name) ? new PullRequestReviewRuntime<string>({
+            repository: { load: async () => undefined, commit: (transaction) => stateRepository.commit(transaction) }, requestHistory: async () => undefined,
+            diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
+            getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+          }) : pullRequestReviewRuntime;
+          const controller = new CurrentContextUiController({ setCurrentContext() {}, setStatusBar() {}, clearCurrentContext() {}, clearStatusBar() {} }, {
+            recompute: (signal, owner, options) => composition.recompute(signal, owner, options),
+            selectContext: (signal, owner) => composition.selectContext(signal, owner),
+            acceptRecomputed: (snapshot) => { accepted = snapshot; composition.acceptRecomputed(snapshot); },
+          });
+          const coordinator = new CurrentContextRuntimeCoordinator(controller, {
+            acceptCurrentContextPreparation: (selection) => current.runtime.acceptCurrentContextPreparation?.(selection),
+            refreshDependents: async (owner) => {
+              if (cell.name === "failed") {
+                const snapshot = pullRequestReviewRuntime.snapshotForContext(contextId53);
+                assert.ok(snapshot);
+                outcomeRuntime.register({ repositoryId: REPOSITORY_ID, repositoryRoot, fileSystemPathSemantics: "posix", snapshot,
+                  readTextContent: async () => ({ kind: "found", content: "" }) });
+              }
+              await refreshCurrentContextPullRequestViews({
+                selection: accepted?.context.selection, runtime: outcomeRuntime,
+                refreshList: (parent) => current.runtime.refreshListOnly?.(parent, owner?.signal) ?? Promise.resolve(),
+                refreshProgress: async (parent) => {
+                  const selected = accepted?.context.selection;
+                  if (selected?.kind === "pull-request" && outcomeRuntime.hasContext(selected.contextId)) await outcomeRuntime.activateProgress(selected.contextId, parent, owner?.signal);
+                  else outcomeRuntime.clearProgress();
+                },
+                refreshDecorations: async () => undefined, refreshGlobal: async () => undefined, reportProgressError() {},
+              }, owner);
+            },
+          });
+          const operation = feedback.run("Current Contextを更新", (owner) => coordinator.refresh(undefined, owner, undefined, trigger));
+          const failed = cell.name === "unregistered" || cell.name === "failed";
+          if (failed) await assert.rejects(operation); else await operation;
+          assert.equal(accepted?.context.selectionReason, cell.reason, `${cell.name}/${trigger} real resolver reason`);
+          const decision = entries.find((entry) => entry.pullRequestRefresh?.stage === "pr-selection" && entry.pullRequestRefresh.status !== "started");
+          assert.equal(decision?.pullRequestRefresh?.counts?.pullRequestCandidates, cell.candidates, `${cell.name}/${trigger} real candidate count`);
+          const progress = entries.find((entry) => entry.pullRequestRefresh?.stage === "pr-progress" && entry.pullRequestRefresh.status !== "started");
+          assert.equal(progress?.pullRequestRefresh?.status, failed ? "failed" : "succeeded");
+          assert.equal(progress?.pullRequestRefresh?.counts?.treeItems, cell.files, `${cell.name}/${trigger} accepted tree count`);
+          if (cell.name === "empty") assert.equal(progress?.pullRequestRefresh?.reasonCode, "no-pr-files");
+          if (cell.name === "unregistered") assert.equal(decision?.pullRequestRefresh?.reasonCode, "snapshot-unavailable");
+          assert.equal(entries.filter((entry) => entry.event === (failed ? "failed" : "succeeded")).length, 1);
+          assert.equal(entries.some((entry) => entry.pullRequestRefresh?.stage === "tree-publication" && entry.pullRequestRefresh.status === "succeeded"), !failed);
+          const publication = entries.find((entry) => entry.pullRequestRefresh?.stage === "tree-publication" && entry.pullRequestRefresh.status === (failed ? "failed" : "succeeded"));
+          assert.equal(publication?.pullRequestRefresh?.counts?.treeItems, cell.files, `${cell.name}/${trigger} final publication uses accepted tree evidence`);
+          assert.equal(publication?.pullRequestRefresh?.counts?.selectedContextOrdinal, progress?.pullRequestRefresh?.counts?.selectedContextOrdinal);
+          assert.equal(publication?.pullRequestRefresh?.counts?.snapshotOrdinal, progress?.pullRequestRefresh?.counts?.snapshotOrdinal);
+          assert.doesNotMatch(JSON.stringify(entries), new RegExp(repositoryRoot.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")));
+        }
+      } finally {
+        branchSnapshot = savedBranch; lifecycle53 = "open"; remoteBaseSha = savedBaseSha;
+        await stateRepository.save({ kind: "pull-request", repositoryId: REPOSITORY_ID, contextId: contextId53 }, saved53);
+        await workspaceState.update("reviewRange.currentPullRequestSelections.v1", savedPreferences);
+        await current.runtime.augmentCurrentContextCandidates([branchSnapshot]);
+        await current.runtime.refreshListOnly?.();
+      }
+    });
 
     const pr52BeforeToggle = findPullRequestItem(current.provider, 52);
     assert.equal(pr52BeforeToggle.layerEnabled, true);
@@ -1283,6 +1698,61 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     assert.equal(operationLog.some((entry) => entry.event === "succeeded"), false);
     assert.doesNotMatch(JSON.stringify(operationLog), /network interrupted|repositoryRoot|targetHeadSha/u);
 
+    // Issue #136 regression: a replacement request must cancel an old request
+    // while that request is still awaiting repository inspection.
+    discoveryTransport = "live";
+    redetectChoice = 52;
+    errors.length = 0;
+    const originalInspectRepository = localGit.inspectRepository.bind(localGit);
+    let releaseBlockedInspection!: () => void;
+    let inspectionStarted!: () => void;
+    const blockedInspection = new Promise<void>((resolve) => { releaseBlockedInspection = resolve; });
+    const inspectionStartedPromise = new Promise<void>((resolve) => { inspectionStarted = resolve; });
+    let inspectionCalls = 0;
+    localGit.inspectRepository = async (startPath) => {
+      inspectionCalls += 1;
+      if (inspectionCalls === 1) {
+        inspectionStarted();
+        await blockedInspection;
+      }
+      return originalInspectRepository(startPath);
+    };
+    const redetectCommand = commands.get("reviewRange.redetectPullRequest");
+    assert.ok(redetectCommand);
+    let firstRedetectionSettled = false;
+    const firstRedetection = Promise.resolve(redetectCommand()).finally(() => {
+      firstRedetectionSettled = true;
+    });
+    await inspectionStartedPromise;
+    const previousActiveTextEditor = fakeVscode.window.activeTextEditor;
+    fakeVscode.window.activeTextEditor = {
+      document: {
+        uri: {
+          scheme: "file",
+          authority: "",
+          fsPath: repositoryRoot,
+          query: "",
+          fragment: "",
+          toString: () => repositoryRoot,
+        },
+        version: 1,
+      },
+    } as never;
+    const replacementRedetection = Promise.resolve(redetectCommand());
+    await new Promise((resolve) => setImmediate(resolve));
+    const cancelledBeforeInspectionCompleted = firstRedetectionSettled;
+    releaseBlockedInspection();
+    await Promise.allSettled([firstRedetection, replacementRedetection]);
+    localGit.inspectRepository = originalInspectRepository;
+    fakeVscode.window.activeTextEditor = previousActiveTextEditor;
+    assert.equal(
+      cancelledBeforeInspectionCompleted,
+      true,
+      "a replacement request terminates the superseded command without waiting for repository inspection",
+    );
+    assert.ok(inspectionCalls >= 2, "the replacement resolves its own current repository identity");
+    errors.length = 0;
+
     // T406-R001: the selected branch owner is the production normal-editor
     // command target after unavailable fallback; its mark/unmark cannot mutate PR #52.
     const branchTarget = {
@@ -1377,6 +1847,73 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     assert.deepEqual(
       withoutUpdatedAt(pr52AfterBranchCommands?.contextState),
       withoutUpdatedAt(pr52BeforeBranchCommands?.contextState),
+    );
+
+    // Same path and document version do not identify an immutable Git owner
+    // generation. A repeated trigger must inspect HEAD before deciding to join.
+    const priorEditor = fakeVscode.window.activeTextEditor;
+    fakeVscode.window.activeTextEditor = {
+      document: {
+        uri: { scheme: "file", authority: "", fsPath: repositoryRoot, query: "", fragment: "", toString: () => repositoryRoot },
+        version: 77,
+      },
+    } as never;
+    let releaseOldSearch!: () => void;
+    let announceOldSearch!: () => void;
+    const oldSearchStarted = new Promise<void>((resolve) => { announceOldSearch = resolve; });
+    const oldSearchGate = new Promise<void>((resolve) => { releaseOldSearch = resolve; });
+    nextPrSearchGate = { announce: announceOldSearch, wait: oldSearchGate };
+    let repositoryInspections = 0;
+    const inspectRepository = localGit.inspectRepository.bind(localGit);
+    localGit.inspectRepository = async (startPath) => {
+      repositoryInspections += 1;
+      return inspectRepository(startPath);
+    };
+    const sameDocumentRedetect = commands.get("reviewRange.redetectPullRequest");
+    assert.ok(sameDocumentRedetect);
+    const firstGeneration = Promise.resolve(sameDocumentRedetect());
+    await oldSearchStarted;
+    const searchesBeforeCoalescedTrigger = prSearchRequestHeads.length;
+    const inspectionsBeforeCoalescedTrigger = repositoryInspections;
+    const coalescedGeneration = Promise.resolve(sameDocumentRedetect());
+    const coalescedTriggerInspected = await Promise.race([
+      new Promise<boolean>((resolve) => {
+        const check = (): void => {
+          if (repositoryInspections > inspectionsBeforeCoalescedTrigger) resolve(true);
+          else setTimeout(check, 5);
+        };
+        check();
+      }),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1_000)),
+    ]);
+    assert.equal(coalescedTriggerInspected, true, "a repeated same-generation trigger verifies the active owner before joining");
+    assert.equal(prSearchRequestHeads.length, searchesBeforeCoalescedTrigger, "the joined generation must not repeat PR discovery");
+    const searchCountBeforeHeadChange = prSearchRequestHeads.length;
+    await writeFile(sourcePath, "keep\nnewer generation", "utf8");
+    await runGit(repositoryRoot, ["add", FILE_ID]);
+    await runGit(repositoryRoot, ["commit", "-m", "HEAD-only generation change"]);
+    remoteHeadSha = await runGit(repositoryRoot, ["rev-parse", "HEAD"]);
+    const inspectionsBeforeReplacement = repositoryInspections;
+    const secondGeneration = Promise.resolve(sameDocumentRedetect());
+    const replacementInspected = await Promise.race([
+      new Promise<boolean>((resolve) => {
+        const check = (): void => {
+          if (repositoryInspections > inspectionsBeforeReplacement) resolve(true);
+          else setTimeout(check, 5);
+        };
+        check();
+      }),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1_000)),
+    ]);
+    releaseOldSearch();
+    const commandOutcomes = await Promise.allSettled([firstGeneration, coalescedGeneration, secondGeneration]);
+    localGit.inspectRepository = inspectRepository;
+    fakeVscode.window.activeTextEditor = priorEditor;
+    assert.deepEqual(commandOutcomes.map((outcome) => outcome.status), ["fulfilled", "fulfilled", "fulfilled"]);
+    assert.equal(replacementInspected, true, "same document version must reach repository-generation inspection");
+    assert.ok(
+      prSearchRequestHeads.slice(searchCountBeforeHeadChange).includes(remoteHeadSha),
+      `same-document redetection must search using the new HEAD (head=${remoteHeadSha}, requests=${JSON.stringify(prSearchRequestHeads.slice(searchCountBeforeHeadChange))})`,
     );
   } finally {
     moduleLoader._load = originalModuleLoad;

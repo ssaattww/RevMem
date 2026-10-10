@@ -94,6 +94,32 @@ const createMetadataAdapter = (
   executor: GitCommandExecutor
 ): LocalGitAdapter => new LocalGitAdapter(executor, unreachableGitBlobReader);
 
+test("immutable text reads verify one commit once and resolve later paths directly", async () => {
+  const commit = "a".repeat(40);
+  const blob = "b".repeat(40);
+  const executor = new RecordingGitCommandExecutor();
+  const blobReader: GitBlobReader = { readBlob: async () => new TextEncoder().encode("source\n") };
+  const adapter = new LocalGitAdapter(executor, blobReader);
+  executor.queue(repositoryRoot, ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`], success(`${commit}\n`));
+  const fileLookup = ["ls-tree", "--full-tree", "-z", commit, "--", ":(literal)file.ts"];
+  const missingFileLookup = ["ls-tree", "--full-tree", "-z", commit, "--", ":(literal)missing.ts"];
+  executor.queue(repositoryRoot, fileLookup, success(`100644 blob ${blob}\tfile.ts\0`));
+  executor.queue(repositoryRoot, missingFileLookup, success());
+
+  assert.deepEqual(await adapter.readTextFileAtRevision(repositoryRoot, commit, "file.ts", "posix"), {
+    kind: "found", content: "source\n"
+  });
+  assert.deepEqual(await adapter.readTextFileAtRevision(repositoryRoot, commit, "missing.ts", "posix"), {
+    kind: "missing-file"
+  });
+  executor.assertExhausted();
+  assert.deepEqual(executor.invocations.map((entry) => entry.argumentsList), [
+    ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`],
+    fileLookup,
+    missingFileLookup
+  ]);
+});
+
 test("batch immutable text reads resolve literal NUL-delimited paths and preserve blob-only modes", async () => {
   const commit = "a".repeat(40);
   const blob = "b".repeat(40);

@@ -12,10 +12,11 @@ export {
   type ReviewContextListProgress,
   type ReviewContextVisibilityStore,
   type ReviewContextsControllerDependencies,
+  type PullRequestRedetectionDisposition,
   type ReviewContextsProjectionInput,
   type ReviewContextsProjectionWork,
 } from "./review-contexts-controller";
-export { findCurrentPullRequestContext } from "./current-pull-request-context";
+export { findCurrentPullRequestContext, resolveCurrentPullRequestContext } from "./current-pull-request-context";
 export {
   PullRequestRevisionEvidenceLoader,
   type PullRequestRevisionEvidenceLoaderDependencies,

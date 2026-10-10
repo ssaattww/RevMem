@@ -153,7 +153,7 @@ test("Issue #116 reuses accepted Current Context PR preparation for only the imm
     await new CurrentContextRuntimeCoordinator(controller, {
       setSelectedContext: () => undefined,
       acceptCurrentContextPreparation: (selection) => fixture.runtime.acceptCurrentContextPreparation?.(selection),
-      refreshDependents: () => fixture.runtime.refresh(),
+      refreshDependents: (owner) => fixture.runtime.refreshListOnly?.(owner?.feedbackContext, owner?.signal),
     }).refresh(currentSignal);
 
     assert.deepEqual(fixture.acquisitionCalls, {
@@ -165,7 +165,8 @@ test("Issue #116 reuses accepted Current Context PR preparation for only the imm
     });
 
     fixture.resetAcquisitionCalls();
-    await fixture.runtime.refresh();
+    assert.ok(fixture.runtime.refreshListOnly);
+    await fixture.runtime.refreshListOnly();
     assert.deepEqual(fixture.acquisitionCalls, {
       localCandidates: 1,
       repositoryContexts: 1,
@@ -205,7 +206,8 @@ test("Issue #116 discards a failed Current Context preparation and a later gener
     assert.ok(selected?.context.selection?.kind === "pull-request");
     assert.ok(fixture.runtime.acceptCurrentContextPreparation);
     fixture.runtime.acceptCurrentContextPreparation(selected.context.selection);
-    await fixture.runtime.refresh();
+    assert.ok(fixture.runtime.refreshListOnly);
+    await fixture.runtime.refreshListOnly();
     assert.deepEqual(fixture.acquisitionCalls, {
       localCandidates: 0,
       repositoryContexts: 1,

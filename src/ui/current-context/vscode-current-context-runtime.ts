@@ -71,6 +71,7 @@ export interface RegisteredCurrentContextRuntime extends vscode.Disposable {
   /** The single startup refresh, including its handled error presentation. */
   readonly startupRefresh: Promise<void>;
   refresh(): Promise<void>;
+  refreshFromReviewContexts(feedbackContext?: OperationFeedbackContext): Promise<void>;
 }
 
 export const registerCurrentContextRuntime = (
@@ -105,30 +106,59 @@ export const registerCurrentContextRuntime = (
     ...dependentRefresher
   });
   let currentCancellation: AbortController | undefined;
-  const runRefresh = async (options?: CurrentContextRecomputeOptions): Promise<void> => {
-    currentCancellation?.abort();
-    const cancellation = new AbortController();
-    currentCancellation = cancellation;
+  let currentRefreshCoalescingKey: string | undefined;
+  const runRefresh = async (
+    options: CurrentContextRecomputeOptions | undefined,
+    trigger: "current-context-refresh" | "review-contexts-refresh" | "startup" | "active-editor-change",
+    parentContext?: OperationFeedbackContext,
+    coalescingKey?: string,
+  ): Promise<void> => {
+    const coalesceWithCurrent = trigger === "active-editor-change" && coalescingKey !== undefined &&
+      coalescingKey === currentRefreshCoalescingKey && currentCancellation?.signal.aborted === false;
+    if (!coalesceWithCurrent) {
+      currentCancellation?.abort();
+      currentCancellation = new AbortController();
+      currentRefreshCoalescingKey = trigger === "active-editor-change" ? coalescingKey : undefined;
+    }
+    const cancellation = currentCancellation!;
     try {
-      await runWithActiveOperationFeedback("Current Contextを更新", (feedbackContext) => coordinator.refresh(cancellation.signal, feedbackContext, options));
+      await runWithActiveOperationFeedback(
+        "Current Contextを更新",
+        (feedbackContext) => coordinator.refresh(
+          cancellation.signal,
+          feedbackContext,
+          options,
+          trigger,
+          coalescingKey === undefined ? {} : { coalescingKey },
+        ),
+        undefined,
+        parentContext,
+      );
     } catch (error) {
       if (currentCancellation === cancellation) {
-        controller.failClosed();
+        if (!coordinator.isPreservedBranchRefreshFailure(error)) {
+          await coordinator.failClosed();
+        }
+        if (parentContext !== undefined) throw error;
         await reportRefreshError(formatOperationFailureForUser(error));
       }
     } finally {
-      if (currentCancellation === cancellation) currentCancellation = undefined;
+      if (currentCancellation === cancellation && !coalesceWithCurrent) {
+        currentCancellation = undefined;
+        currentRefreshCoalescingKey = undefined;
+      }
     }
   };
   const runSelection = async (): Promise<void> => {
     currentCancellation?.abort();
     const cancellation = new AbortController();
     currentCancellation = cancellation;
+    currentRefreshCoalescingKey = undefined;
     try {
       await runWithActiveOperationFeedback("Current Contextを選択", (feedbackContext) => coordinator.selectContext(cancellation.signal, feedbackContext));
     } catch (error) {
       if (currentCancellation === cancellation) {
-        controller.failClosed();
+        await coordinator.failClosed();
         await reportRefreshError(formatOperationFailureForUser(error));
       }
     } finally {
@@ -140,26 +170,29 @@ export const registerCurrentContextRuntime = (
     vscode.window.registerTreeDataProvider(CURRENT_CONTEXT_VIEW_ID, tree),
     vscode.commands.registerCommand(
       REFRESH_CONTEXT_COMMAND_ID,
-      () => runRefresh({ allowInteraction: true })
+      () => runRefresh({ allowInteraction: true }, "current-context-refresh")
     ),
     vscode.commands.registerCommand(
       SELECT_CONTEXT_COMMAND_ID,
       runSelection
     ),
-    vscode.window.onDidChangeActiveTextEditor(() => {
-      void runRefresh({ allowInteraction: false });
+    vscode.window.onDidChangeActiveTextEditor((editor) => {
+      const coalescingKey = editor?.document.uri.toString(true) ?? "no-active-editor";
+      void runRefresh({ allowInteraction: false }, "active-editor-change", undefined, coalescingKey);
     }),
     status,
     { dispose: () => tree.dispose() }
   ];
 
   context.subscriptions.push(...registrations);
-  const startupRefresh = runRefresh({ allowInteraction: false });
+  const startupRefresh = runRefresh({ allowInteraction: false }, "startup");
 
   return {
     controller,
     startupRefresh,
-    refresh: () => runRefresh({ allowInteraction: true }),
+    refresh: () => runRefresh({ allowInteraction: true }, "current-context-refresh"),
+    refreshFromReviewContexts: (feedbackContext) =>
+      runRefresh({ allowInteraction: false }, "review-contexts-refresh", feedbackContext),
     dispose: () => {
       currentCancellation?.abort();
       for (const registration of registrations) {

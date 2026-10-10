@@ -40,7 +40,7 @@ export type GitHubPullRequestSearchResult =
     }
   | {
       readonly kind: "unavailable";
-      readonly reason: "rate-limit" | "network" | "api" | "authentication";
+      readonly reason: "rate-limit" | "network" | "api" | "authentication" | "timeout";
       /** Safe HTTP status evidence when the API returned a non-success response. */
       readonly httpStatus?: number;
     };
@@ -52,6 +52,7 @@ export interface GitHubPullRequestSearchPort {
     repository: GitHubRepositoryIdentity,
     headSha: string,
     branch?: GitHubPullRequestBranchIdentity,
+    signal?: AbortSignal,
   ): Promise<GitHubPullRequestSearchResult>;
 }
 

@@ -267,8 +267,10 @@ test("Issue #84 operation feedback publishes privacy-safe stage counts without a
   });
   const progressLog = logs.find((entry) => entry.event === "progress");
   assert.ok(progressLog, "a long-running operation must write its anonymous numeric progress to Output");
+  assert.equal(progressLog.operationId, logs.find((entry) => entry.event === "started")?.operationId);
+  assert.equal(progressLog.operationId, logs.find((entry) => entry.event === "succeeded")?.operationId);
   const formatted = operationFeedbackModule.formatOperationLogEntry(progressLog);
-  assert.match(formatted, /PROGRESS Review Contextsを更新.*pull-request-contexts.*2\/5/u);
+  assert.match(formatted, /PROGRESS op=1 Review Contextsを更新.*pull-request-contexts.*2\/5/u);
   assert.doesNotMatch(formatted, /src\/|\.ts|PR #/u, "progress diagnostics must not contain file names, source, or PR titles");
 });
 

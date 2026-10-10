@@ -197,7 +197,7 @@ test("NR90-004 real VS Code feedback host republishes tooltip detail while PullR
   });
   assert.match(String(status.tooltip), /pull-request-file/u);
   assert.match(String(status.tooltip), /read-content/u);
-  assert.match(String(status.tooltip), /src\/example\.ts/u);
+  assert.doesNotMatch(String(status.tooltip), /src\/example\.ts|\/repo|github\.com\/example\/repo/u);
   assert.ok(status.shows >= 2, "reporting detail republishes the live Status Bar immediately");
   finishManual?.();
   await manual;
@@ -234,11 +234,12 @@ test("NR90-004 real VS Code feedback host republishes tooltip detail while PullR
   await readStarted;
   assert.match(String(status.tooltip), /pull-request-file/u);
   assert.match(String(status.tooltip), /read-content/u);
-  assert.match(String(status.tooltip), /src\/example\.ts/u);
+  assert.doesNotMatch(String(status.tooltip), /src\/example\.ts|\/repo|github\.com\/example\/repo/u);
   assert.ok(status.shows >= 4, "pending production read republishes the current detailed status before resolution");
   releaseRead?.();
   await progress;
   assert.ok(output.some((line) => line.includes("pull-request-file") && line.includes("read-content")));
+  assert.ok(output.every((line) => !/src\/example\.ts|\/repo|github\.com\/example\/repo/u.test(line)), "detailed production diagnostics must keep paths and repository identity private");
   setActiveOperationFeedback(undefined);
 });
 

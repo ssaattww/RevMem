@@ -12,6 +12,7 @@ import { PullRequestReviewRuntime } from "../../src/composition/pull-request/pul
 import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
 import {
   OperationFeedback,
+  formatOperationLogEntry,
   setActiveOperationFeedback,
   type OperationFeedbackHost,
   type OperationLogEntry,
@@ -253,7 +254,11 @@ test("T606 IFR002 real T305-to-T405 composition retries only transient acquisiti
           await started.promise;
           const details = diagnosticHost.logs.filter((entry) => entry.event === "detail" && entry.detail?.phase === "read-content");
           assert.equal(details.length, detailed ? 1 : 0, "existing file detail is opt-in and visible before bulk I/O resolves");
-          if (detailed) assert.deepEqual(details[0]?.detail, { reason: "pull-request-file", phase: "read-content", target: "example.ts" });
+          if (detailed) assert.deepEqual(details[0]?.detail, { reason: "pull-request-file", phase: "read-content" });
+          assert.ok(diagnosticHost.logs.every((entry) => entry.detail?.target === undefined),
+            "PR138 privacy contract forbids private PR file targets even in detailed diagnostics");
+          assert.ok(diagnosticHost.logs.every((entry) => !formatOperationLogEntry(entry).includes("example.ts")),
+            "the production formatter must keep file paths private in OFF and ON modes");
           if (cancel) {
             runtime.clearProgress();
             assert.equal(readSignal?.aborted, true, "supersession reaches the pending production batch reader");
@@ -266,6 +271,15 @@ test("T606 IFR002 real T305-to-T405 composition retries only transient acquisiti
           assert.ok(runtime.progress.getChildren().every((category) => runtime.progress.getChildren(category).length === 0), "late cancelled bulk work publishes no tree");
           await runtime.activateProgress(contextId);
           assert.equal(contentCalls, 2, "cancelled bulk work does not populate the immutable text cache");
+        }
+        const files = runtime.progress.getChildren().flatMap((category) => runtime.progress.getChildren(category));
+        assert.equal(files.length, 1, "current successful work publishes the actual registered file");
+        const file = files[0]!;
+        assert.equal(file.kind, "file");
+        if (file.kind === "file") {
+          assert.equal(file.path, "example.ts");
+          assert.deepEqual([file.openTarget.contextId, file.openTarget.baseSha, file.openTarget.headSha],
+            [registration.snapshot.contextId, registration.snapshot.baseSha, registration.snapshot.headSha]);
         }
       }
     } finally {

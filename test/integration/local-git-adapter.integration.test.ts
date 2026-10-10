@@ -1,6 +1,7 @@
 import { NodeGitBlobReader } from "../../src/adapters/local-git/node-git-blob-reader.js";
 import { NodeGitBlobBatchTransport } from "../../src/adapters/local-git/node-git-blob-batch-transport.js";
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
@@ -8,6 +9,43 @@ import test from "node:test";
 import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index";
 import { resolveCurrentContextRepositories } from "../../src/application/review-context/repository-resolution";
 import { createTemporaryGitRepository, type TemporaryGitRepository } from "../support/temporary-git-repository";
+
+const runGitWithInput = (
+  repository: TemporaryGitRepository,
+  argumentsList: readonly string[],
+  input: string,
+): Promise<string> => new Promise((resolve, reject) => {
+  const child = execFile("git", [...argumentsList], { cwd: repository.path, windowsHide: true }, (error, stdout) => {
+    if (error !== null) reject(error);
+    else resolve(stdout.trim());
+  });
+  assert.ok(child.stdin);
+  child.stdin.on("error", reject);
+  child.stdin.end(input);
+});
+
+/** Writes immutable Git entries directly so POSIX names do not depend on the host filesystem. */
+const createPathFixtureCommit = async (
+  repository: TemporaryGitRepository,
+  nestedContent: string,
+  files: ReadonlyMap<string, string>,
+): Promise<string> => {
+  const writeBlob = (content: string): Promise<string> => runGitWithInput(repository, ["hash-object", "-w", "--stdin"], content);
+  const writeTree = (entries: readonly string[]): Promise<string> => runGitWithInput(repository, ["mktree", "-z"], `${entries.join("\0")}\0`);
+  const nestedTree = await writeTree([`100644 blob ${await writeBlob(nestedContent)}\ttracked.txt`]);
+  const missingSubmodule = "f".repeat(40);
+  await assert.rejects(repository.runGit(["cat-file", "-e", `${missingSubmodule}^{commit}`]));
+  const vendorTree = await writeTree([`160000 commit ${missingSubmodule}\tsubmodule`]);
+  const entries = [
+    `100644 blob ${await repository.runGit(["rev-parse", `${repository.headCommit}:fixture.txt`])}\tfixture.txt`,
+    `120000 blob ${await writeBlob("fixture.txt")}\tfixture-link`,
+    `040000 tree ${nestedTree}\tnested`,
+    `040000 tree ${vendorTree}\tvendor`,
+  ];
+  for (const [name, content] of files) entries.push(`100644 blob ${await writeBlob(content)}\t${name}`);
+  const tree = await writeTree(entries);
+  return repository.runGit(["commit-tree", tree, "-p", repository.headCommit, "-m", "immutable path fixture"]);
+};
 
 test("real Git inspection resolves a nested path, branch ref, HEAD, and root identity", async () => {
   const repository = await createTemporaryGitRepository();
@@ -173,6 +211,150 @@ test("real Git revision content returns exact original and modified text", async
       ),
       { kind: "missing-revision" }
     );
+  } finally {
+    await repository.cleanup();
+  }
+});
+
+test("real cat-file batch transport returns the same raw bytes as single-object reads", async () => {
+  const repository = await createTemporaryGitRepository();
+
+  try {
+    const blobObjectId = await repository.runGit(["rev-parse", `${repository.headCommit}:fixture.txt`]);
+    const single = await new NodeGitBlobReader().readBlob(repository.path, blobObjectId);
+    let batched: Uint8Array | undefined;
+
+    await new NodeGitBlobBatchTransport().readBlobs(repository.path, [blobObjectId], (_objectId, bytes) => {
+      batched = bytes;
+    });
+
+    assert.ok(batched);
+    assert.deepEqual(Buffer.from(batched), Buffer.from(single));
+    assert.equal(Buffer.from(batched).toString("utf8"), "base\nhead\n");
+  } finally {
+    await repository.cleanup();
+  }
+});
+
+test("verified commit cache rechecks an object pruned after a successful read", async () => {
+  const repository = await createTemporaryGitRepository();
+  const adapter = createNodeLocalGitAdapter();
+
+  try {
+    assert.deepEqual(await adapter.readTextFileAtRevision(
+      repository.path, repository.headCommit, "fixture.txt", "posix"
+    ), { kind: "found", content: "base\nhead\n" });
+
+    await repository.runGit(["update-ref", "-d", "refs/heads/main"]);
+    await repository.runGit(["reflog", "expire", "--expire=now", "--all"]);
+    await repository.runGit(["gc", "--prune=now"]);
+    await assert.rejects(repository.runGit(["cat-file", "-e", `${repository.headCommit}^{commit}`]));
+
+    assert.deepEqual(await adapter.readTextFileAtRevision(
+      repository.path, repository.headCommit, "fixture.txt", "posix"
+    ), { kind: "missing-revision" });
+  } finally {
+    await repository.cleanup();
+  }
+});
+
+test("batch immutable read rechecks a cached commit pruned after a successful lookup", async () => {
+  const repository = await createTemporaryGitRepository();
+  const adapter = createNodeLocalGitAdapter();
+
+  try {
+    assert.deepEqual(await adapter.readTextFilesAtRevision(
+      repository.path,
+      repository.headCommit,
+      ["fixture.txt"],
+      "posix",
+    ), new Map([["fixture.txt", { kind: "found", content: "base\nhead\n" }]]));
+
+    await repository.runGit(["update-ref", "-d", "refs/heads/main"]);
+    await repository.runGit(["reflog", "expire", "--expire=now", "--all"]);
+    await repository.runGit(["gc", "--prune=now"]);
+    await assert.rejects(repository.runGit(["cat-file", "-e", `${repository.headCommit}^{commit}`]));
+
+    assert.deepEqual(await adapter.readTextFilesAtRevision(
+      repository.path,
+      repository.headCommit,
+      ["fixture.txt"],
+      "posix",
+    ), new Map([["fixture.txt", { kind: "missing-revision" }]]));
+  } finally {
+    await repository.cleanup();
+  }
+});
+
+test("revision path lookup preserves blob-only behavior for directories, gitlinks, symlinks, and colons", async () => {
+  const repository = await createTemporaryGitRepository();
+  const adapter = createNodeLocalGitAdapter();
+
+  try {
+    const commit = await createPathFixtureCommit(repository, "nested file\n", new Map([
+      ["colon:name.txt", "colon path\n"],
+    ]));
+    const nestedTree = await repository.runGit(["ls-tree", "-d", commit, "--", ":(literal)nested"]);
+    assert.match(nestedTree, /^040000 tree [0-9a-f]{40}\tnested$/u);
+
+    assert.deepEqual(await adapter.readTextFileAtRevision(repository.path, commit, "nested", "posix"), { kind: "missing-file" });
+    assert.deepEqual(await adapter.readTextFileAtRevision(repository.path, commit, "nested/tracked.txt", "posix"), { kind: "found", content: "nested file\n" });
+    assert.deepEqual(await adapter.readTextFileAtRevision(repository.path, commit, "vendor/submodule", "posix"), { kind: "missing-file" });
+    assert.deepEqual(await adapter.readTextFileAtRevision(repository.path, commit, "fixture-link", "posix"), { kind: "found", content: "fixture.txt" });
+    assert.deepEqual(await adapter.readTextFileAtRevision(repository.path, commit, "colon:name.txt", "posix"), { kind: "found", content: "colon path\n" });
+  } finally {
+    await repository.cleanup();
+  }
+});
+
+test("batch immutable reads match single-path results for exact paths and special Git entries", async () => {
+  const repository = await createTemporaryGitRepository();
+  const adapter = createNodeLocalGitAdapter();
+
+  try {
+    const revision = await createPathFixtureCommit(repository, "nested content\n", new Map([
+      ["colon:name.ts", "colon content\n"],
+      ["tab\tname.ts", "tab content\n"],
+      ["line\nname.ts", "line content\n"],
+      ["prefix-name.ts", "exact prefix path\n"],
+      ["prefix-name-extra.ts", "unrequested sibling\n"],
+    ]));
+    const paths = [
+      "fixture.txt",
+      "nested/tracked.txt",
+      "colon:name.ts",
+      "tab\tname.ts",
+      "line\nname.ts",
+      "prefix-name.ts",
+      "fixture-link",
+      "vendor/submodule",
+      "nested",
+      "missing.ts",
+    ];
+    const bulkReader = (adapter as unknown as {
+      readTextFilesAtRevision: (
+        root: string,
+        object: string,
+        requestedPaths: readonly string[],
+        semantics: "posix" | "windows",
+      ) => Promise<ReadonlyMap<string, unknown>>;
+    }).readTextFilesAtRevision;
+
+    const batched = await bulkReader.call(adapter, repository.path, revision, paths, "posix");
+    const individual = new Map(await Promise.all(paths.map(async (filePath) => [
+      filePath,
+      await adapter.readTextFileAtRevision(repository.path, revision, filePath, "posix"),
+    ] as const)));
+
+    assert.deepEqual(batched, individual);
+    assert.deepEqual(batched.get("colon:name.ts"), { kind: "found", content: "colon content\n" });
+    assert.deepEqual(batched.get("tab\tname.ts"), { kind: "found", content: "tab content\n" });
+    assert.deepEqual(batched.get("line\nname.ts"), { kind: "found", content: "line content\n" });
+    assert.deepEqual(batched.get("fixture-link"), { kind: "found", content: "fixture.txt" });
+    assert.deepEqual(batched.get("vendor/submodule"), { kind: "missing-file" });
+    assert.deepEqual(batched.get("nested"), { kind: "missing-file" });
+    assert.deepEqual(batched.get("prefix-name.ts"), { kind: "found", content: "exact prefix path\n" });
+    assert.deepEqual(batched.get("missing.ts"), { kind: "missing-file" });
   } finally {
     await repository.cleanup();
   }

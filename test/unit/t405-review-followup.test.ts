@@ -8,6 +8,7 @@ import "./issue-84-pr85-review-closure-followup.test.js";
 
 import {
   findCurrentPullRequestContext,
+  resolveCurrentPullRequestContext,
   formatReviewContextCacheStatus,
   formatReviewContextProgress,
   projectReviewContexts,
@@ -223,6 +224,21 @@ test("R405-7 multiple current-head PRs retain the PR explicitly chosen by redete
     findCurrentPullRequestContext([pullRequest, secondPullRequest], REPOSITORY_ID, B),
     undefined,
   );
+});
+
+test("Issue #137 selection provenance distinguishes explicit, unique, ambiguous, and missing matches", () => {
+  assert.deepEqual(resolveCurrentPullRequestContext([pullRequest, secondPullRequest], REPOSITORY_ID, B, secondPullRequest.contextId), {
+    context: secondPullRequest, reason: "explicit-selection-kept", candidateCount: 2,
+  });
+  assert.deepEqual(resolveCurrentPullRequestContext([pullRequest], REPOSITORY_ID, B), {
+    context: pullRequest, reason: "unique-pr-match", candidateCount: 1,
+  });
+  assert.deepEqual(resolveCurrentPullRequestContext([pullRequest, secondPullRequest], REPOSITORY_ID, B), {
+    context: undefined, reason: "ambiguous-pr-match", candidateCount: 2,
+  });
+  assert.deepEqual(resolveCurrentPullRequestContext([], REPOSITORY_ID, B), {
+    context: undefined, reason: "no-matching-pr", candidateCount: 0,
+  });
 });
 
 test("T406-R001 explicit branch selection suppresses one saved open PR at the same immutable HEAD", () => {

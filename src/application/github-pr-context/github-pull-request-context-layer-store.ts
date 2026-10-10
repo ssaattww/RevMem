@@ -32,7 +32,7 @@ export interface PullRequestReviewStateCommit {
 
 export interface GitHubPullRequestContextRepositoryPort {
   load(identity: { readonly kind: "pull-request"; readonly repositoryId: string; readonly contextId: string }): Promise<PullRequestReviewStateCommit | undefined>;
-  create(transaction: { readonly repositoryId: string; readonly contextId: string; readonly expected: { readonly contextState: undefined; readonly globalState: RepositoryGlobalState | undefined }; readonly next: PullRequestReviewStateCommit }): Promise<void>;
+  create(transaction: { readonly repositoryId: string; readonly contextId: string; readonly expected: { readonly contextState: undefined; readonly globalState: RepositoryGlobalState | undefined }; readonly next: PullRequestReviewStateCommit; readonly signal?: AbortSignal }): Promise<void>;
   commit(transaction: { readonly repositoryId: string; readonly contextId: string; readonly expected: PullRequestReviewStateCommit; readonly next: PullRequestReviewStateCommit }): Promise<void>;
 }
 
@@ -108,7 +108,11 @@ export class GitHubPullRequestContextStateService {
     private readonly historyRecorder?: PullRequestHistoryRecorder
   ) {}
 
-  public async create(commit: PullRequestReviewStateCommit, expectedGlobalState: RepositoryGlobalState | undefined): Promise<void> {
+  public async create(
+    commit: PullRequestReviewStateCommit,
+    expectedGlobalState: RepositoryGlobalState | undefined,
+    signal?: AbortSignal,
+  ): Promise<void> {
     const pullRequest = requirePullRequestContext(commit.contextState);
     const canonicalRepositoryId = requireCanonicalRepositoryId(commit.contextState.repositoryId);
     if (commit.globalState.repositoryId !== canonicalRepositoryId) throw new Error("Global state does not match canonical repository identity");
@@ -117,7 +121,8 @@ export class GitHubPullRequestContextStateService {
     requirePullRequestDescriptor(pullRequest, canonicalRepositoryId, pullRequest.number);
     if (commit.globalState.currentRevisionId !== pullRequest.headSha) throw new Error("Global state revision must match the pull-request head");
     requireSnapshotFileRevisions(commit, pullRequest.headSha);
-    await this.repository.create({ repositoryId: canonicalRepositoryId, contextId: commit.contextState.contextId, expected: { contextState: undefined, globalState: expectedGlobalState }, next: cloneCommit(commit) });
+    signal?.throwIfAborted();
+    await this.repository.create({ repositoryId: canonicalRepositoryId, contextId: commit.contextState.contextId, expected: { contextState: undefined, globalState: expectedGlobalState }, next: cloneCommit(commit), ...(signal === undefined ? {} : { signal }) });
     await this.historyRecorder?.recordContextCreated(cloneValue(commit.contextState));
   }
 

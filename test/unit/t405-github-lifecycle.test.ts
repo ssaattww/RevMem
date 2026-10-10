@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
@@ -7,12 +9,22 @@ import {
   FetchGitHubPullRequestLifecycleAdapter,
 } from "../../src/adapters/github/index.js";
 import {
+  githubPullRequestMergeBaseReadKey,
+  githubPullRequestMergeBaseResultKey,
+  readGitHubPullRequestMergeBase,
+} from "../../src/adapters/github/fetch-github-pull-request-merge-base.js";
+import {
+  clearPullRequestLifecycleOperationCache,
+  type PullRequestLifecycleOperationCache,
+} from "../../src/composition/review-contexts/pull-request-lifecycle-operation-cache.js";
+import {
   GitHubPullRequestContextStateService,
   createImmutablePullRequestRevisionMapper,
   isPullRequestDecorationEnabled,
   type GitHubPullRequestContextRepositoryPort,
   type PullRequestReviewStateCommit,
 } from "../../src/application/github-pr-context/index.js";
+import { FileSystemReviewStateRepository } from "../../src/adapters/state-repository/index.js";
 import { projectReviewContexts } from "../../src/application/review-contexts/index.js";
 import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
 import type { PullRequestDiffSnapshot } from "../../src/core/pr-progress/index.js";
@@ -129,6 +141,270 @@ test("R405-2 lifecycle adapter reports closed and merged PR state by stable PR i
   const mergedResult = await adapter.fetchCurrent(identity, 52);
   assert.equal(mergedResult.kind, "available");
   if (mergedResult.kind === "available") assert.equal(mergedResult.metadata.state, "merged");
+});
+
+test("R405 lifecycle operation memo coalesces identical compare reads across different PR numbers", async () => {
+  const mergeBaseReads = new Map();
+  let pullGets = 0;
+  let compareGets = 0;
+  const adapter = new FetchGitHubPullRequestLifecycleAdapter({
+    apiBaseUrl: "https://api.github.com",
+    mergeBaseReads,
+    fetch: async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname.includes("/compare/")) {
+        compareGets += 1;
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return jsonResponse({ merge_base_commit: { sha: A } });
+      }
+      pullGets += 1;
+      const number = Number(url.pathname.split("/").at(-1));
+      return jsonResponse({ number, title: `PR ${number}`, html_url: `https://github.com/ssaattww/revmem/pull/${number}`,
+        state: "open", merged_at: null, base: { sha: A }, head: { sha: B } });
+    },
+  });
+
+  const results = await Promise.all([52, 53].map((number) => adapter.fetchCurrent(identity, number)));
+  assert.deepEqual(results.map((result) => result.kind), ["available", "available"]);
+  assert.equal(pullGets, 2, "different PRs still require their own lifecycle endpoint read");
+  assert.equal(compareGets, 1, "identical host/repository/base/head comparisons are single-flight");
+});
+
+test("R405 merge-base cache keys preserve API path case while normalizing the origin", () => {
+  const upperOrigin = githubPullRequestMergeBaseReadKey("https://API.GITHUB.COM/Enterprise/Api/", identity, A, B);
+  const normalizedOrigin = githubPullRequestMergeBaseReadKey("https://api.github.com/Enterprise/Api", identity, A, B);
+  const differentPathCase = githubPullRequestMergeBaseReadKey("https://api.github.com/enterprise/Api", identity, A, B);
+  assert.equal(upperOrigin, normalizedOrigin);
+  assert.notEqual(normalizedOrigin, differentPathCase);
+});
+
+test("R405 completed merge-base results reuse only the same repository and base/head SHA pair", async () => {
+  const mergeBaseReads = new Map();
+  const mergeBaseResults = new Map();
+  const comparisonRequests: string[] = [];
+  const fetch: typeof globalThis.fetch = async (input) => {
+    comparisonRequests.push(new URL(String(input)).pathname);
+    return jsonResponse({ merge_base_commit: { sha: A } });
+  };
+  const options = { apiBaseUrl: "https://api.github.com", fetch };
+  const firstSignal = new AbortController();
+  const secondSignal = new AbortController();
+
+  assert.deepEqual(await readGitHubPullRequestMergeBase(options, identity, A, B, firstSignal.signal, mergeBaseReads, mergeBaseResults),
+    { kind: "available", mergeBaseSha: A });
+  assert.deepEqual(await readGitHubPullRequestMergeBase(options, identity, A, B, secondSignal.signal, mergeBaseReads, mergeBaseResults),
+    { kind: "available", mergeBaseSha: A });
+  assert.equal(comparisonRequests.length, 1, "a completed immutable SHA pair is reusable across linked signals");
+
+  const otherRepository = { ...identity, repository: "other-repository" };
+  await readGitHubPullRequestMergeBase(options, otherRepository, A, B, undefined, mergeBaseReads, mergeBaseResults);
+  await readGitHubPullRequestMergeBase(options, identity, C, B, undefined, mergeBaseReads, mergeBaseResults);
+  await readGitHubPullRequestMergeBase(options, identity, A, C, undefined, mergeBaseReads, mergeBaseResults);
+
+  assert.equal(comparisonRequests.length, 4, "repository, base SHA, and head SHA changes each require a fresh comparison");
+  assert.notEqual(githubPullRequestMergeBaseResultKey("https://api.github.com", identity, A, B),
+    githubPullRequestMergeBaseResultKey("https://api.github.com", otherRepository, A, B));
+  assert.notEqual(githubPullRequestMergeBaseResultKey("https://api.github.com", identity, A, B),
+    githubPullRequestMergeBaseResultKey("https://api.github.com", identity, C, B));
+  assert.notEqual(githubPullRequestMergeBaseResultKey("https://api.github.com", identity, A, B),
+    githubPullRequestMergeBaseResultKey("https://api.github.com", identity, A, C));
+});
+
+test("R405 auth cache clear fences delayed old success and preserves new-generation reads", async () => {
+  const deferred = <T,>() => {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((complete) => { resolve = complete; });
+    return { promise, resolve };
+  };
+  const runRace = async (oldResponse: Response): Promise<void> => {
+    const oldGate = deferred<Response>();
+    const newGate = deferred<Response>();
+    const oldStarted = deferred<void>();
+    const newStarted = deferred<void>();
+    let fetchCount = 0;
+    const fetch: typeof globalThis.fetch = async () => {
+      const index = fetchCount++;
+      if (index === 0) {
+        oldStarted.resolve();
+        return oldGate.promise;
+      }
+      newStarted.resolve();
+      return newGate.promise;
+    };
+    const cache: PullRequestLifecycleOperationCache = {
+      lifecycleReads: new Map(),
+      mergeBaseReads: new Map(),
+      mergeBaseResults: new Map(),
+      mergeBaseGeneration: { value: 0 },
+    };
+    const options = { apiBaseUrl: "https://api.github.com", fetch };
+    const signal = new AbortController().signal;
+    const args = (cacheValue: PullRequestLifecycleOperationCache) => [
+      options, identity, A, B, signal, cacheValue.mergeBaseReads, cacheValue.mergeBaseResults,
+      cacheValue.mergeBaseGeneration,
+    ] as const;
+
+    const oldRead = readGitHubPullRequestMergeBase(...args(cache));
+    await oldStarted.promise;
+    clearPullRequestLifecycleOperationCache(cache);
+    const newRead = readGitHubPullRequestMergeBase(...args(cache));
+    await newStarted.promise;
+    const key = githubPullRequestMergeBaseReadKey("https://api.github.com", identity, A, B, undefined, signal);
+    const currentRead = cache.mergeBaseReads.get(key);
+    assert.ok(currentRead, "the new generation owns a pending read under the same operation signal");
+
+    oldGate.resolve(oldResponse);
+    await assert.rejects(oldRead, { name: "AbortError" }, "a cleared generation cannot return an old result to its caller");
+    assert.equal(cache.mergeBaseResults.size, 0, "late old success/unavailable results cannot repopulate the new result map");
+    assert.equal(cache.mergeBaseReads.get(key), currentRead, "old cleanup cannot delete the new generation's in-flight read");
+
+    newGate.resolve(jsonResponse({ merge_base_commit: { sha: C } }));
+    assert.deepEqual(await newRead, { kind: "available", mergeBaseSha: C });
+    assert.equal(cache.mergeBaseResults.get(githubPullRequestMergeBaseResultKey("https://api.github.com", identity, A, B))?.mergeBaseSha, C);
+    assert.equal(fetchCount, 2, "the new generation performs its own comparison and then caches it");
+  };
+
+  await runRace(jsonResponse({ merge_base_commit: { sha: B } }));
+  await runRace(jsonResponse({ message: "old auth unavailable" }, 503));
+});
+
+test("R405 one cancelled consumer cannot abort another signal's identical merge-base read", async () => {
+  const mergeBaseReads = new Map();
+  const mergeBaseResults = new Map();
+  const cancelled = new AbortController();
+  const active = new AbortController();
+  let compareGets = 0;
+  const adapter = new FetchGitHubPullRequestLifecycleAdapter({
+    apiBaseUrl: "https://api.github.com",
+    mergeBaseReads,
+    mergeBaseResults,
+    fetch: async (input, init) => {
+      const url = new URL(String(input));
+      if (url.pathname.includes("/compare/")) {
+        compareGets += 1;
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(resolve, 15);
+          init?.signal?.addEventListener("abort", () => {
+            clearTimeout(timer);
+            reject(new DOMException("aborted", "AbortError"));
+          }, { once: true });
+        });
+        return jsonResponse({ merge_base_commit: { sha: A } });
+      }
+      const number = Number(url.pathname.split("/").at(-1));
+      return jsonResponse({ number, title: `PR ${number}`, html_url: `https://github.com/ssaattww/revmem/pull/${number}`,
+        state: "open", merged_at: null, base: { sha: A }, head: { sha: B } });
+    },
+  });
+  const cancelledRead = adapter.fetchCurrent(identity, 52, undefined, cancelled.signal);
+  const activeRead = adapter.fetchCurrent(identity, 53, undefined, active.signal);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(compareGets, 2, "requests with different cancellation owners must not share one abortable promise");
+  cancelled.abort();
+  await assert.rejects(cancelledRead, { name: "AbortError" });
+  assert.equal((await activeRead).kind, "available");
+});
+
+test("R405 lifecycle operation memo drops unavailable and aborted compare reads", async () => {
+  const mergeBaseReads = new Map();
+  const mergeBaseResults = new Map();
+  let compareGets = 0;
+  let failCompare = true;
+  let throwCompare = false;
+  let abortFirstCompare = false;
+  const fetch: typeof globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    if (url.pathname.includes("/compare/")) {
+      compareGets += 1;
+      if (abortFirstCompare) {
+        abortFirstCompare = false;
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+        });
+      }
+      if (throwCompare) throw new Error("temporary network failure");
+      if (failCompare) return jsonResponse({ message: "temporary" }, 503);
+      return jsonResponse({ merge_base_commit: { sha: A } });
+    }
+    const number = Number(url.pathname.split("/").at(-1));
+    return jsonResponse({ number, title: `PR ${number}`, html_url: `https://github.com/ssaattww/revmem/pull/${number}`,
+      state: "open", merged_at: null, base: { sha: A }, head: { sha: B } });
+  };
+  const adapter = new FetchGitHubPullRequestLifecycleAdapter({ apiBaseUrl: "https://api.github.com", mergeBaseReads, mergeBaseResults, fetch });
+
+  assert.deepEqual(await adapter.fetchCurrent(identity, 52), { kind: "unavailable", reason: "api" });
+  assert.equal(mergeBaseReads.size, 0, "unavailable outcomes are not retained");
+  assert.equal(mergeBaseResults.size, 0, "HTTP errors are not cached as successful comparisons");
+  throwCompare = true;
+  assert.deepEqual(await adapter.fetchCurrent(identity, 52), { kind: "unavailable", reason: "network" });
+  assert.equal(mergeBaseResults.size, 0, "network errors are not stored in the completed-result map");
+  assert.equal(mergeBaseReads.size, 0);
+  throwCompare = false;
+  failCompare = false;
+  assert.equal((await adapter.fetchCurrent(identity, 52)).kind, "available");
+  assert.equal(mergeBaseResults.size, 1, "only a successful comparison enters the completed-result map");
+  assert.equal(compareGets, 3, "a later attempt retries unavailable endpoints");
+
+  const cancellation = new AbortController();
+  abortFirstCompare = true;
+  const abortedReads = new Map();
+  const abortedResults = new Map();
+  const abortAdapter = new FetchGitHubPullRequestLifecycleAdapter({ apiBaseUrl: "https://api.github.com", mergeBaseReads: abortedReads, mergeBaseResults: abortedResults, fetch });
+  const pending = abortAdapter.fetchCurrent(identity, 52, undefined, cancellation.signal);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  cancellation.abort();
+  await assert.rejects(pending, { name: "AbortError" });
+  assert.equal(abortedReads.size, 0, "aborted outcomes are not retained");
+  assert.equal(abortedResults.size, 0, "aborted outcomes never enter the completed-result map");
+  assert.equal((await abortAdapter.fetchCurrent(identity, 52)).kind, "available");
+  assert.equal(abortedResults.size, 1, "a successful retry may be cached after the aborted read");
+  assert.equal(compareGets, 5, "a later operation retries after cancellation");
+});
+
+test("Issue #136 does not publish a superseded new Context when cancellation arrives during atomic save", async () => {
+  const storageRoot = await mkdtemp(path.join(tmpdir(), "revmem-i136-cancel-create-"));
+  let releasePublication!: () => void;
+  let publicationStarted!: () => void;
+  const publicationGate = new Promise<void>((resolve) => { releasePublication = resolve; });
+  const publicationStartedPromise = new Promise<void>((resolve) => { publicationStarted = resolve; });
+  const repository = new FileSystemReviewStateRepository({
+    storageUris: { globalStorageUri: { fsPath: storageRoot } },
+    beforeAtomicPublication: async (filePath) => {
+      if (filePath.endsWith(`${path.sep}manifest.json`)) {
+        publicationStarted();
+        await publicationGate;
+      }
+    },
+  });
+  const service = new GitHubPullRequestContextStateService(repository, async ({ current }) => current);
+  const context = {
+    ...persistedContext(),
+    contextId: `github-pr:${REPOSITORY_ID}#54`,
+    displayName: "PR #54",
+    pullRequest: { ...persistedContext().pullRequest!, number: 54, title: "PR 54" },
+  };
+  const controller = new AbortController();
+  const create = service.create.bind(service) as (
+    commit: PullRequestReviewStateCommit,
+    expectedGlobalState: RepositoryGlobalState | undefined,
+    signal?: AbortSignal,
+  ) => Promise<void>;
+  const operation = create({ contextState: context, globalState: persistedGlobal() }, undefined, controller.signal);
+
+  try {
+    await publicationStartedPromise;
+    controller.abort();
+    releasePublication();
+    await assert.rejects(operation, (error: unknown) => error instanceof Error && error.name === "AbortError");
+    assert.equal(await repository.load({
+      kind: "pull-request",
+      repositoryId: REPOSITORY_ID,
+      contextId: context.contextId,
+    }), undefined, "a cancelled create must not publish its manifest entry");
+  } finally {
+    releasePublication();
+    await rm(storageRoot, { recursive: true, force: true });
+  }
 });
 
 test("Issue #107 lifecycle metadata uses the PR branch point instead of the current base tip", async () => {
@@ -321,7 +597,7 @@ test("R405-1 T405 revision update maps B to C, permits layer operation, and surv
   const sharedDetection = runtimeSource.slice(detectStart, preparationStart);
   assert.match(
     sharedDetection,
-    /await synchronizeRepository\(/u,
+    /synchronizeRepository\(/u,
     "shared PR detection delegates persisted PR updates to the repository-owner boundary",
   );
   assert.doesNotMatch(
@@ -335,11 +611,16 @@ test("R405-1 T405 revision update maps B to C, permits layer operation, and surv
   assert.match(ownerSynchronizationSource, /commitRepository/u);
   assert.match(ownerSynchronizationSource, /recordPreparedUpdateHistory/u);
 
-  const redetectStart = runtimeSource.indexOf("redetectPullRequest: async");
+  const redetectStart = runtimeSource.indexOf("const redetectPullRequest = async");
   const reconnectStart = runtimeSource.indexOf("reconnectGitHub: async", redetectStart);
-  assert.ok(redetectStart >= 0 && reconnectStart > redetectStart, "public PR redetection must remain registered before reconnect");
+  assert.ok(redetectStart >= 0 && reconnectStart > redetectStart, "public PR redetection must use the shared cancellable detection before reconnect");
   const redetect = runtimeSource.slice(redetectStart, reconnectStart);
-  assert.match(redetect, /await detectPullRequest\(local, feedbackContext\);[\s\S]*await options\.refreshCurrentContext\(\);/u, "public redetection invokes shared detection before refreshing Current Context");
+  assert.match(redetect, /detectPullRequest\(local, feedbackContext, cancellation\.signal\)/u, "public redetection uses shared PR detection with replacement cancellation");
+  const reviewContextsUi = await readFile("src/ui/review-contexts/vscode-review-contexts-runtime.ts", "utf8");
+  const mutateStart = reviewContextsUi.indexOf("const mutate = async");
+  const requireItemStart = reviewContextsUi.indexOf("const requireItem =", mutateStart);
+  const mutationRefresh = reviewContextsUi.slice(mutateStart, requireItemStart);
+  assert.match(mutationRefresh, /await operation\(feedbackContext\);[\s\S]*await refreshFromSharedCoordinator\(feedbackContext\);/u, "successful PR list mutations refresh through the shared coordinator with the same operation context");
 
   const repository = new MemoryPullRequestRepository();
   const diff = [

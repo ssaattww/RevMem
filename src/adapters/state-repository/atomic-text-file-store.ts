@@ -81,12 +81,14 @@ export class NodeAtomicTextFileStore implements AtomicTextFileStore {
    *
    * @throws Rejects with the original filesystem error after best-effort temporary-file cleanup; it never exposes partial content at the destination through this method.
    */
-  public async writeTextAtomically(filePath: string, content: string): Promise<void> {
+  public async writeTextAtomically(filePath: string, content: string, signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
     let handle: FileHandle | undefined;
     let destination = await this.physicalPath(filePath, true);
     // Revalidate after directory creation: containment is established before
     // mutation and every newly materialized component is checked again.
     await mkdir(path.dirname(destination), { recursive: true });
+    signal?.throwIfAborted();
     destination = await this.physicalPath(filePath, true);
     const physicalDirectory = path.dirname(destination);
     const physicalTemporaryPath = path.join(
@@ -96,10 +98,12 @@ export class NodeAtomicTextFileStore implements AtomicTextFileStore {
 
     try {
       handle = await open(physicalTemporaryPath, "wx", 0o600);
+      signal?.throwIfAborted();
       await handle.writeFile(content, "utf8");
       await handle.sync();
       await closeIfOpen(handle);
       handle = undefined;
+      signal?.throwIfAborted();
       await rename(physicalTemporaryPath, destination);
     } catch (error) {
       await closeIfOpen(handle).catch(() => undefined);

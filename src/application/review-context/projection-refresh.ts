@@ -1,13 +1,19 @@
+import type { OperationFeedbackContext } from "../operation-feedback/index";
+
 export interface SelectedPullRequestProgressRefreshDependencies<Source> {
+  readonly shouldContinue?: () => boolean;
   readonly contextId: string | undefined;
   readonly source: Source;
-  readonly activateProgress: (contextId: string) => Promise<void>;
+  readonly feedbackContext?: OperationFeedbackContext;
+  readonly activateProgress: (contextId: string, feedbackContext?: OperationFeedbackContext) => Promise<void>;
   readonly clearProgress: () => void;
   readonly setSource: (source: Source | undefined) => void;
   readonly refreshTree: () => void;
 }
 
 export interface CurrentContextDependentRefreshDependencies {
+  /** Stops stale owner work after an awaited Review Contexts acquisition. */
+  readonly shouldContinue?: () => boolean;
   readonly refreshPullRequestProgress: () => Promise<void>;
   readonly refreshDecorations: () => Promise<void>;
   readonly refreshGlobal: () => Promise<void>;
@@ -46,6 +52,7 @@ const settleProjectionRefresh = async (
 export const refreshSelectedPullRequestProgress = async <Source>(
   dependencies: SelectedPullRequestProgressRefreshDependencies<Source>
 ): Promise<void> => {
+  if (dependencies.shouldContinue?.() === false) return;
   if (dependencies.contextId === undefined) {
     dependencies.clearProgress();
     dependencies.setSource(undefined);
@@ -53,13 +60,13 @@ export const refreshSelectedPullRequestProgress = async <Source>(
     return;
   }
 
-  const activation = dependencies.activateProgress(dependencies.contextId);
+  const activation = dependencies.activateProgress(dependencies.contextId, dependencies.feedbackContext);
   dependencies.setSource(dependencies.source);
   dependencies.refreshTree();
   try {
     await activation;
   } finally {
-    dependencies.refreshTree();
+    if (dependencies.shouldContinue?.() !== false) dependencies.refreshTree();
   }
 };
 
@@ -82,6 +89,11 @@ export const refreshCurrentContextDependents = async (
     reviewContextsReady = false;
   }
 
+  // A Review Contexts provider may suppress an obsolete list publication and
+  // resolve successfully. Do not let that stale continuation activate PR
+  // Progress or publish any dependent tree for the newer selected context.
+  if (dependencies.shouldContinue?.() === false) return;
+
   const progress = reviewContextsReady
     ? settleProjectionRefresh(dependencies.refreshPullRequestProgress)
     : undefined;
@@ -89,6 +101,7 @@ export const refreshCurrentContextDependents = async (
     dependencies.refreshDecorations,
     dependencies.refreshGlobal,
   ]) {
+    if (dependencies.shouldContinue?.() === false) break;
     try {
       await refresh();
     } catch (error) {
@@ -97,6 +110,7 @@ export const refreshCurrentContextDependents = async (
   }
   if (progress !== undefined) {
     const outcome = await progress;
+    if (dependencies.shouldContinue?.() === false) return;
     if (outcome.error !== undefined) {
       await dependencies.reportPullRequestProgressError(outcome.error);
     }

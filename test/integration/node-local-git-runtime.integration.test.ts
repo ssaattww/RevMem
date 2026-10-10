@@ -30,14 +30,7 @@ const commit = ${JSON.stringify(commitObjectId)};
 const blob = ${JSON.stringify(blobObjectId)};
 if (args.join(" ") === "rev-parse --verify --quiet " + commit + "^{commit}") {
   process.stdout.write(commit + "\\n");
-} else if (
-  args[0] === "ls-tree" &&
-  args[1] === "--full-tree" &&
-  args[2] === "-z" &&
-  args[3] === commit &&
-  args[4] === "--" &&
-  args[5] === ":(literal)fixture.txt"
-) {
+} else if (args.join(" ") === "ls-tree --full-tree -z " + commit + " -- :(literal)fixture.txt") {
   process.stdout.write("100644 blob " + blob + "\\tfixture.txt\\0");
 } else if (args.join(" ") === "cat-file blob " + blob) {
   process.stdout.write("portable content\\n");

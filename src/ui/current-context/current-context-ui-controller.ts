@@ -15,8 +15,14 @@ export interface CurrentContextDescriptor {
   readonly headRevision?: string;
   /** Immutable fetched revision used only for PR synchronization; editor ownership remains on headRevision. */
   readonly pullRequestSynchronizationRevision?: string;
+  /** Verified checked-out branch from candidate acquisition; never a display label or guessed PR branch. */
+  readonly verifiedBranchRef?: string;
   /** Runtime identity shared with commands and editor decoration reads. */
   readonly selection?: SelectedReviewContext;
+  readonly selectionReason?: "explicit-selection-kept" | "unique-pr-match" | "ambiguous-pr-match" | "no-matching-pr" | "no-selected-pr";
+  readonly pullRequestCandidateCount?: number;
+  /** Safe acquisition provenance when optional PR enrichment fails but a verified branch survives. */
+  readonly pullRequestAcquisition?: "failed-branch-preserved";
 }
 
 export interface CurrentContextProgress {

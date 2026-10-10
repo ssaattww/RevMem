@@ -24,14 +24,13 @@ const FULL_OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const LS_TREE_ENTRY_PATTERN = /^([0-7]{6}) (blob|tree|commit) ([0-9a-f]{40}|[0-9a-f]{64})$/u;
 const MAX_LS_TREE_PATHSPEC_ARGUMENT_UNITS = 28 * 1024;
 const MAX_LS_TREE_PATHSPEC_COUNT = 128;
+const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
 interface GitTreeEntry {
   readonly mode: string;
   readonly type: "blob" | "tree" | "commit";
   readonly objectId: string;
 }
-
-const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
 /** VS Code境界でopened documentのencoding hintを適用するdecoder。 */
 export type GitBlobTextDecoder = (
@@ -82,6 +81,23 @@ const firstOutputLine = (output: string, name: string): string => {
   }
 
   return line;
+};
+
+const parseLsTreeBlobObjectId = (output: string, expectedPath: string): string | undefined => {
+  if (output.length === 0) return undefined;
+  if (!output.endsWith("\0")) throw new Error("git ls-tree output is not NUL terminated");
+
+  const records = output.slice(0, -1).split("\0");
+  if (records.length !== 1) throw new Error("git ls-tree returned an ambiguous exact-path result");
+  const separator = records[0]!.indexOf("\t");
+  if (separator < 0) throw new Error("git ls-tree output is missing its path separator");
+  const metadata = records[0]!.slice(0, separator);
+  const returnedPath = records[0]!.slice(separator + 1);
+  const match = LS_TREE_ENTRY_PATTERN.exec(metadata);
+  if (match === null || returnedPath !== expectedPath) {
+    throw new Error("git ls-tree output does not match the requested exact path");
+  }
+  return match[2] === "blob" ? match[3] : undefined;
 };
 
 const parseLsTreeEntries = (
@@ -172,39 +188,6 @@ const rootRepositoryId = (rootPath: string): string => {
   return `git-root:${digest}`;
 };
 
-const parseLsTreeBlobObjectId = (
-  output: string,
-  expectedPath: string
-): string | undefined => {
-  if (output.length === 0) {
-    return undefined;
-  }
-  if (!output.endsWith("\0")) {
-    throw new Error("git ls-tree output is not NUL terminated");
-  }
-
-  const records = output.slice(0, -1).split("\0");
-  if (records.length !== 1) {
-    throw new Error("git ls-tree returned an ambiguous exact-path result");
-  }
-
-  const record = records[0]!;
-  const separator = record.indexOf("\t");
-  if (separator < 0) {
-    throw new Error("git ls-tree output is missing its path separator");
-  }
-  const metadata = record.slice(0, separator);
-  const returnedPath = record.slice(separator + 1);
-  const match = LS_TREE_ENTRY_PATTERN.exec(metadata);
-  if (match === null || returnedPath !== expectedPath) {
-    throw new Error("git ls-tree output does not match the requested exact path");
-  }
-  if (match[2] !== "blob") {
-    return undefined;
-  }
-  return match[3]!;
-};
-
 const isMissingObjectExit = (result: GitCommandResult): boolean =>
   result.exitCode === 1 || result.exitCode === 128;
 
@@ -226,6 +209,9 @@ const isUnbornHeadResult = (result: GitCommandResult): boolean =>
  * blob bytes through the injected `GitBlobReader`.
  */
 export class LocalGitAdapter {
+  /** Recently verified immutable commits avoid repeating the same commit peel for every PR file. */
+  private readonly verifiedCommits = new Map<string, true>();
+  private static readonly VERIFIED_COMMIT_LIMIT = 128;
   /**
    * Creates the adapter with explicit metadata and blob-content boundaries.
    *
@@ -259,6 +245,7 @@ export class LocalGitAdapter {
       requireCanonicalRepositoryRelativePath(candidate, fileSystemPathSemantics, "repositoryRelativePath")))];
     if (paths.length === 0) return new Map();
 
+    const commitKey = `${rootPath}\0${object}`;
     const verifyCommit = async (): Promise<boolean> => {
       const revisionInvocation: GitCommandInvocation = {
         cwd: rootPath,
@@ -270,9 +257,20 @@ export class LocalGitAdapter {
       this.requireSuccess(revisionInvocation, revisionResult);
       return firstOutputLine(revisionResult.stdout, "immutable commit object") === object;
     };
-    if (!await verifyCommit()) {
-      return new Map(paths.map((filePath) => [filePath, { kind: "missing-revision" } as const]));
+    const touchCommit = (): void => {
+      this.verifiedCommits.delete(commitKey);
+      this.verifiedCommits.set(commitKey, true);
+      if (this.verifiedCommits.size > LocalGitAdapter.VERIFIED_COMMIT_LIMIT) {
+        const oldest = this.verifiedCommits.keys().next().value;
+        if (oldest !== undefined) this.verifiedCommits.delete(oldest);
+      }
+    };
+    if (!this.verifiedCommits.has(commitKey)) {
+      if (!await verifyCommit()) {
+        return new Map(paths.map((filePath) => [filePath, { kind: "missing-revision" } as const]));
+      }
     }
+    touchCommit();
 
     // This result map is request-local: interrupted metadata is never memoized.
     const entries = new Map<string, GitTreeEntry>();
@@ -285,9 +283,11 @@ export class LocalGitAdapter {
       const result = await this.commandExecutor.execute(invocation, feedbackContext, signal);
       assertActive();
       if (result.exitCode === 1 || result.exitCode === 128) {
+        this.verifiedCommits.delete(commitKey);
         if (!await verifyCommit()) {
           return new Map(paths.map((filePath) => [filePath, { kind: "missing-revision" } as const]));
         }
+        touchCommit();
         if (result.exitCode === 1) continue;
       }
       this.requireSuccess(invocation, result);
@@ -615,42 +615,60 @@ export class LocalGitAdapter {
       fileSystemPathSemantics,
       "repositoryRelativePath"
     );
-    const revisionInvocation: GitCommandInvocation = {
-      cwd: rootPath,
-      argumentsList: [
-        "rev-parse",
-        "--verify",
-        "--quiet",
-        `${object}^{commit}`
-      ]
-    };
-    const revisionResult = await this.commandExecutor.execute(revisionInvocation, feedbackContext, signal);
-
-    if (revisionResult.exitCode === 1) {
-      return { kind: "missing-revision" };
+    const commitKey = `${rootPath}\0${object}`;
+    const commitWasCached = this.verifiedCommits.has(commitKey);
+    if (!commitWasCached) {
+      const revisionInvocation: GitCommandInvocation = {
+        cwd: rootPath,
+        argumentsList: ["rev-parse", "--verify", "--quiet", `${object}^{commit}`]
+      };
+      const revisionResult = await this.commandExecutor.execute(revisionInvocation, feedbackContext, signal);
+      if (revisionResult.exitCode === 1) return { kind: "missing-revision" };
+      this.requireSuccess(revisionInvocation, revisionResult);
+      if (firstOutputLine(revisionResult.stdout, "immutable commit object") !== object) {
+        return { kind: "missing-revision" };
+      }
+      this.verifiedCommits.delete(commitKey);
+      this.verifiedCommits.set(commitKey, true);
+      if (this.verifiedCommits.size > LocalGitAdapter.VERIFIED_COMMIT_LIMIT) {
+        const oldest = this.verifiedCommits.keys().next().value;
+        if (oldest !== undefined) this.verifiedCommits.delete(oldest);
+      }
+    } else {
+      this.verifiedCommits.delete(commitKey);
+      this.verifiedCommits.set(commitKey, true);
     }
-    this.requireSuccess(revisionInvocation, revisionResult);
-    if (firstOutputLine(revisionResult.stdout, "immutable commit object") !== object) {
-      return { kind: "missing-revision" };
-    }
 
+    // Resolve the exact immutable path directly. `ls-tree` used to spawn a
+    // second metadata process for every side of every PR file even though the
+    // commit had already been validated above.
     const fileInvocation: GitCommandInvocation = {
       cwd: rootPath,
-      argumentsList: [
-        "ls-tree",
-        "--full-tree",
-        "-z",
-        object,
-        "--",
-        `:(literal)${filePath}`
-      ]
+      argumentsList: ["ls-tree", "--full-tree", "-z", object, "--", `:(literal)${filePath}`]
     };
     const fileResult = await this.commandExecutor.execute(fileInvocation, feedbackContext, signal);
+    if (fileResult.exitCode === 1 || fileResult.exitCode === 128) {
+      // A cached commit may have been pruned after an earlier successful read.
+      // Recheck after an object lookup failure so stale cache entries cannot
+      // turn a missing revision into an unrelated Git error.
+      this.verifiedCommits.delete(commitKey);
+      const revisionInvocation: GitCommandInvocation = {
+        cwd: rootPath,
+        argumentsList: ["rev-parse", "--verify", "--quiet", `${object}^{commit}`]
+      };
+      const revisionResult = await this.commandExecutor.execute(revisionInvocation, feedbackContext, signal);
+      if (revisionResult.exitCode === 1) return { kind: "missing-revision" };
+      this.requireSuccess(revisionInvocation, revisionResult);
+      if (firstOutputLine(revisionResult.stdout, "immutable commit object") !== object) {
+        return { kind: "missing-revision" };
+      }
+      this.verifiedCommits.set(commitKey, true);
+      if (fileResult.exitCode === 1) return { kind: "missing-file" };
+      this.requireSuccess(fileInvocation, fileResult);
+    }
     this.requireSuccess(fileInvocation, fileResult);
     const blobObjectId = parseLsTreeBlobObjectId(fileResult.stdout, filePath);
-    if (blobObjectId === undefined) {
-      return { kind: "missing-file" };
-    }
+    if (blobObjectId === undefined) return { kind: "missing-file" };
 
     const bytes = await this.blobReader.readBlob(rootPath, blobObjectId, feedbackContext, signal);
     if (signal?.aborted) throw new DOMException("Git revision content read was superseded.", "AbortError");

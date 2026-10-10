@@ -4,6 +4,13 @@ import test from "node:test";
 
 import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index";
 import {
+  OperationFeedback,
+  type OperationFeedbackContext,
+  type OperationFeedbackHost,
+  type OperationLogEntry,
+  type PullRequestRefreshDiagnostic,
+} from "../../src/application/operation-feedback/index";
+import {
   gitCurrentContextSnapshot,
   inspectCurrentContextDocument,
   isNonGitCurrentContextWorkspace,
@@ -12,6 +19,7 @@ import {
 } from "../../src/composition/current-context/git-context-inspection";
 import { resolveCurrentContextRepositories } from "../../src/application/review-context/repository-resolution";
 import {
+  CurrentContextBranchRefreshError,
   CurrentContextRuntimeCoordinator,
   CurrentContextCandidateSelection,
   CurrentContextRuntimeComposition,
@@ -38,6 +46,105 @@ const branchSnapshot = (
     }
   },
   progress: undefined
+});
+
+test("Issue #136 keeps a verified branch and clears old PR Progress when the refreshed PR list fails", async () => {
+  const events: string[] = [];
+  const branch = branchSnapshot("checked-out", "refs/heads/checked-out");
+  const controller = new CurrentContextUiController(createHost(events), {
+    recompute: async () => branch,
+    selectContext: async () => branch,
+  });
+  const coordinator = new CurrentContextRuntimeCoordinator(controller, {
+    setSelectedContext: (selection) => events.push(`selection:${selection?.kind ?? "none"}`),
+    acceptCurrentContextPreparation: (selection) => events.push(`preparation:${selection?.kind ?? "none"}`),
+    refreshDependents: async () => {
+      events.push("refresh-list");
+      throw new Error("private repository path must not be copied to the UI");
+    },
+    clearPullRequestProgress: () => { events.push("clear-old-progress"); },
+  });
+
+  await assert.rejects(
+    () => coordinator.refreshFromReviewContexts(),
+    (error: unknown) => error instanceof CurrentContextBranchRefreshError,
+  );
+
+  assert.deepEqual(events, [
+    "tree:Branch: checked-out",
+    "status:$(git-branch) checked-out",
+    "selection:branch",
+    "preparation:branch",
+    "refresh-list",
+    "clear-old-progress",
+  ]);
+});
+
+test("Issue #136 coalesces an identical active-editor refresh and records the replacement cause", async () => {
+  const entries: OperationLogEntry[] = [];
+  const feedbackHost: OperationFeedbackHost = {
+    showBusy() {}, clearBusy() {}, appendLog(entry) { entries.push(entry); }, revealLog() {},
+  };
+  const feedback = new OperationFeedback(feedbackHost, () => 1);
+  const pending: Array<() => void> = [];
+  const signals: AbortSignal[] = [];
+  const starts: Array<() => void> = [];
+  let recomputes = 0;
+  const controller = {
+    refresh: (signal?: AbortSignal) => {
+      recomputes += 1;
+      if (signal !== undefined) signals.push(signal);
+      const finish = new Promise<void>((resolve) => {
+        pending.push(resolve);
+        starts[recomputes - 1]?.();
+      });
+      return finish.then(() => ({ snapshot: branchSnapshot("active", "refs/heads/active"), stale: false }));
+    },
+    selectContext: async () => branchSnapshot("active", "refs/heads/active"),
+    failClosed() {},
+  } as unknown as CurrentContextUiController;
+  const coordinator = new CurrentContextRuntimeCoordinator(controller, { refreshDependents() {} });
+  const refreshWithKey = coordinator.refresh.bind(coordinator) as unknown as (
+    signal: AbortSignal | undefined,
+    context: OperationFeedbackContext,
+    options: undefined,
+    trigger: "active-editor-change",
+    request: { readonly coalescingKey: string },
+  ) => Promise<void>;
+  const firstStarted = new Promise<void>((resolve) => { starts[0] = resolve; });
+  const first = feedback.run("Current Contextを更新", (context) =>
+    refreshWithKey(undefined, context, undefined, "active-editor-change", { coalescingKey: "file:///private/one.ts" }));
+  await firstStarted;
+  const second = feedback.run("Current Contextを更新", (context) =>
+    refreshWithKey(undefined, context, undefined, "active-editor-change", { coalescingKey: "file:///private/one.ts" }));
+  await Promise.resolve();
+  assert.equal(recomputes, 1, "the duplicate request should join the in-flight recomputation");
+  assert.equal(signals[0]?.aborted, false, "coalescing must not abort the current owner");
+
+  const secondStarted = new Promise<void>((resolve) => { starts[1] = resolve; });
+  const replacement = feedback.run("Current Contextを更新", (context) =>
+    refreshWithKey(undefined, context, undefined, "active-editor-change", { coalescingKey: "file:///private/two.ts" }));
+  await secondStarted;
+  const coalesced = entries.find((entry) => String(entry.pullRequestRefresh?.status) === "coalesced");
+  assert.ok(coalesced, "the coalesced trigger must be visible in diagnostics");
+  assert.equal(coalesced?.pullRequestRefresh?.reasonCode, "duplicate-trigger-coalesced");
+  const replacementTerminal = entries.find((entry) => entry.pullRequestRefresh?.generation === 1 &&
+    entry.pullRequestRefresh.stage === "current-context" && entry.pullRequestRefresh.status === "superseded");
+  const replacementDetails = replacementTerminal?.pullRequestRefresh as (PullRequestRefreshDiagnostic & {
+    readonly supersededByGeneration?: number;
+    readonly causedByOperationId?: number;
+  });
+  assert.equal(replacementDetails?.supersededByGeneration, 2);
+  assert.equal(replacementDetails?.causedByOperationId, 3);
+  assert.equal(signals[0]?.aborted, true, "a different editor request must abort the stale generation");
+  assert.doesNotMatch(JSON.stringify(entries), /private\/one|private\/two|one\.ts|two\.ts/u,
+    "coalescing identities stay internal and never enter Output logs");
+
+  pending[1]!();
+  await replacement;
+  pending[0]!();
+  await Promise.all([first, second]);
+  assert.equal(recomputes, 2, "only the changed request should start new work");
 });
 
 const pullRequestSnapshot: CurrentContextUiSnapshot = {

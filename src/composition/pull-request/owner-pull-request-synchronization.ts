@@ -50,6 +50,8 @@ export interface PullRequestOwnerSynchronizationResult {
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
+const OWNER_LIFECYCLE_READ_CONCURRENCY = 4;
+
 const withoutUpdatedAt = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(withoutUpdatedAt);
   if (value === null || typeof value !== "object") return value;
@@ -144,16 +146,30 @@ export const synchronizePullRequestOwner = async (
 
   const resolvedUpdates = new Map<string, UpdatePullRequestContextInput>();
   const unavailableContextIds: string[] = [];
-  for (const context of expected.contextStates) {
+  const pullRequestContexts = expected.contextStates.filter(
+    (context) => context.kind === "pull-request" && context.pullRequest !== undefined,
+  );
+  for (let offset = 0; offset < pullRequestContexts.length; offset += OWNER_LIFECYCLE_READ_CONCURRENCY) {
     assertCurrent(signal);
-    if (context.kind !== "pull-request" || context.pullRequest === undefined) continue;
-    const input = await dependencies.resolveUpdate(context, signal);
+    const batch = pullRequestContexts.slice(offset, offset + OWNER_LIFECYCLE_READ_CONCURRENCY);
+    const settled = await Promise.allSettled(batch.map(async (context) => {
+      assertCurrent(signal);
+      const input = await dependencies.resolveUpdate(context, signal);
+      assertCurrent(signal);
+      return { context, input };
+    }));
     assertCurrent(signal);
-    if (input === undefined) {
-      unavailableContextIds.push(context.contextId);
-      continue;
+    const failure = settled.find((result): result is PromiseRejectedResult => result.status === "rejected");
+    if (failure !== undefined) throw failure.reason;
+    for (const result of settled) {
+      if (result.status !== "fulfilled") continue;
+      const { context, input } = result.value;
+      if (input === undefined) {
+        unavailableContextIds.push(context.contextId);
+        continue;
+      }
+      resolvedUpdates.set(context.contextId, clone(input));
     }
-    resolvedUpdates.set(context.contextId, clone(input));
   }
   if (unavailableContextIds.length > 0) {
     return emptyResult(unavailableContextIds);
