@@ -117,7 +117,7 @@ Git 管理下では、branch や HEAD が変わったときに commit 間の差�
 
 Git 管理外の workspace ファイルでは、圧縮 snapshot と行差分を使って再起動後も追従します。snapshot が利用できない場合や対応が曖昧な場合は、保守的に未確認へ戻します。
 
-workspace 外のファイルは external-file context として保存します。Remote workspace や UNC では authority を含む URI を使って識別します。
+Git 管理下のファイルは workspace の内外を問わず Git context を優先します。Git 管理外で workspace 外のファイルは external-file context として保存します。Remote workspace や UNC では authority を含む URI を使って識別します。
 
 ## PR をレビューする
 
@@ -172,11 +172,11 @@ PR Progress と Global Understanding は同じ除外設定 `reviewRange.exclude`
 | `reviewRange.showGutterIcon` | `true` | 確認済み行のガターアイコンを表示します。 |
 | `reviewRange.showOverviewRuler` | `false` | 確認済み範囲を Overview Ruler に表示します。 |
 | `reviewRange.globalUnderstanding.autoStartDescendants` | `false` | 開いたファイルより深い Global Understanding scope を自動開始します。停止済み scope は再開しません。 |
-| `reviewRange.diagnostics.detailed` | `false` | 再計算理由、処理内訳、対象ファイル名 / path などの詳細診断を Output と進捗 tooltip に表示します。 |
-| `reviewRange.exclude` | `**/.git/**`, `**/node_modules/**`, `**/bin/**`, `**/obj/**`, `**/dist/**`, `**/build/**` | PR Progress と Global Understanding の集計対象から除外する glob 配列です。 |
+| `reviewRange.diagnostics.detailed` | `false` | 詳細診断を有効にし、再計算理由・処理段階を Review Range Output と進捗 tooltip へ表示します。通常・詳細のいずれも対象ファイル名/パスは出力しません。 |
+| `reviewRange.exclude` | `**/.git/**`、`**/node_modules/**`、`**/bin/**`、`**/obj/**`、`**/dist/**`、`**/build/**` | PR 進捗と Global 理解率の集計対象から除外する glob 配列です。有効な配列は既定値を上書きし、空配列では binary と `.git` 以外を再包含します。 |
 | `reviewRange.maxSnapshotFileSizeBytes` | `5242880` | Git 管理外ファイルの 1 snapshot で許可する圧縮後の最大 byte 数です。 |
 
-`reviewRange.diagnostics.detailed` を有効にするとファイル名や path が診断へ出るため、機密情報を含む repository では出力内容に注意してください。
+
 
 ## 現在の制限
 
@@ -187,6 +187,8 @@ PR Progress と Global Understanding は同じ除外設定 `reviewRange.exclude`
 - Git / GitHub / storage の取得や保存に失敗した場合、不確実な結果を確認済みとして採用しません。
 
 実装中タスクや既知課題の詳細は [tasks/tasks-status.md](tasks/tasks-status.md) を参照してください。
+
+PR Progress の refresh 診断では、operation/generation と `repository=repo-N`、`branch=branch-N`、`pullRequest=pr-N`、`context=context-N`、`snapshot=snapshot-N` によって、検証済み選択から登録・Progress・Tree 公開までを追跡できます。未検証の対象は省略されます。alias は実行中の owner 内だけで有効で、完了・取消時に対応表を破棄し、別更新では同じ対象にも新しい参照を発行します。通常・詳細とも、生の repository/branch/PR番号/URL/revision/context/file/path、source/diff、例外文や秘密値を出力しません。
 
 ## 開発・検証
 

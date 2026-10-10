@@ -30,7 +30,7 @@ READMEを利用者向けに読みやすく再構成し、主要機能、操作�
 
 ## 対象外
 
-- 製品コード、テスト、workflow、設定定義の変更
+- 製品コード、workflow、設定定義の変更。例外として、README契約との一致に必要な既存テストの期待値を修正した（詳細は「T405 README contract focused test」）。
 - 既存の製品仕様変更
 - Issue / task status の変更
 - Marketplace配布方法の変更
@@ -172,7 +172,8 @@ repositoryには次のMarkdown専用wiringが存在しない。
 - `tasks/tasks-status.md`: 製品タスクの状態変更がないため未変更
 - `package.json`: 設定定義自体は変更していない
 - `.github/workflows/ci.yml`: 必要な失敗診断artifactが既に存在するため未変更
-- source / test: documentation-onlyのため未変更
+- source: 未変更
+- test: 既存 `test/unit/t405-review-followup.test.ts:258` の期待値を、README の利用者向け表現に合わせて変更。検証結果は「T405 README contract focused test」を参照。
 
 ## 残る制約・リスク
 
