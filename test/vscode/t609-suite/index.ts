@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
 import * as vscode from "vscode";
@@ -87,8 +88,27 @@ interface ReviewStateFileSnapshot {
   readonly reviewed: readonly ReviewedIntervalSnapshot[];
 }
 
-const within = async <Value>(_label: string, work: PromiseLike<Value>): Promise<Value> =>
-  Promise.resolve(work);
+// Extension Host console output is not forwarded into the launcher's captured
+// stdout. Keep fixed test-stage observations in the existing CI artifact root.
+const stageDirectory = path.resolve(__dirname, "../../../../test-output/t609-host-stages");
+const observeStage = (label: string, status: "started" | "succeeded" | "failed"): void => {
+  mkdirSync(stageDirectory, { recursive: true });
+  appendFileSync(path.join(stageDirectory, `${phase}.jsonl`),
+    `${JSON.stringify({ phase, label, status, timestamp: new Date().toISOString() })}\n`, "utf8");
+  console.info(`T609 stage ${status}: ${label}`);
+};
+
+const within = async <Value>(label: string, work: PromiseLike<Value>): Promise<Value> => {
+  observeStage(label, "started");
+  try {
+    const result = await Promise.resolve(work);
+    observeStage(label, "succeeded");
+    return result;
+  } catch (error) {
+    observeStage(label, "failed");
+    throw error;
+  }
+};
 
 const fixtureUri = (folder: vscode.WorkspaceFolder, name: string): vscode.Uri =>
   vscode.Uri.joinPath(folder.uri, name);
@@ -97,12 +117,12 @@ const fixtureUri = (folder: vscode.WorkspaceFolder, name: string): vscode.Uri =>
 const assertCheckoutListClearsOldPrProgress = async (folder: vscode.WorkspaceFolder, api: T609ExtensionApi): Promise<void> => {
   const gitExtension = vscode.extensions.getExtension<VscodeGitExtension>("vscode.git");
   assert.ok(gitExtension);
-  const repository = (await gitExtension.activate()).getAPI(1).getRepository(folder.uri);
+  const repository = (await within("Issue136 activate Git extension", gitExtension.activate())).getAPI(1).getRepository(folder.uri);
   assert.ok(repository);
   const baseSha = "1".repeat(40), headSha = "2".repeat(40);
   const contextId = "github-pr:fixture.invalid/issue136/old-branch#136";
   const filePath = "fixtures/branch-switch-disappears.ts";
-  await api.initializePullRequestReviewRuntimeForTest({
+  await within("Issue136 initialize old PR fixture", api.initializePullRequestReviewRuntimeForTest({
     repositoryId: "fixture.invalid/issue136/old-branch", repositoryRoot: folder.uri.fsPath, pullRequestNumber: 136,
     snapshot: { contextId, baseSha, headSha, originalDiffId: `${baseSha}..${headSha}`, files: [{
       fileId: "old-pr-file", oldPath: filePath, newPath: filePath, status: "modified", additions: 1, deletions: 1,
@@ -111,20 +131,20 @@ const assertCheckoutListClearsOldPrProgress = async (folder: vscode.WorkspaceFol
       ] }],
     }] },
     texts: [{ revision: baseSha, filePath, content: "old\n" }, { revision: headSha, filePath, content: "new\n" }],
-  });
+  }));
   const previous = api.getActivePullRequestProgressTreeForTest();
   assert.equal(previous.length, 1, "the real Host Tree must initially contain the old PR");
   assert.deepEqual([previous[0]!.openTarget.contextId, previous[0]!.openTarget.baseSha, previous[0]!.openTarget.headSha], [contextId, baseSha, headSha]);
   try {
-    await repository.checkout("t609-enoent-recovery");
-    await vscode.commands.executeCommand("reviewRange.refreshReviewContexts");
+    await within("Issue136 checkout recovery branch", repository.checkout("t609-enoent-recovery"));
+    await within("Issue136 public list refresh", vscode.commands.executeCommand("reviewRange.refreshReviewContexts"));
     const selected = JSON.parse(api.getCurrentContextCancellationSnapshotForTest().selectedContext ?? "null") as { kind?: string; branchRef?: string } | null;
     assert.equal(selected?.kind, "branch", "checkout/list must accept the verified branch when there is no matching registered PR");
     assert.equal(selected?.branchRef, "refs/heads/t609-enoent-recovery");
     assert.deepEqual(api.getActivePullRequestProgressTreeForTest(), [], "the actual rendered Tree must not retain the old-branch PR snapshot");
   } finally {
-    await repository.checkout("main");
-    await vscode.commands.executeCommand("reviewRange.refreshContext");
+    await within("Issue136 restore main branch", repository.checkout("main"));
+    await within("Issue136 restore Current Context", vscode.commands.executeCommand("reviewRange.refreshContext"));
   }
 };
 
