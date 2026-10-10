@@ -123,6 +123,7 @@ const assertCheckoutListClearsOldPrProgress = async (folder: vscode.WorkspaceFol
   const contextId = "github-pr:fixture.invalid/issue136/old-branch#136";
   const filePath = "fixtures/branch-switch-disappears.ts";
   await within("Issue136 initialize old PR fixture", api.initializePullRequestReviewRuntimeForTest({
+    followCurrentContextSelection: true,
     repositoryId: "fixture.invalid/issue136/old-branch", repositoryRoot: folder.uri.fsPath, pullRequestNumber: 136,
     snapshot: { contextId, baseSha, headSha, originalDiffId: `${baseSha}..${headSha}`, files: [{
       fileId: "old-pr-file", oldPath: filePath, newPath: filePath, status: "modified", additions: 1, deletions: 1,

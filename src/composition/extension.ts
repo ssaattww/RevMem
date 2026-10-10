@@ -104,6 +104,8 @@ export interface PullRequestReviewRuntimeTestFixture {
   readonly repositoryRoot: string;
   readonly pullRequestNumber: number;
   readonly snapshot: PullRequestDiffSnapshot;
+  /** Opts a checkout fixture into accepted Current Context ownership. */
+  readonly followCurrentContextSelection?: boolean;
   readonly texts: readonly {
     readonly revision: string;
     readonly filePath: string;
@@ -180,7 +182,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   let testCurrentContextSelectionRequestCount = 0;
   let testCurrentContextStaleAfterPick = false;
   let testCurrentContextDependentRefreshCount = 0;
-  let testPullRequestRuntimeTarget: { readonly repositoryId: string; readonly contextId: string } | undefined;
+  let testPullRequestRuntimeTarget: {
+    readonly repositoryId: string;
+    readonly contextId: string;
+    readonly followCurrentContextSelection?: boolean;
+  } | undefined;
   const pullRequestReviewRuntimeRef: { current?: PullRequestReviewRuntime<vscode.Uri> } = {};
   const acceptSelectedContext = (next: SelectedReviewContext | undefined): void => {
     selectedContext = next;
@@ -597,9 +603,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     readonly reportDerivedProjectionError: (error: unknown) => void | Promise<void>;
   });
   const refreshPullRequestProgressForSelection = async (feedbackContext?: OperationFeedbackContext, owner?: CurrentContextRefreshContext, selection: SelectedReviewContext | undefined = selectedContext): Promise<void> => {
-    // Direct fixture operations stay pinned; coordinated refreshes must use
-    // the accepted Current Context identity, including branch/no-PR selection.
-    const testContextId = context.extensionMode === vscode.ExtensionMode.Test && owner === undefined
+    // Existing immutable-PR fixtures stay pinned. Checkout fixtures explicitly
+    // follow the accepted identity during coordinated branch/no-PR refreshes.
+    const testContextId = context.extensionMode === vscode.ExtensionMode.Test &&
+      (owner === undefined || testPullRequestRuntimeTarget?.followCurrentContextSelection !== true)
       ? testPullRequestRuntimeTarget?.contextId
       : undefined;
     const contextId = testContextId ?? (selection?.kind === "pull-request" &&
@@ -729,7 +736,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     });
     testPullRequestRuntimeTarget = {
       repositoryId: input.repositoryId,
-      contextId: snapshot.contextId
+      contextId: snapshot.contextId,
+      followCurrentContextSelection: input.followCurrentContextSelection,
     };
     await refreshPullRequestProgressForSelection();
   };
