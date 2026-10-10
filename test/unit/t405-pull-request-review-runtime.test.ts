@@ -1611,3 +1611,41 @@ test("PR runtime keeps actual repository state atomic through write and CAS fail
     await rm(storageRoot, { recursive: true, force: true });
   }
 });
+
+test("PR Progress batches immutable content reads and reuses the results during line reviewability", async () => {
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository: new MemoryRepository(),
+    requestHistory: async () => undefined,
+    diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+  });
+  const requested: string[][] = [];
+  let singleReadCount = 0;
+  runtime.register({
+    repositoryId: REPOSITORY_ID,
+    repositoryRoot: "/repo",
+    fileSystemPathSemantics: "posix",
+    snapshot,
+    readTextContent: async () => {
+      singleReadCount += 1;
+      return { kind: "found", content: "new" };
+    },
+    readTextContents: async (descriptors) => {
+      requested.push(descriptors.map((descriptor) => descriptor.filePath));
+      return descriptors.map((descriptor) => ({
+        kind: "found" as const,
+        content: descriptor.revision === A ? "old" : "new",
+      }));
+    },
+  });
+
+  await runtime.activateProgress(CONTEXT_ID);
+
+  assert.deepEqual(requested, [["src/example.ts"]]);
+  assert.equal(singleReadCount, 0, "the line-reviewability pass must consume the completed batch cache");
+  assert.deepEqual(await runtime.getProgress(CONTEXT_ID), {
+    reviewedLineCount: 0,
+    totalLineCount: 2,
+    progress: 0,
+  });
+});

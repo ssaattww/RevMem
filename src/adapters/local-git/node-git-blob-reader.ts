@@ -7,6 +7,7 @@ import {
   type GitCommandResult
 } from "./contracts";
 import type { GitBlobReader } from "./git-blob-reader";
+import { NodeGitBlobBatchTransport } from "./node-git-blob-batch-transport.js";
 
 const OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 
@@ -59,6 +60,7 @@ export class NodeGitBlobReader implements GitBlobReader {
   public readonly executable: string;
   private readonly timeoutMs: number;
   private readonly terminationGraceMs: number;
+  private readonly batchTransport: NodeGitBlobBatchTransport;
 
   public constructor(options: NodeGitBlobReaderOptions = {}) {
     const executable = options.executable ?? "git";
@@ -74,6 +76,11 @@ export class NodeGitBlobReader implements GitBlobReader {
       options.terminationGraceMs ?? 250,
       "terminationGraceMs"
     );
+    this.batchTransport = new NodeGitBlobBatchTransport({
+      executable: this.executable,
+      timeoutMs: this.timeoutMs,
+      terminationGraceMs: this.terminationGraceMs,
+    });
   }
 
   public readBlob(
@@ -102,9 +109,25 @@ export class NodeGitBlobReader implements GitBlobReader {
       const lifecycleDiagnostics: string[] = [];
       let settled = false;
       let timedOut = false;
+      let terminationStarted = false;
+      let processClosed = false;
+      let capturingOutput = true;
       let timeoutDiagnostic = "";
       let terminationTimer: NodeJS.Timeout | undefined;
       let forceCloseTimer: NodeJS.Timeout | undefined;
+
+      const onStdoutData = (chunk: Buffer | Uint8Array): void => {
+        if (capturingOutput) stdoutChunks.push(Buffer.from(chunk));
+      };
+      const onStderrData = (chunk: Buffer | Uint8Array): void => {
+        if (capturingOutput) stderrChunks.push(Buffer.from(chunk));
+      };
+      const stopCapturingOutput = (): void => {
+        if (!capturingOutput) return;
+        capturingOutput = false;
+        child.stdout.removeListener("data", onStdoutData);
+        child.stderr.removeListener("data", onStderrData);
+      };
 
       const clearTimers = (): void => {
         clearTimeout(timeout);
@@ -119,10 +142,11 @@ export class NodeGitBlobReader implements GitBlobReader {
 
       const onAbort = (): void => {
         if (settled) return;
-        child.kill("SIGTERM");
         settled = true;
-        clearTimers();
         reject(new DOMException("Git blob read was superseded.", "AbortError"));
+        clearTimeout(timeout);
+        stopCapturingOutput();
+        beginTermination();
       };
 
       const capturedResult = (
@@ -148,15 +172,19 @@ export class NodeGitBlobReader implements GitBlobReader {
         }
         settled = true;
         clearTimers();
+        stopCapturingOutput();
         reject(new GitCommandFailedError(invocation, result));
       };
 
       const finishProcessError = (error: NodeJS.ErrnoException): void => {
         if (settled) {
+          clearTimers();
+          stopCapturingOutput();
           return;
         }
         settled = true;
         clearTimers();
+        stopCapturingOutput();
         if (error.code === "ENOENT") {
           reject(new GitExecutableNotFoundError(this.executable, { cause: error }));
           return;
@@ -165,23 +193,26 @@ export class NodeGitBlobReader implements GitBlobReader {
       };
 
       const forceBoundedFailure = (): void => {
-        if (settled) {
-          return;
-        }
+        if (processClosed) return;
         lifecycleDiagnostics.push(
           "Git process did not emit close after SIGKILL within the termination grace period."
         );
+        stopCapturingOutput();
         child.stdout.destroy();
         child.stderr.destroy();
         child.unref();
+        clearTimers();
         finishFailure(capturedResult(-1));
       };
 
       const escalateTermination = (): void => {
-        if (settled) {
-          return;
+        if (processClosed) return;
+        let sent = false;
+        try {
+          sent = child.kill("SIGKILL");
+        } catch (error) {
+          lifecycleDiagnostics.push(`SIGKILL could not be sent: ${String(error)}`);
         }
-        const sent = child.kill("SIGKILL");
         lifecycleDiagnostics.push(
           sent
             ? "Git process did not close after SIGTERM; sent SIGKILL."
@@ -190,39 +221,47 @@ export class NodeGitBlobReader implements GitBlobReader {
         forceCloseTimer = setTimeout(forceBoundedFailure, this.terminationGraceMs);
       };
 
-      const timeout = setTimeout(() => {
-        if (settled) {
-          return;
+      const beginTermination = (): void => {
+        if (terminationStarted || processClosed) return;
+        terminationStarted = true;
+        let sent = false;
+        try {
+          sent = child.kill("SIGTERM");
+        } catch (error) {
+          lifecycleDiagnostics.push(`SIGTERM could not be sent: ${String(error)}`);
         }
-        timedOut = true;
-        timeoutDiagnostic = `Git blob read timed out after ${this.timeoutMs} ms`;
-        const sent = child.kill("SIGTERM");
         if (!sent) {
           lifecycleDiagnostics.push(
             "SIGTERM could not be sent; waiting for process close before escalation."
           );
         }
-        terminationTimer = setTimeout(
-          escalateTermination,
-          this.terminationGraceMs
-        );
+        terminationTimer = setTimeout(escalateTermination, this.terminationGraceMs);
+      };
+
+      const timeout = setTimeout(() => {
+        if (settled || processClosed) {
+          return;
+        }
+        timedOut = true;
+        timeoutDiagnostic = `Git blob read timed out after ${this.timeoutMs} ms`;
+        beginTermination();
       }, this.timeoutMs);
       signal?.addEventListener("abort", onAbort, { once: true });
 
-      child.stdout.on("data", (chunk: Buffer | Uint8Array) => {
-        stdoutChunks.push(Buffer.from(chunk));
-      });
-      child.stderr.on("data", (chunk: Buffer | Uint8Array) => {
-        stderrChunks.push(Buffer.from(chunk));
-      });
+      child.stdout.on("data", onStdoutData);
+      child.stderr.on("data", onStderrData);
       child.on("error", (error: NodeJS.ErrnoException) => {
         if (timedOut) {
           lifecycleDiagnostics.push(`Git process error after timeout: ${error.message}`);
           return;
         }
+        if (settled && terminationStarted) return;
         finishProcessError(error);
       });
       child.on("close", (code, signal) => {
+        processClosed = true;
+        clearTimers();
+        stopCapturingOutput();
         if (settled) {
           return;
         }
@@ -248,5 +287,15 @@ export class NodeGitBlobReader implements GitBlobReader {
         });
       });
     });
+  }
+
+  public readBlobs(
+    repositoryRoot: string,
+    blobObjectIds: readonly string[],
+    onBlob: (blobObjectId: string, bytes: Uint8Array) => void | Promise<void>,
+    feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    return this.batchTransport.readBlobs(repositoryRoot, blobObjectIds, onBlob, signal, feedbackContext);
   }
 }

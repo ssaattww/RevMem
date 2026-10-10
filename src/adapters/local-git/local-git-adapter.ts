@@ -16,12 +16,21 @@ import {
   type LocalGitRepository,
   type LocalGitRepositoryInspection
 } from "./contracts";
-import type { GitBlobReader } from "./git-blob-reader";
+import { MAX_GIT_BLOB_BATCH_OBJECTS, GitBlobBatchObjectTooLargeError, type GitBlobReader } from "./git-blob-reader";
 import { normalizeGitRemoteUrl } from "./git-remote-normalization";
 import type { LocalGitRevisionTextReadResult } from "./revision-text-content";
 
 const FULL_OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const LS_TREE_ENTRY_PATTERN = /^([0-7]{6}) (blob|tree|commit) ([0-9a-f]{40}|[0-9a-f]{64})$/u;
+const MAX_LS_TREE_PATHSPEC_ARGUMENT_UNITS = 28 * 1024;
+const MAX_LS_TREE_PATHSPEC_COUNT = 128;
+
+interface GitTreeEntry {
+  readonly mode: string;
+  readonly type: "blob" | "tree" | "commit";
+  readonly objectId: string;
+}
+
 const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
 /** VS Code境界でopened documentのencoding hintを適用するdecoder。 */
@@ -73,6 +82,70 @@ const firstOutputLine = (output: string, name: string): string => {
   }
 
   return line;
+};
+
+const parseLsTreeEntries = (
+  output: string,
+  expectedPaths: ReadonlySet<string>,
+): ReadonlyMap<string, GitTreeEntry> => {
+  const entries = new Map<string, GitTreeEntry>();
+  if (output.length === 0) return entries;
+  if (!output.endsWith("\0")) throw new Error("git ls-tree output is not NUL terminated");
+  for (const record of output.slice(0, -1).split("\0")) {
+    const separator = record.indexOf("\t");
+    if (separator < 0) throw new Error("git ls-tree output is missing its path separator");
+    const metadata = record.slice(0, separator);
+    const returnedPath = record.slice(separator + 1);
+    const match = LS_TREE_ENTRY_PATTERN.exec(metadata);
+    if (match === null || !expectedPaths.has(returnedPath)) {
+      throw new Error("git ls-tree output does not match a requested exact path");
+    }
+    if (entries.has(returnedPath)) throw new Error("git ls-tree returned duplicate exact-path entries");
+    entries.set(returnedPath, {
+      mode: match[1]!,
+      type: match[2] as GitTreeEntry["type"],
+      objectId: match[3]!,
+    });
+  }
+  return entries;
+};
+
+// spawn(shell:false) still serializes argv on Windows. Doubling UTF-16 units
+// covers escaped backslashes/quotes; four units allow surrounding quotes,
+// argument separation, and the command-line terminator. UTF-8 remains the
+// tighter bound on non-Windows hosts and for some Unicode arguments.
+const pathspecCommandLineUpperBound = (pathspec: string): number =>
+  Math.max(
+    Buffer.byteLength(pathspec, "utf8") + 1,
+    pathspec.length * 2 + 4,
+  );
+
+const chunkPathspecs = (paths: readonly string[]): readonly (readonly string[])[] => {
+  const chunks: string[][] = [];
+  let chunk: string[] = [];
+  let usedUnits = 0;
+  for (const filePath of paths) {
+    const pathspec = `:(literal)${filePath}`;
+    const units = pathspecCommandLineUpperBound(pathspec);
+    if (units > MAX_LS_TREE_PATHSPEC_ARGUMENT_UNITS) {
+      throw new RangeError("Git pathspec exceeds the safe argument batch limit");
+    }
+    if (chunk.length > 0 && (
+      chunk.length >= MAX_LS_TREE_PATHSPEC_COUNT ||
+      usedUnits + units > MAX_LS_TREE_PATHSPEC_ARGUMENT_UNITS ||
+      // Git expands a parent directory when the same invocation also selects
+      // its descendant. Separate overlapping paths so every result stays exact.
+      chunk.some((existing) => filePath.startsWith(`${existing}/`) || existing.startsWith(`${filePath}/`))
+    )) {
+      chunks.push(chunk);
+      chunk = [];
+      usedUnits = 0;
+    }
+    chunk.push(filePath);
+    usedUnits += units;
+  }
+  if (chunk.length > 0) chunks.push(chunk);
+  return chunks;
 };
 
 const parseGitVersion = (stdout: string): string => {
@@ -165,6 +238,182 @@ export class LocalGitAdapter {
     private readonly blobReader: GitBlobReader,
     private readonly decodeWithHint?: GitBlobTextDecoder
   ) {}
+
+  /** Reads multiple exact paths with bounded ls-tree invocations and sequentially decoded blob batches. */
+  public async readTextFilesAtRevision(
+    repositoryRoot: string,
+    revision: string,
+    repositoryRelativePaths: readonly string[],
+    fileSystemPathSemantics: FileSystemPathSemantics,
+    feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
+    signal?: AbortSignal,
+    encodingHintsByPath?: ReadonlyMap<string, string>,
+  ): Promise<ReadonlyMap<string, LocalGitRevisionTextReadResult>> {
+    const assertActive = (): void => {
+      if (signal?.aborted) throw new DOMException("Git revision content read was superseded.", "AbortError");
+    };
+    assertActive();
+    const rootPath = requirePath(repositoryRoot, "repositoryRoot");
+    const object = requireImmutableCommitObjectId(revision, "revision");
+    const paths = [...new Set(repositoryRelativePaths.map((candidate) =>
+      requireCanonicalRepositoryRelativePath(candidate, fileSystemPathSemantics, "repositoryRelativePath")))];
+    if (paths.length === 0) return new Map();
+
+    const verifyCommit = async (): Promise<boolean> => {
+      const revisionInvocation: GitCommandInvocation = {
+        cwd: rootPath,
+        argumentsList: ["rev-parse", "--verify", "--quiet", `${object}^{commit}`]
+      };
+      const revisionResult = await this.commandExecutor.execute(revisionInvocation, feedbackContext, signal);
+      assertActive();
+      if (revisionResult.exitCode === 1) return false;
+      this.requireSuccess(revisionInvocation, revisionResult);
+      return firstOutputLine(revisionResult.stdout, "immutable commit object") === object;
+    };
+    if (!await verifyCommit()) {
+      return new Map(paths.map((filePath) => [filePath, { kind: "missing-revision" } as const]));
+    }
+
+    // This result map is request-local: interrupted metadata is never memoized.
+    const entries = new Map<string, GitTreeEntry>();
+    for (const chunk of chunkPathspecs(paths)) {
+      assertActive();
+      const invocation: GitCommandInvocation = {
+        cwd: rootPath,
+        argumentsList: ["ls-tree", "--full-tree", "-z", object, "--", ...chunk.map((filePath) => `:(literal)${filePath}`)]
+      };
+      const result = await this.commandExecutor.execute(invocation, feedbackContext, signal);
+      assertActive();
+      if (result.exitCode === 1 || result.exitCode === 128) {
+        if (!await verifyCommit()) {
+          return new Map(paths.map((filePath) => [filePath, { kind: "missing-revision" } as const]));
+        }
+        if (result.exitCode === 1) continue;
+      }
+      this.requireSuccess(invocation, result);
+      for (const [filePath, entry] of parseLsTreeEntries(result.stdout, new Set(chunk))) entries.set(filePath, entry);
+    }
+
+    const output = new Map<string, LocalGitRevisionTextReadResult>(
+      paths.map((filePath) => [filePath, { kind: "missing-file" } as const]),
+    );
+    const readBlobs = this.blobReader.readBlobs;
+    const pathsByObjectId = new Map<string, string[]>();
+    for (const filePath of paths) {
+      const entry = entries.get(filePath);
+      if (entry?.type !== "blob") continue;
+      const objectPaths = pathsByObjectId.get(entry.objectId) ?? [];
+      objectPaths.push(filePath);
+      pathsByObjectId.set(entry.objectId, objectPaths);
+    }
+    const decodeObject = async (
+      objectId: string,
+      bytes: Uint8Array,
+      target: Map<string, LocalGitRevisionTextReadResult>,
+      assertCurrent: () => void,
+    ): Promise<void> => {
+      const objectPaths = pathsByObjectId.get(objectId);
+      if (objectPaths === undefined) throw new Error("Git blob content was not requested");
+      for (const filePath of objectPaths) {
+        assertCurrent();
+        let result: LocalGitRevisionTextReadResult;
+        try {
+          const hint = encodingHintsByPath?.get(filePath);
+          const content = hint === undefined ? utf8Decoder.decode(bytes) : await this.decodeWithHintOrReject(bytes, hint);
+          assertCurrent();
+          result = { kind: "found", content };
+        } catch {
+          assertCurrent();
+          result = { kind: "invalid-encoding", encoding: "utf-8" };
+        }
+        assertCurrent();
+        target.set(filePath, result);
+      }
+    };
+    try {
+      // Starting a batch subprocess for one unique object is more expensive than
+      // the existing single-object reader. Keep duplicate paths in the single
+      // path separate for hint-aware decoding while reading the OID only once.
+      if (readBlobs !== undefined && pathsByObjectId.size > 1) {
+        const objectIds = [...pathsByObjectId.keys()];
+        for (let start = 0; start < objectIds.length; start += MAX_GIT_BLOB_BATCH_OBJECTS) {
+          assertActive();
+          const group = objectIds.slice(start, start + MAX_GIT_BLOB_BATCH_OBJECTS);
+          const groupObjectIds = new Set(group);
+          const groupResults = new Map<string, LocalGitRevisionTextReadResult>();
+          const receivedObjectIds = new Set<string>();
+          let groupActive = true;
+          const assertGroupActive = (): void => {
+            assertActive();
+            if (!groupActive) throw new DOMException("Git blob batch group was superseded.", "AbortError");
+          };
+          try {
+            await readBlobs.call(this.blobReader, rootPath, group, async (blobObjectId, bytes) => {
+              assertGroupActive();
+              if (!groupObjectIds.has(blobObjectId) || receivedObjectIds.has(blobObjectId)) {
+                throw new Error("Git blob batch reader returned an unexpected or duplicate object");
+              }
+              receivedObjectIds.add(blobObjectId);
+              await decodeObject(blobObjectId, bytes, groupResults, assertGroupActive);
+              assertGroupActive();
+            }, feedbackContext, signal);
+            assertGroupActive();
+            if (receivedObjectIds.size !== group.length) {
+              throw new Error("Git blob batch reader completed without returning every requested object");
+            }
+          } catch (error) {
+            groupActive = false;
+            groupResults.clear();
+            receivedObjectIds.clear();
+            assertActive();
+            if (!(error instanceof GitBlobBatchObjectTooLargeError)) throw error;
+
+            // The batch reader may already have decoded earlier frames; discard their text and reread this group sequentially.
+            const fallbackResults = new Map<string, LocalGitRevisionTextReadResult>();
+            let fallbackActive = true;
+            const assertFallbackActive = (): void => {
+              assertActive();
+              if (!fallbackActive) throw new DOMException("Git blob fallback was superseded.", "AbortError");
+            };
+            try {
+              for (const blobObjectId of group) {
+                assertFallbackActive();
+                const bytes = await this.blobReader.readBlob(rootPath, blobObjectId, feedbackContext, signal);
+                assertFallbackActive();
+                await decodeObject(blobObjectId, bytes, fallbackResults, assertFallbackActive);
+                assertFallbackActive();
+              }
+            } catch (fallbackError) {
+              fallbackActive = false;
+              fallbackResults.clear();
+              throw fallbackError;
+            }
+            assertFallbackActive();
+            for (const [filePath, result] of fallbackResults) output.set(filePath, result);
+            fallbackActive = false;
+            fallbackResults.clear();
+            continue;
+          }
+          assertGroupActive();
+          for (const [filePath, result] of groupResults) output.set(filePath, result);
+          groupActive = false;
+          groupResults.clear();
+        }
+      } else {
+        for (const objectId of pathsByObjectId.keys()) {
+          assertActive();
+          const bytes = await this.blobReader.readBlob(rootPath, objectId, feedbackContext, signal);
+          assertActive();
+          await decodeObject(objectId, bytes, output, assertActive);
+        }
+      }
+      assertActive();
+      return output;
+    } catch (error) {
+      output.clear();
+      throw error;
+    }
+  }
 
   /**
    * Inspects a path and distinguishes missing Git, non-Git folders, and repositories.

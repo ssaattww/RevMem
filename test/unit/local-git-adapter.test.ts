@@ -1,3 +1,4 @@
+import { GitBlobBatchObjectTooLargeError } from "../../src/adapters/local-git/git-blob-reader";
 import assert from "node:assert/strict";
 import test from "node:test";
 import path from "node:path";
@@ -8,7 +9,8 @@ import {
   normalizeGitRemoteUrl,
   type GitCommandExecutor,
   type GitCommandInvocation,
-  type GitCommandResult
+  type GitCommandResult,
+  type GitBlobReader
 } from "../../src/adapters/local-git/index";
 import {
   normalizeInspectionStartPath,
@@ -91,6 +93,443 @@ class RecordingGitCommandExecutor implements GitCommandExecutor {
 const createMetadataAdapter = (
   executor: GitCommandExecutor
 ): LocalGitAdapter => new LocalGitAdapter(executor, unreachableGitBlobReader);
+
+test("batch immutable text reads resolve literal NUL-delimited paths and preserve blob-only modes", async () => {
+  const commit = "a".repeat(40);
+  const blob = "b".repeat(40);
+  const symlinkBlob = "c".repeat(40);
+  const gitlinkCommit = "d".repeat(40);
+  const tree = "e".repeat(40);
+  const paths = ["colon:name.ts", "tab\tline\nname.ts", "link", "vendor/submodule", "folder", "missing.ts"];
+  const executor = new RecordingGitCommandExecutor();
+  const blobReads: string[] = [];
+  const blobReader: GitBlobReader = {
+    readBlob: async (_root, objectId) => {
+      blobReads.push(objectId);
+      return new TextEncoder().encode(objectId === blob ? "source\n" : "target.ts");
+    },
+  };
+  const adapter = new LocalGitAdapter(executor, blobReader);
+  const pathspecs = paths.map((filePath) => `:(literal)${filePath}`);
+  const lookup = ["ls-tree", "--full-tree", "-z", commit, "--", ...pathspecs];
+  executor.queue(repositoryRoot, ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`], success(`${commit}\n`));
+  executor.queue(repositoryRoot, lookup, success([
+    `100644 blob ${blob}\t${paths[0]}`,
+    `120000 blob ${symlinkBlob}\t${paths[2]}`,
+    `160000 commit ${gitlinkCommit}\t${paths[3]}`,
+    `040000 tree ${tree}\t${paths[4]}`,
+  ].join("\0") + "\0"));
+
+  const bulkReader = (adapter as unknown as {
+    readTextFilesAtRevision: (
+      root: string,
+      revision: string,
+      requestedPaths: readonly string[],
+      semantics: "posix" | "windows",
+    ) => Promise<ReadonlyMap<string, { readonly kind: string; readonly content?: string }>>;
+  }).readTextFilesAtRevision;
+  const result = await bulkReader.call(adapter, repositoryRoot, commit, paths, "posix");
+
+  assert.deepEqual([...result], [
+    [paths[0], { kind: "found", content: "source\n" }],
+    [paths[1], { kind: "missing-file" }],
+    [paths[2], { kind: "found", content: "target.ts" }],
+    [paths[3], { kind: "missing-file" }],
+    [paths[4], { kind: "missing-file" }],
+    [paths[5], { kind: "missing-file" }],
+  ]);
+  assert.deepEqual(blobReads, [blob, symlinkBlob], "only blob entries are read; symlink blobs retain their current text behavior");
+  executor.assertExhausted();
+  assert.deepEqual(executor.invocations.map((entry) => entry.argumentsList), [
+    ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`],
+    lookup,
+  ]);
+  await assert.rejects(bulkReader.call(adapter, repositoryRoot, commit, ["nul\0path.ts"], "posix"), TypeError);
+});
+
+test("single unique blob OID uses one single read while decoding each path with its own encoding hint", async () => {
+  const commit = "a".repeat(40);
+  const blob = "b".repeat(40);
+  let singleReads = 0;
+  const executor = new RecordingGitCommandExecutor();
+  const batchCalls: string[][] = [];
+  const blobReader: GitBlobReader = {
+    readBlob: async (_root, objectId) => {
+      assert.equal(objectId, blob);
+      singleReads += 1;
+      return new TextEncoder().encode("raw");
+    },
+    readBlobs: async (_root, objectIds, onBlob) => {
+      batchCalls.push([...objectIds]);
+      for (const objectId of objectIds) await onBlob(objectId, new TextEncoder().encode("raw"));
+    },
+  };
+  const decodeHints: string[] = [];
+  const adapter = new LocalGitAdapter(executor, blobReader, async (_bytes, encoding) => {
+    decodeHints.push(encoding);
+    return `decoded:${encoding}`;
+  });
+  const paths = ["first.txt", "second.txt"];
+  executor.queue(repositoryRoot, ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`], success(`${commit}\n`));
+  executor.queue(repositoryRoot, ["ls-tree", "--full-tree", "-z", commit, "--", ...paths.map((entry) => `:(literal)${entry}`)], success([
+    `100644 blob ${blob}\t${paths[0]}`,
+    `100644 blob ${blob}\t${paths[1]}`,
+  ].join("\0") + "\0"));
+
+  const results = await adapter.readTextFilesAtRevision(repositoryRoot, commit, paths, "posix", undefined, undefined,
+    new Map([[paths[0]!, "utf-16le"], [paths[1]!, "windows-1252"]]));
+
+  assert.deepEqual(batchCalls, []);
+  assert.equal(singleReads, 1);
+  assert.deepEqual(decodeHints, ["utf-16le", "windows-1252"]);
+  assert.deepEqual([...results], paths.map((filePath) => [filePath, {
+    kind: "found", content: `decoded:${filePath === paths[0] ? "utf-16le" : "windows-1252"}`
+  }]));
+  executor.assertExhausted();
+});
+
+test("single-blob fallback reads a duplicate OID once and decodes each path once with its own hint", async () => {
+  const commit = "a".repeat(40);
+  const blob = "b".repeat(40);
+  const executor = new RecordingGitCommandExecutor();
+  const readObjectIds: string[] = [];
+  const decodedHints: string[] = [];
+  const paths = ["first.txt", "second.txt"];
+  const blobReader: GitBlobReader = {
+    readBlob: async (_root, objectId) => {
+      readObjectIds.push(objectId);
+      return new TextEncoder().encode("raw");
+    },
+  };
+  const adapter = new LocalGitAdapter(executor, blobReader, async (_bytes, encoding) => {
+    decodedHints.push(encoding);
+    return `decoded:${encoding}`;
+  });
+  executor.queue(repositoryRoot, ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`], success(`${commit}\n`));
+  executor.queue(repositoryRoot, ["ls-tree", "--full-tree", "-z", commit, "--", ...paths.map((entry) => `:(literal)${entry}`)], success([
+    `100644 blob ${blob}\t${paths[0]}`,
+    `100644 blob ${blob}\t${paths[1]}`,
+  ].join("\0") + "\0"));
+
+  const results = await adapter.readTextFilesAtRevision(repositoryRoot, commit, paths, "posix", undefined, undefined,
+    new Map([[paths[0]!, "hint-a"], [paths[1]!, "hint-b"]]));
+
+  assert.deepEqual(readObjectIds, [blob]);
+  assert.deepEqual(decodedHints, ["hint-a", "hint-b"]);
+  assert.deepEqual([...results], [
+    [paths[0], { kind: "found", content: "decoded:hint-a" }],
+    [paths[1], { kind: "found", content: "decoded:hint-b" }],
+  ]);
+  executor.assertExhausted();
+});
+
+test("batch blob callbacks decode each object before the next raw object is delivered", async () => {
+  const commit = "a".repeat(40);
+  const first = "b".repeat(40);
+  const second = "c".repeat(40);
+  const executor = new RecordingGitCommandExecutor();
+  const decoded: string[] = [];
+  const callbackBoundaries: string[][] = [];
+  const batchedObjectIds: string[][] = [];
+  const paths = ["first-a.txt", "first-b.txt", "second.txt"];
+  const blobReader: GitBlobReader = {
+    readBlob: async () => { throw new Error("single reads must not be used"); },
+    readBlobs: async (_root, objectIds, onBlob) => {
+      batchedObjectIds.push([...objectIds]);
+      for (const objectId of objectIds) {
+        await onBlob(objectId, new TextEncoder().encode(objectId));
+        callbackBoundaries.push([...decoded]);
+      }
+    },
+  };
+  const adapter = new LocalGitAdapter(executor, blobReader, async (_bytes, encoding) => {
+    decoded.push(encoding);
+    return encoding;
+  });
+  executor.queue(repositoryRoot, ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`], success(`${commit}\n`));
+  executor.queue(repositoryRoot, ["ls-tree", "--full-tree", "-z", commit, "--", ...paths.map((entry) => `:(literal)${entry}`)], success([
+    `100644 blob ${first}\t${paths[0]}`,
+    `100644 blob ${first}\t${paths[1]}`,
+    `100644 blob ${second}\t${paths[2]}`,
+  ].join("\0") + "\0"));
+
+  const results = await adapter.readTextFilesAtRevision(repositoryRoot, commit, paths, "posix", undefined, undefined,
+    new Map([[paths[0]!, "hint-a"], [paths[1]!, "hint-b"], [paths[2]!, "hint-c"]]));
+
+  assert.deepEqual(batchedObjectIds, [[first, second]], "batch reads deduplicate repeated OIDs when at least two unique OIDs exist");
+  assert.deepEqual(callbackBoundaries, [["hint-a", "hint-b"], ["hint-a", "hint-b", "hint-c"]]);
+  assert.equal(results.size, paths.length);
+  executor.assertExhausted();
+});
+
+test("aborted batch invalidates a delayed decoder callback before it can stage a result", async () => {
+  const commit = "a".repeat(40);
+  const blob = "b".repeat(40);
+  const secondBlob = "c".repeat(40);
+  const executor = new RecordingGitCommandExecutor();
+  const controller = new AbortController();
+  let callbackStarted!: () => void;
+  const started = new Promise<void>((resolve) => { callbackStarted = resolve; });
+  let finishDecode!: (value: string) => void;
+  let callbackPromise!: Promise<void>;
+  const blobReader: GitBlobReader = {
+    readBlob: async () => { throw new Error("single reads must not be used"); },
+    readBlobs: async (_root, objectIds, onBlob, _feedback, signal) => {
+      callbackPromise = Promise.resolve(onBlob(objectIds[0]!, new TextEncoder().encode("raw")));
+      callbackStarted();
+      await new Promise<void>((_resolve, reject) => {
+        signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+      });
+    },
+  };
+  const adapter = new LocalGitAdapter(executor, blobReader, async () =>
+    new Promise<string>((resolve) => { finishDecode = resolve; }));
+  const filePaths = ["file.txt", "second.txt"];
+  executor.queue(repositoryRoot, ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`], success(`${commit}\n`));
+  executor.queue(repositoryRoot, ["ls-tree", "--full-tree", "-z", commit, "--", ...filePaths.map((filePath) => `:(literal)${filePath}`)], success([
+    `100644 blob ${blob}\t${filePaths[0]}`,
+    `100644 blob ${secondBlob}\t${filePaths[1]}`,
+  ].join("\0") + "\0"));
+
+  const resultPromise = adapter.readTextFilesAtRevision(repositoryRoot, commit, filePaths, "posix", undefined, controller.signal,
+    new Map([[filePaths[0]!, "test-encoding"], [filePaths[1]!, "test-encoding"]]));
+  await started;
+  controller.abort();
+  await assert.rejects(resultPromise, (error: unknown) => error instanceof Error && error.name === "AbortError");
+  finishDecode("late text");
+  await assert.rejects(callbackPromise, (error: unknown) => error instanceof Error && error.name === "AbortError");
+  executor.assertExhausted();
+});
+
+test("oversized batch discards partial frames and rereads the whole group sequentially", async () => {
+  const commit = "a".repeat(40);
+  const first = "b".repeat(40);
+  const second = "c".repeat(40);
+  const executor = new RecordingGitCommandExecutor();
+  const singleReads: string[] = [];
+  let batchCalls = 0;
+  const blobReader: GitBlobReader = {
+    readBlob: async (_root, objectId) => {
+      singleReads.push(objectId);
+      return new TextEncoder().encode(`fallback:${objectId}`);
+    },
+    readBlobs: async (_root, objectIds, onBlob) => {
+      batchCalls += 1;
+      await onBlob(objectIds[0]!, new TextEncoder().encode("partial"));
+      throw new GitBlobBatchObjectTooLargeError(objectIds[1]!, 99, 10);
+    },
+  };
+  const adapter = new LocalGitAdapter(executor, blobReader);
+  const paths = ["first.txt", "second.txt"];
+  executor.queue(repositoryRoot, ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`], success(`${commit}\n`));
+  executor.queue(repositoryRoot, ["ls-tree", "--full-tree", "-z", commit, "--", ...paths.map((entry) => `:(literal)${entry}`)], success([
+    `100644 blob ${first}\t${paths[0]}`,
+    `100644 blob ${second}\t${paths[1]}`,
+  ].join("\0") + "\0"));
+
+  const results = await adapter.readTextFilesAtRevision(repositoryRoot, commit, paths, "posix");
+
+  assert.equal(batchCalls, 1);
+  assert.deepEqual(singleReads, [first, second]);
+  assert.deepEqual([...results], paths.map((filePath, index) => [filePath, {
+    kind: "found", content: `fallback:${index === 0 ? first : second}`
+  }]));
+  executor.assertExhausted();
+});
+
+test("non-size batch failures propagate without sequential fallback", async () => {
+  const commit = "a".repeat(40);
+  const blob = "b".repeat(40);
+  const secondBlob = "c".repeat(40);
+  const executor = new RecordingGitCommandExecutor();
+  let singleReads = 0;
+  const expectedError = new Error("batch protocol failure");
+  const blobReader: GitBlobReader = {
+    readBlob: async () => { singleReads += 1; return new TextEncoder().encode("unexpected"); },
+    readBlobs: async () => { throw expectedError; },
+  };
+  const adapter = new LocalGitAdapter(executor, blobReader);
+  const filePaths = ["file.txt", "second.txt"];
+  executor.queue(repositoryRoot, ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`], success(`${commit}\n`));
+  executor.queue(repositoryRoot, ["ls-tree", "--full-tree", "-z", commit, "--", ...filePaths.map((filePath) => `:(literal)${filePath}`)], success([
+    `100644 blob ${blob}\t${filePaths[0]}`,
+    `100644 blob ${secondBlob}\t${filePaths[1]}`,
+  ].join("\0") + "\0"));
+
+  await assert.rejects(adapter.readTextFilesAtRevision(repositoryRoot, commit, filePaths, "posix"), expectedError);
+  assert.equal(singleReads, 0);
+  executor.assertExhausted();
+});
+
+test("batch immutable text reads chunk literal pathspecs below Windows command limits", async () => {
+  const commit = "a".repeat(40);
+  const requestedPaths = Array.from({ length: 1000 }, (_, index) =>
+    `src/${"long-directory-name/".repeat(2)}file-${String(index).padStart(4, "0")}.ts`);
+  const invocations: GitCommandInvocation[] = [];
+  const executor: GitCommandExecutor = {
+    execute: async (invocation) => {
+      invocations.push(invocation);
+      return invocation.argumentsList[0] === "rev-parse"
+        ? success(`${commit}\n`)
+        : success();
+    },
+  };
+  const adapter = new LocalGitAdapter(executor, unreachableGitBlobReader);
+  const bulkReader = (adapter as unknown as {
+    readTextFilesAtRevision: (
+      root: string,
+      revision: string,
+      paths: readonly string[],
+      semantics: "posix" | "windows",
+    ) => Promise<ReadonlyMap<string, { readonly kind: string }>>;
+  }).readTextFilesAtRevision;
+
+  const result = await bulkReader.call(adapter, repositoryRoot, commit, requestedPaths, "posix");
+  const treeInvocations = invocations.filter((entry) => entry.argumentsList[0] === "ls-tree");
+  assert.ok(treeInvocations.length > 1, "large path lists must be split into bounded Git argument batches");
+  const collectedPathspecs = treeInvocations.flatMap((entry) => {
+    const separator = entry.argumentsList.indexOf("--");
+    const pathspecs = entry.argumentsList.slice(separator + 1);
+    const commandLineUnits = entry.argumentsList.reduce((sum, argument) => sum + argument.length + 1, 0);
+    assert.ok(commandLineUnits < 32_767, "each direct Git invocation stays below Windows CreateProcess limits");
+    return pathspecs;
+  });
+  assert.deepEqual(collectedPathspecs, requestedPaths.map((filePath) => `:(literal)${filePath}`));
+  assert.equal(result.size, requestedPaths.length);
+  assert.ok([...result.values()].every((entry) => entry.kind === "missing-file"));
+});
+
+test("batch caps pathspec count and quotes POSIX-special paths within the Windows command budget", async () => {
+  const commit = "a".repeat(40);
+  const requestedPaths = Array.from({ length: 129 }, (_, index) =>
+    `dir with space/quote"back\\slash-${String(index).padStart(3, "0")}-漢字.ts`);
+  const invocations: GitCommandInvocation[] = [];
+  const executor: GitCommandExecutor = {
+    execute: async (invocation) => {
+      invocations.push(invocation);
+      return invocation.argumentsList[0] === "rev-parse"
+        ? success(`${commit}\n`)
+        : success();
+    },
+  };
+  const adapter = new LocalGitAdapter(executor, unreachableGitBlobReader);
+  const bulkReader = (adapter as unknown as {
+    readTextFilesAtRevision: (
+      root: string,
+      revision: string,
+      paths: readonly string[],
+      semantics: "posix" | "windows",
+    ) => Promise<ReadonlyMap<string, { readonly kind: string }>>;
+  }).readTextFilesAtRevision;
+
+  const result = await bulkReader.call(adapter, repositoryRoot, commit, requestedPaths, "posix");
+  const treeInvocations = invocations.filter((entry) => entry.argumentsList[0] === "ls-tree");
+
+  assert.equal(treeInvocations.length, 2, "the public API enforces its own 128-path command bound");
+  assert.deepEqual(treeInvocations.flatMap((entry) => {
+    const separator = entry.argumentsList.indexOf("--");
+    const pathspecs = entry.argumentsList.slice(separator + 1);
+    assert.ok(pathspecs.length <= 128);
+    const pathspecUnits = pathspecs.reduce((sum, value) => sum + Math.max(
+      Buffer.byteLength(value, "utf8") + 1,
+      value.length * 2 + 4,
+    ), 0);
+    assert.ok(pathspecUnits <= 28 * 1024);
+    const argumentUnits = entry.argumentsList.reduce((sum, value) => sum + Math.max(
+      Buffer.byteLength(value, "utf8") + 1,
+      value.length * 2 + 4,
+    ), 0);
+    assert.ok(argumentUnits + 4096 <= 32_767, "fixed command/executable arguments retain the reserved margin");
+    return pathspecs;
+  }), requestedPaths.map((filePath) => `:(literal)${filePath}`));
+  assert.equal(result.size, requestedPaths.length);
+  assert.ok([...result.values()].every((entry) => entry.kind === "missing-file"));
+});
+
+test("failed later ls-tree chunk exposes no partial result and retries every chunk", async () => {
+  const commit = "a".repeat(40);
+  const paths = Array.from({ length: 500 }, (_, index) =>
+    `src/${"long-directory-name/".repeat(2)}file-${String(index).padStart(4, "0")}.ts`);
+  const treePathspecBatches: string[][] = [];
+  let failSecondTreeCall = true;
+  const executor: GitCommandExecutor = {
+    execute: async (invocation) => {
+      if (invocation.argumentsList[0] === "rev-parse") return success(`${commit}\n`);
+      const separator = invocation.argumentsList.indexOf("--");
+      treePathspecBatches.push(invocation.argumentsList.slice(separator + 1));
+      if (failSecondTreeCall && treePathspecBatches.length === 2) {
+        failSecondTreeCall = false;
+        throw new Error("second ls-tree chunk failed");
+      }
+      return success();
+    },
+  };
+  const adapter = new LocalGitAdapter(executor, unreachableGitBlobReader);
+  const bulkReader = (adapter as unknown as {
+    readTextFilesAtRevision: (
+      root: string,
+      revision: string,
+      paths: readonly string[],
+      semantics: "posix" | "windows",
+    ) => Promise<ReadonlyMap<string, { readonly kind: string }>>;
+  }).readTextFilesAtRevision;
+
+  await assert.rejects(bulkReader.call(adapter, repositoryRoot, commit, paths, "posix"), /second ls-tree chunk failed/u);
+  const result = await bulkReader.call(adapter, repositoryRoot, commit, paths, "posix");
+
+  const retryChunkCount = Math.ceil(paths.length / 128);
+  assert.equal(treePathspecBatches.length, 2 + retryChunkCount, "the retry must fetch every metadata chunk again");
+  assert.deepEqual(treePathspecBatches[0], treePathspecBatches[2]);
+  assert.deepEqual(treePathspecBatches[1], treePathspecBatches[3]);
+  assert.deepEqual(treePathspecBatches.slice(2).flat(), paths.map((filePath) => `:(literal)${filePath}`));
+  assert.equal(result.size, paths.length);
+  assert.ok([...result.values()].every((entry) => entry.kind === "missing-file"));
+});
+
+test("interrupted batch path resolution is not reused by a later request", async () => {
+  const commit = "a".repeat(40);
+  const paths = Array.from({ length: 500 }, (_, index) =>
+    `src/${"long-directory-name/".repeat(2)}file-${String(index).padStart(4, "0")}.ts`);
+  const controller = new AbortController();
+  let treeCalls = 0;
+  const treePathspecBatches: string[][] = [];
+  const executor: GitCommandExecutor = {
+    execute: async (invocation) => {
+      if (invocation.argumentsList[0] === "rev-parse") return success(`${commit}\n`);
+      treeCalls += 1;
+      const separator = invocation.argumentsList.indexOf("--");
+      treePathspecBatches.push(invocation.argumentsList.slice(separator + 1));
+      if (treeCalls === 1) {
+        return success();
+      }
+      if (treeCalls === 2) {
+        controller.abort();
+        throw new DOMException("cancelled", "AbortError");
+      }
+      return success();
+    },
+  };
+  const adapter = new LocalGitAdapter(executor, unreachableGitBlobReader);
+  const bulkReader = (adapter as unknown as {
+    readTextFilesAtRevision: (
+      root: string,
+      revision: string,
+      paths: readonly string[],
+      semantics: "posix" | "windows",
+      feedbackContext?: undefined,
+      signal?: AbortSignal,
+    ) => Promise<ReadonlyMap<string, { readonly kind: string; readonly content?: string }>>;
+  }).readTextFilesAtRevision;
+
+  await assert.rejects(bulkReader.call(adapter, repositoryRoot, commit, paths, "posix", undefined, controller.signal), { name: "AbortError" });
+  const result = await bulkReader.call(adapter, repositoryRoot, commit, paths, "posix");
+  assert.equal(result.size, paths.length);
+  assert.ok([...result.values()].every((entry) => entry.kind === "missing-file"));
+  assert.equal(treeCalls, 2 + Math.ceil(paths.length / 128), "a cancelled chunk must cause every metadata chunk to be fetched again");
+  assert.deepEqual(treePathspecBatches[0], treePathspecBatches[2]);
+  assert.deepEqual(treePathspecBatches[1], treePathspecBatches[3]);
+  assert.deepEqual(treePathspecBatches.slice(2).flat(), paths.map((filePath) => `:(literal)${filePath}`));
+});
 
 test("Node local Git path normalization propagates stat permission errors unchanged", async () => {
   const startPath = path.resolve("restricted-repository");

@@ -1,3 +1,5 @@
+import { NodeGitBlobReader } from "../../src/adapters/local-git/node-git-blob-reader.js";
+import { NodeGitBlobBatchTransport } from "../../src/adapters/local-git/node-git-blob-batch-transport.js";
 import assert from "node:assert/strict";
 import { mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -552,5 +554,99 @@ test("a nested known root whose Git marker is gone cannot alias its outer reposi
     assert.deepEqual(result, []);
   } finally {
     await outer.cleanup();
+  }
+});
+
+test("real cat-file batch transport returns the same raw bytes as single-object reads", async () => {
+  const repository = await createTemporaryGitRepository();
+
+  try {
+    const blobObjectId = await repository.runGit(["rev-parse", `${repository.headCommit}:fixture.txt`]);
+    const single = await new NodeGitBlobReader().readBlob(repository.path, blobObjectId);
+    let batched: Uint8Array | undefined;
+
+    await new NodeGitBlobBatchTransport().readBlobs(repository.path, [blobObjectId], (_objectId, bytes) => {
+      batched = bytes;
+    });
+
+    assert.ok(batched);
+    assert.deepEqual(Buffer.from(batched), Buffer.from(single));
+    assert.equal(Buffer.from(batched).toString("utf8"), "base\nhead\n");
+  } finally {
+    await repository.cleanup();
+  }
+});
+
+test("batch immutable reads match single-path results for exact paths and special Git entries", async () => {
+  const repository = await createTemporaryGitRepository();
+  const adapter = createNodeLocalGitAdapter();
+
+  try {
+    await mkdir(path.join(repository.path, "nested"), { recursive: true });
+    await mkdir(path.join(repository.path, "vendor"), { recursive: true });
+    await writeFile(path.join(repository.path, "nested", "tracked.txt"), "nested content\n", "utf8");
+    await writeFile(path.join(repository.path, "nested", "other.txt"), "unrequested sibling\n", "utf8");
+    await mkdir(path.join(repository.path, "nested", "deep"), { recursive: true });
+    await writeFile(path.join(repository.path, "nested", "deep", "tracked.txt"), "deep content\n", "utf8");
+    await writeFile(path.join(repository.path, "nested", "deep", "other.txt"), "unrequested deep sibling\n", "utf8");
+    const specialPaths = process.platform === "win32"
+      ? ["space name.ts", "日本語.ts"]
+      : ["colon:name.ts", "tab\tname.ts", "line\nname.ts"];
+    for (const filePath of specialPaths) {
+      await writeFile(path.join(repository.path, filePath), "special content\n", "utf8");
+    }
+    await writeFile(path.join(repository.path, "prefix-name.ts"), "exact prefix path\n", "utf8");
+    await writeFile(path.join(repository.path, "prefix-name-extra.ts"), "unrequested sibling\n", "utf8");
+    if (process.platform === "win32") {
+      // Index a link blob directly: Windows does not require symlink privileges.
+      await writeFile(path.join(repository.path, "fixture-link"), "fixture.txt", "utf8");
+    } else {
+      await symlink("fixture.txt", path.join(repository.path, "fixture-link"));
+    }
+    await repository.runGit(["add", "--all"]);
+    if (process.platform === "win32") {
+      const linkBlob = await repository.runGit(["hash-object", "--", "fixture-link"]);
+      await repository.runGit(["update-index", "--cacheinfo", `120000,${linkBlob},fixture-link`]);
+    }
+    const missingSubmodule = "f".repeat(40);
+    await repository.runGit(["update-index", "--add", "--cacheinfo", `160000,${missingSubmodule},vendor/submodule`]);
+    await repository.runGit(["commit", "--message", "add batch lookup cases"]);
+    const revision = await repository.runGit(["rev-parse", "HEAD"]);
+    const paths = [
+      "fixture.txt",
+      "nested/tracked.txt",
+      "nested/deep",
+      "nested/deep/tracked.txt",
+      "fixture.txt/missing-child",
+      ...specialPaths,
+      "prefix-name.ts",
+      "fixture-link",
+      "vendor/submodule",
+      "nested",
+      "missing.ts",
+    ];
+    const bulkReader = (adapter as unknown as {
+      readTextFilesAtRevision: (
+        root: string,
+        object: string,
+        requestedPaths: readonly string[],
+        semantics: "posix" | "windows",
+      ) => Promise<ReadonlyMap<string, unknown>>;
+    }).readTextFilesAtRevision;
+
+    const batched = await bulkReader.call(adapter, repository.path, revision, paths, "posix");
+    const individual = new Map(await Promise.all(paths.map(async (filePath) => [
+      filePath,
+      await adapter.readTextFileAtRevision(repository.path, revision, filePath, "posix"),
+    ] as const)));
+
+    assert.deepEqual(batched, individual);
+    assert.deepEqual(batched.get("fixture-link"), { kind: "found", content: "fixture.txt" });
+    assert.deepEqual(batched.get("vendor/submodule"), { kind: "missing-file" });
+    assert.deepEqual(batched.get("nested"), { kind: "missing-file" });
+    assert.deepEqual(batched.get("prefix-name.ts"), { kind: "found", content: "exact prefix path\n" });
+    assert.deepEqual(batched.get("missing.ts"), { kind: "missing-file" });
+  } finally {
+    await repository.cleanup();
   }
 });
