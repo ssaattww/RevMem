@@ -4,6 +4,8 @@ import path from "node:path";
 import * as vscode from "vscode";
 
 import type { CurrentContextUiSnapshot } from "../../../src/ui/current-context/index";
+import type { PullRequestReviewRuntimeTestFixture } from "../../../src/composition/extension";
+import type { PullRequestProgressTreeFileNode } from "../../../src/ui/pr-progress/index";
 
 const phase = process.env.REVIEW_RANGE_TEST_PHASE;
 const isPrepare = phase === "prepare";
@@ -11,6 +13,8 @@ const isSingleRoot = phase === "single-root";
 assert.ok(isSingleRoot || isPrepare || phase === "restart-reopen", `Unexpected T609 phase: ${String(phase)}`);
 
 interface T609ExtensionApi {
+  initializePullRequestReviewRuntimeForTest(input: PullRequestReviewRuntimeTestFixture): Promise<void>;
+  getActivePullRequestProgressTreeForTest(): readonly PullRequestProgressTreeFileNode[];
   drainCurrentContextStartupForTest(): Promise<void>;
   getLocalCurrentContextCandidatesForTest(): Promise<readonly CurrentContextUiSnapshot[]>;
   drainDocumentReviewEdits(): Promise<void>;
@@ -88,6 +92,41 @@ const within = async <Value>(_label: string, work: PromiseLike<Value>): Promise<
 
 const fixtureUri = (folder: vscode.WorkspaceFolder, name: string): vscode.Uri =>
   vscode.Uri.joinPath(folder.uri, name);
+
+/** Checks actual checkout/list commands and rendered content, beyond refresh counters. */
+const assertCheckoutListClearsOldPrProgress = async (folder: vscode.WorkspaceFolder, api: T609ExtensionApi): Promise<void> => {
+  const gitExtension = vscode.extensions.getExtension<VscodeGitExtension>("vscode.git");
+  assert.ok(gitExtension);
+  const repository = (await gitExtension.activate()).getAPI(1).getRepository(folder.uri);
+  assert.ok(repository);
+  const baseSha = "1".repeat(40), headSha = "2".repeat(40);
+  const contextId = "github-pr:fixture.invalid/issue136/old-branch#136";
+  const filePath = "fixtures/branch-switch-disappears.ts";
+  await api.initializePullRequestReviewRuntimeForTest({
+    repositoryId: "fixture.invalid/issue136/old-branch", repositoryRoot: folder.uri.fsPath, pullRequestNumber: 136,
+    snapshot: { contextId, baseSha, headSha, originalDiffId: `${baseSha}..${headSha}`, files: [{
+      fileId: "old-pr-file", oldPath: filePath, newPath: filePath, status: "modified", additions: 1, deletions: 1,
+      hunks: [{ oldStart: 1, oldCount: 1, newStart: 1, newCount: 1, lines: [
+        { kind: "deletion", oldLine: 1, text: "old" }, { kind: "addition", newLine: 1, text: "new" },
+      ] }],
+    }] },
+    texts: [{ revision: baseSha, filePath, content: "old\n" }, { revision: headSha, filePath, content: "new\n" }],
+  });
+  const previous = api.getActivePullRequestProgressTreeForTest();
+  assert.equal(previous.length, 1, "the real Host Tree must initially contain the old PR");
+  assert.deepEqual([previous[0]!.openTarget.contextId, previous[0]!.openTarget.baseSha, previous[0]!.openTarget.headSha], [contextId, baseSha, headSha]);
+  try {
+    await repository.checkout("t609-enoent-recovery");
+    await vscode.commands.executeCommand("reviewRange.refreshReviewContexts");
+    const selected = JSON.parse(api.getCurrentContextCancellationSnapshotForTest().selectedContext ?? "null") as { kind?: string; branchRef?: string } | null;
+    assert.equal(selected?.kind, "branch", "checkout/list must accept the verified branch when there is no matching registered PR");
+    assert.equal(selected?.branchRef, "refs/heads/t609-enoent-recovery");
+    assert.deepEqual(api.getActivePullRequestProgressTreeForTest(), [], "the actual rendered Tree must not retain the old-branch PR snapshot");
+  } finally {
+    await repository.checkout("main");
+    await vscode.commands.executeCommand("reviewRange.refreshContext");
+  }
+};
 
 const assertTrackingRevisionSurvivesVisibleEditor = async (
   folder: vscode.WorkspaceFolder,
@@ -425,6 +464,7 @@ export async function run(): Promise<void> {
       dependentRefreshesBeforeReviewContexts + 1,
       "Issue #136 Review Contexts refresh must use the shared Current Context/PR Progress refresh path once",
     );
+    await within("Issue136 actual checkout/list/old PR Tree boundary", assertCheckoutListClearsOldPrProgress(folder, api));
     await within("visible-editor tracking revision", assertTrackingRevisionSurvivesVisibleEditor(folder, api));
     await within("close tracking regression editor", closeAllEditors());
     await assertActualUriBoundaries(folder, api);

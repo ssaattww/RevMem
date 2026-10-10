@@ -14,7 +14,10 @@ import {
   JsonlReviewHistoryStore,
 } from "../../src/adapters/state-repository/index.js";
 import { ReviewHistoryRecorder } from "../../src/application/review-history/index.js";
-import { OperationFeedback, setActiveOperationFeedback } from "../../src/application/operation-feedback/index.js";
+import { OperationFeedback, setActiveOperationFeedback, type OperationLogEntry } from "../../src/application/operation-feedback/index.js";
+import type { SelectedReviewContext } from "../../src/application/review-context/index.js";
+import { refreshSelectedPullRequestProgress } from "../../src/application/review-context/projection-refresh.js";
+import { refreshCurrentContextPullRequestViews } from "../../src/composition/current-context/current-context-pull-request-views.js";
 import { PullRequestDiffAcquisitionService } from "../../src/application/github-pr-diff/index.js";
 import type { ReviewContextListItem } from "../../src/application/review-contexts/index.js";
 import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState, type ReviewContextState } from "../../src/core/contracts/index.js";
@@ -91,10 +94,15 @@ const vscodeHost: Record<string, unknown> = {
 export async function createPr108ProductionFixture(options: {
   readonly contexts?: readonly number[];
   readonly contextHead?: FixtureRevision;
+  readonly contextHeads?: Readonly<Record<number, FixtureRevision>>;
   readonly globalHead?: FixtureRevision;
   readonly ownerHead?: FixtureRevision;
   readonly ownerSynchronizationRevision?: FixtureRevision;
   readonly operationFeedback?: boolean;
+  readonly detailedDiagnostics?: boolean;
+  /** Opt into the same list/selection/Progress dependency boundary as extension composition. */
+  readonly includePullRequestProgress?: boolean;
+  readonly beforeGitHubResponse?: (url: URL, signal: AbortSignal | undefined) => Promise<void>;
   readonly distinctRemoteHeads?: boolean;
   readonly preserveSourceSnapshot?: boolean;
   readonly syntheticRepository?: Readonly<{
@@ -199,14 +207,15 @@ export async function createPr108ProductionFixture(options: {
   }
   let atomic = new FileSystemReviewStateRepository({ storageUris });
   for (const number of options.contexts ?? [52, 53]) {
+    const savedHead = options.contextHeads?.[number] ?? contextHead;
     const contextState: ReviewContextState = {
       schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, contextId: pr108ContextId(number), kind: "pull-request",
       repositoryId, displayName: `PR #${number}`,
       pullRequest: { host: "github.com", owner: "ssaattww", repository: "revmem", number,
-        state: "open", title: `PR ${number}`, baseSha: revisions.A, headSha: revisions[contextHead] },
+        state: "open", title: `PR ${number}`, baseSha: revisions.A, headSha: revisions[savedHead] },
       files: { [PR108_FILE]: {
         schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, fileId: PR108_FILE, currentPath: PR108_FILE,
-        previousPaths: [], revisionId: revisions[contextHead], contentHash: hash(texts[contextHead]),
+        previousPaths: [], revisionId: revisions[savedHead], contentHash: hash(texts[savedHead]),
         modifiedReviewed: [{ startLine: 0, endLineExclusive: 1 }], originalReviewedByDiff: {},
         lineCount: 3, updatedAt: TIMESTAMP,
       } }, createdAt: TIMESTAMP, updatedAt: TIMESTAMP,
@@ -287,7 +296,7 @@ export async function createPr108ProductionFixture(options: {
     assert.ok(fixed, `Unknown fixture revision: ${revision}`);
     return fixed;
   };
-  const remote = new Map<number, { base: string; head: string; state: "open" | "closed" }>(
+  const remote = new Map<number, { base: string; head: string; state: "open" | "closed"; branch?: string }>(
     remoteNumbers.map((number) => [number, { base: "A", head: contextHead, state: "open" }]),
   );
   if (options.distinctRemoteHeads === true) {
@@ -302,10 +311,14 @@ export async function createPr108ProductionFixture(options: {
   const unavailable = new Set<number>();
   let ownerHead = options.ownerHead ?? contextHead;
   let ownerSynchronizationRevision = options.ownerSynchronizationRevision;
-  if (options.operationFeedback === true) setActiveOperationFeedback(new OperationFeedback({
+  let ownerBranch: string | undefined;
+  const operationLogs: OperationLogEntry[] = [];
+  const feedbackHost = {
+    isDetailedDiagnosticsEnabled: () => options.detailedDiagnostics === true,
     showBusy: () => undefined,
     clearBusy: () => undefined,
-    appendLog: (entry) => {
+    appendLog: (entry: OperationLogEntry) => {
+      operationLogs.push(entry);
       const refresh = entry.pullRequestRefresh;
       if (refresh !== undefined) refreshDiagnostics.push({
         stage: refresh.stage,
@@ -314,7 +327,9 @@ export async function createPr108ProductionFixture(options: {
       });
     },
     revealLog: () => undefined,
-  }));
+  };
+  const feedback = options.operationFeedback === true ? new OperationFeedback(feedbackHost) : undefined;
+  if (feedback !== undefined) setActiveOperationFeedback(feedback);
   await git("checkout", "--detach", revisions[ownerHead]);
   const control = { selected: options.existingRepository === undefined ? 52 : 2, requireAuthentication: false, authenticated: false };
   const authenticationCalls: Array<{ interactive: boolean }> = [];
@@ -334,6 +349,7 @@ export async function createPr108ProductionFixture(options: {
     fetchRequests.push(`${url.pathname}?${url.searchParams.get("state") ?? ""}`);
     githubFetchRequestCountsByPath[url.pathname] = (githubFetchRequestCountsByPath[url.pathname] ?? 0) + 1;
     try {
+      await options.beforeGitHubResponse?.(url, init?.signal ?? undefined);
       if ((options.githubResponseDelayMilliseconds ?? 0) > 0) {
         await new Promise((resolve) => setTimeout(resolve, options.githubResponseDelayMilliseconds));
       }
@@ -344,7 +360,8 @@ export async function createPr108ProductionFixture(options: {
         const value = remote.get(number); assert.ok(value);
         return { number, title: `PR ${number}`, html_url: `https://github.com/ssaattww/revmem/pull/${number}`,
           state: value.state, merged_at: null, changed_files: 1,
-          base: { ref: "main", sha: revisionSha(value.base) }, head: { sha: revisionSha(value.head) } };
+          base: { ref: "main", sha: revisionSha(value.base) }, head: { sha: revisionSha(value.head),
+            ...(value.branch === undefined ? {} : { ref: value.branch, repo: { full_name: "ssaattww/revmem" } }) } };
       };
       if (url.pathname === "/repos/ssaattww/revmem/pulls") {
         return response([...remote.keys()].map(metadata));
@@ -558,13 +575,19 @@ export async function createPr108ProductionFixture(options: {
   };
   let review = createReviewRuntime();
   let runtime!: ReturnType<typeof runtimeModule.registerT405ReviewContextsRuntime>;
+  let coordinator!: CurrentContextRuntimeCoordinator;
+  let selectedContext: SelectedReviewContext | undefined;
+  let currentContextSnapshot: CurrentContextUiSnapshot | undefined;
+  const progressPublications: Array<readonly { contextId: string; baseSha: string; headSha: string; originalDiffId: string }[]> = [];
   let subscriptions: Disposable[] = [];
   const start = async (): Promise<void> => {
     let enumerating = false;
     const enumerateCurrentContexts = async (): Promise<readonly CurrentContextUiSnapshot[]> => enumerating ? [{ context: {
       kind: "branch", label: "fixture", headRevision: revisions[ownerHead],
       ...(ownerSynchronizationRevision === undefined ? {} : { pullRequestSynchronizationRevision: revisions[ownerSynchronizationRevision] }),
-      selection: ownerSynchronizationRevision === undefined
+      selection: ownerBranch !== undefined
+        ? { kind: "branch", repositoryId, repositoryRoot, branchRef: `refs/heads/${ownerBranch}` }
+        : ownerSynchronizationRevision === undefined
         ? { kind: "detached", repositoryId, repositoryRoot, headRevision: revisions[ownerHead] }
         : { kind: "branch", repositoryId, repositoryRoot, branchRef: "refs/heads/main" },
     }, progress: undefined }] : [];
@@ -579,12 +602,39 @@ export async function createPr108ProductionFixture(options: {
     }, {
       recompute: (signal, feedbackContext, refreshOptions) => composition.recompute(signal, feedbackContext, refreshOptions),
       selectContext: (signal, feedbackContext) => composition.selectContext(signal, feedbackContext),
-      acceptRecomputed: (snapshot) => composition.acceptRecomputed(snapshot),
-      acceptExplicit: (snapshot) => composition.acceptExplicit(snapshot),
+      acceptRecomputed: (snapshot) => { currentContextSnapshot = snapshot; composition.acceptRecomputed(snapshot); },
+      acceptExplicit: (snapshot) => { currentContextSnapshot = snapshot; composition.acceptExplicit(snapshot); },
     });
-    const coordinator = new CurrentContextRuntimeCoordinator(controller, {
+    coordinator = new CurrentContextRuntimeCoordinator(controller, {
+      setSelectedContext: (selection) => { selectedContext = selection; },
       acceptCurrentContextPreparation: (selection) => runtime.acceptCurrentContextPreparation?.(selection),
-      refreshDependents: (refreshContext) => runtime.refreshListOnly?.(refreshContext?.feedbackContext, refreshContext?.signal),
+      clearPullRequestProgress: () => review.clearProgress(),
+      refreshDependents: async (owner) => {
+        if (options.includePullRequestProgress !== true) {
+          await runtime.refreshListOnly?.(owner?.feedbackContext, owner?.signal);
+          return;
+        }
+        const acceptedSelection = selectedContext;
+        await refreshCurrentContextPullRequestViews({
+          selection: acceptedSelection, runtime: review,
+          refreshList: (parent) => runtime.refreshListOnly?.(parent, owner?.signal) ?? Promise.resolve(),
+          refreshProgress: (parent) => refreshSelectedPullRequestProgress({
+            contextId: acceptedSelection?.kind === "pull-request" && review.hasContext(acceptedSelection.contextId)
+              ? acceptedSelection.contextId : undefined,
+            shouldContinue: () => owner?.isCurrent() ?? true,
+            source: review.progress, feedbackContext: parent,
+            activateProgress: (id, context) => review.activateProgress(id, context, owner?.signal),
+            clearProgress: () => review.clearProgress(), setSource: () => undefined,
+            refreshTree: () => progressPublications.push(review.progress.getChildren().flatMap((category) =>
+              review.progress.getChildren(category).filter((node) => node.kind === "file").map((node) => ({
+                contextId: node.openTarget.contextId, baseSha: node.openTarget.baseSha,
+                headSha: node.openTarget.headSha, originalDiffId: node.openTarget.originalDiffId,
+              })))),
+          }),
+          refreshDecorations: async () => undefined, refreshGlobal: async () => undefined,
+          reportProgressError: () => undefined,
+        }, owner);
+      },
     });
     runtime = runtimeModule.registerT405ReviewContextsRuntime({
       context: { ...storageUris, workspaceState, subscriptions } as unknown as T405ReviewContextsRuntimeOptions["context"],
@@ -617,7 +667,9 @@ export async function createPr108ProductionFixture(options: {
   await start();
   return {
     revisions, texts, root, storageUris, remote, unavailable, control, authenticationCalls,
-    histories, errors, opened, registrations, workspaceState,
+    histories, errors, opened, registrations, workspaceState, feedback, operationLogs, progressPublications,
+    get coordinator() { return coordinator; },
+    currentContextSnapshot: () => structuredClone(currentContextSnapshot),
     get runtime() { return runtime; }, get review() { return review; }, get provider() { return provider; },
     get repository() { return repository; }, get atomic() { return atomic; },
     ownerPublications: () => publications,
@@ -650,7 +702,15 @@ export async function createPr108ProductionFixture(options: {
       projectionGenerationCount: (runtime as typeof runtime & { getProjectionGenerationCountForTest?: () => number })
         .getProjectionGenerationCountForTest?.() ?? 0,
     }),
-    async owner(revision: FixtureRevision) { ownerHead = revision; await git("checkout", "--detach", revisions[revision]); },
+    async owner(revision: FixtureRevision) { ownerHead = revision; ownerBranch = undefined; await git("checkout", "--detach", revisions[revision]); },
+    async checkoutBranch(branch: string, revision: FixtureRevision, trackingRevision?: FixtureRevision) {
+      assert.equal(options.existingRepository, undefined, "checkout changes only the generated temporary fixture repository");
+      await git("checkout", "-B", branch, revisions[revision]);
+      await git("config", `branch.${branch}.remote`, "origin");
+      await git("config", `branch.${branch}.merge`, `refs/heads/${branch}`);
+      await git("update-ref", `refs/remotes/origin/${branch}`, revisions[trackingRevision ?? revision]);
+      ownerHead = revision; ownerBranch = branch; ownerSynchronizationRevision = trackingRevision;
+    },
     ownerSynchronizationRevision(revision: FixtureRevision | undefined) { ownerSynchronizationRevision = revision; },
     async invoke(id: string, ...args: unknown[]): Promise<readonly string[]> {
       errors.length = 0; const command = commands.get(id); assert.ok(command, `${id} must be registered`);
