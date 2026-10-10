@@ -597,7 +597,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     readonly reportDerivedProjectionError: (error: unknown) => void | Promise<void>;
   });
   const refreshPullRequestProgressForSelection = async (feedbackContext?: OperationFeedbackContext, owner?: CurrentContextRefreshContext, selection: SelectedReviewContext | undefined = selectedContext): Promise<void> => {
-    const testContextId = context.extensionMode === vscode.ExtensionMode.Test
+    // Direct fixture operations stay pinned; coordinated refreshes must use
+    // the accepted Current Context identity, including branch/no-PR selection.
+    const testContextId = context.extensionMode === vscode.ExtensionMode.Test && owner === undefined
       ? testPullRequestRuntimeTarget?.contextId
       : undefined;
     const contextId = testContextId ?? (selection?.kind === "pull-request" &&
