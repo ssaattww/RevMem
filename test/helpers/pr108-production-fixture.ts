@@ -22,7 +22,7 @@ import { PullRequestDiffAcquisitionService } from "../../src/application/github-
 import type { ReviewContextListItem } from "../../src/application/review-contexts/index.js";
 import { REVIEW_RANGE_SCHEMA_VERSION, type RepositoryGlobalState, type ReviewContextState } from "../../src/core/contracts/index.js";
 import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index.js";
-import { PullRequestReviewRuntime } from "../../src/composition/pull-request/pull-request-review-runtime.js";
+import { PullRequestReviewRuntime, type PullRequestReviewRuntimeRegistration } from "../../src/composition/pull-request/pull-request-review-runtime.js";
 import type { T405ReviewContextsRuntimeOptions } from "../../src/composition/review-contexts/review-contexts-runtime.js";
 import {
   CurrentContextCandidateSelection,
@@ -386,6 +386,7 @@ export async function createPr108ProductionFixture(options: {
   const errors: string[] = [];
   const opened: Array<{ original: string; modified: string }> = [];
   const registrations: Array<{ contextId: string; baseSha: string; headSha: string }> = [];
+  const registeredReaders = new Map<string, PullRequestReviewRuntimeRegistration>();
   const workspaceState = new Memento();
   let provider!: Provider;
   let providerTreeChangeEvents = 0;
@@ -642,7 +643,11 @@ export async function createPr108ProductionFixture(options: {
       enumerateCurrentContexts,
       refreshDecorations: async () => undefined,
       refreshCurrentContext: (feedbackContext) => coordinator.refreshFromReviewContexts(undefined, feedbackContext),
-      registerPullRequestReviewDiff: (registration) => { registrations.push(registration.snapshot); review.register(registration); },
+      registerPullRequestReviewDiff: (registration) => {
+        registrations.push(registration.snapshot);
+        registeredReaders.set(registration.snapshot.contextId, registration);
+        review.register(registration);
+      },
       openPullRequestReviewDiff: (contextId, fileId, title) => review.openReviewDiff(contextId, fileId, title),
       getPullRequestReviewProgress: (contextId) => review.getProgress(contextId),
       reviewStateRepository: repository, reviewHistoryRecorder: history,
@@ -667,7 +672,7 @@ export async function createPr108ProductionFixture(options: {
   await start();
   return {
     revisions, texts, root, storageUris, remote, unavailable, control, authenticationCalls,
-    histories, errors, opened, registrations, workspaceState, feedback, operationLogs, progressPublications,
+    histories, errors, opened, registrations, registeredReaders, workspaceState, feedback, operationLogs, progressPublications,
     get coordinator() { return coordinator; },
     currentContextSnapshot: () => structuredClone(currentContextSnapshot),
     get runtime() { return runtime; }, get review() { return review; }, get provider() { return provider; },

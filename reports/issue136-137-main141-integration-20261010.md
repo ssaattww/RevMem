@@ -4,6 +4,8 @@
 
 この report は実装者の検証記録で、独立レビューの合格判定ではない。review-target commit は検証後に作成し、結果 SHA と公開・CI・独立レビュー引渡し状態は外部 handoff と PR138 コメントへ記録する。将来の自身の SHA を report に要求しない。
 
+2026-10-10追記: 独立レビューIR138-MAIN141-001で、逐次remote fallbackのmissing-file分類保持が不完全だったことを確認した。ローカルrevision不在とremote404の組合せで単体/一括が不一致となる。明示分岐と回帰Red/Greenは[修正report](issue136-137-remote-missing-file-fix-20261010.md)に記録する。下記の初回統合検証は歴史的証拠として保持し、この分類の保持やHost/独立レビュー合格を意味しない。
+
 ## 統合内容と衝突解消
 
 9ファイル・41 conflict blocks を両親と照合した。追加の動作仕様は導入していない。PR141 からの既存 review report/handoff は main の履歴として取り込み、今回の統合 HEAD の独立レビュー証拠とは扱わない。

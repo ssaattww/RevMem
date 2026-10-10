@@ -1,0 +1,13 @@
+# PR138 IR138-MAIN141-001: remote missing-file 分類修正
+
+独立レビューの固定41c883dで、ローカルimmutable revisionが無くremote Contentsが404のとき、登録済み単体readerはmissing-file、一括readerはmissing-revisionとなる退行が再現された。逐次remote fallbackの明示missing-file分岐が欠け、ローカル結果が優先されていた。
+
+`read-review-diff-contents.ts`へremote missing-fileをそのまま返す分岐だけを追加した。逐次実行、順序、signalの前後検査、found/binary/missing-revisionとその他理由の既存扱いを維持する。main141統合reportのbulk契約保持の記述は、この分類について不完全だったため本reportで訂正する。
+
+回帰テストはローカルmissing-file/missing-revisionとremote unavailable全16理由の32組合せ、および実Git・本番compositionが登録する単体/一括readerでrevision有無×HTTP404/401/429/503の8組合せを確認する。既存fixtureは本番登録readerをread-onlyに公開する観測のみ追加した。回帰追加後、製品変更前に両テストがmissing-fileではなくmissing-revisionとなって失敗した（reader-red-1）。修正後は同一ファイル全44件成功、0失敗、0skip（reader-green-1）。compile:test、build、lintは成功した。
+
+初回の追加テストcompileはprivate field参照、次回はTypeScript推論エラーで失敗し、fixtureの正規登録callbackでreaderを観測・結果型を明示して訂正した。これらは製品Redとは区別し、原本を外部pr138-t609-timeout-fix-20261010に保持する。製品Redはreader-red-1の実行結果である。
+
+Host timeoutとの因果関係は確認されていない。診断HEAD1ee8f9bのPR CI38029664613はfailureで、artifact11661617371の固定stage記録ではold PR初期化とcheckoutが成功し、06:08:02.113Zの公開reviewRange.refreshReviewContexts開始後に完了しない。Host原因修正は別作業として継続する。この修正をHost合格、CI全体合格、独立レビューclosedとは扱わない。FA780 updater mutex、実機UI、POSIX条件のheldも維持する。
+
+変更小単位を既存branchへ通常commit/pushし、固定full SHAを外部author-progressとPRコメントに記録する。main push、PR138 merge、force push、依存/環境設定変更は行わない。

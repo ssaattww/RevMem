@@ -34,6 +34,8 @@ export async function readReviewDiffContentsSequentially(
       results.push(fallback);
     } else if (fallback.kind === "binary") {
       results.push({ kind: "invalid-encoding", encoding: "utf-8" });
+    } else if (fallback.reason === "missing-file") {
+      results.push({ kind: "missing-file" });
     } else if (fallback.reason === "missing-revision") {
       results.push({ kind: "missing-revision" });
     } else {

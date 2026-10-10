@@ -36,6 +36,8 @@ import { deriveDocumentLineContract } from "../../src/core/intervals/index.js";
 import { OperationFeedback, formatOperationLogEntry, type OperationLogEntry } from "../../src/application/operation-feedback/index.js";
 import type { RevisionTextContentReadResult } from "../../src/application/diff-document/index.js";
 import { readReviewDiffContentsSequentially } from "../../src/composition/review-contexts/read-review-diff-contents.js";
+import type { PullRequestDiffUnavailableReason } from "../../src/application/github-pr-diff/contracts.js";
+import { createPr108ProductionFixture, pr108ContextId } from "../helpers/pr108-production-fixture.js";
 
 const A = "a".repeat(40);
 const B = "b".repeat(40);
@@ -191,6 +193,58 @@ test("PR remote content fallbacks run sequentially and preserve local and remote
     { kind: "missing-revision" },
     { kind: "invalid-encoding", encoding: "utf-8" },
   ]);
+});
+
+test("PR remote unavailable classification preserves remote file/revision evidence for both local revision states", async () => {
+  const reasons: readonly PullRequestDiffUnavailableReason[] = [
+    "git-unavailable", "git-timeout", "missing-revision", "git-failure", "rate-limit", "authentication",
+    "network", "timeout", "api", "missing-file", "invalid-encoding", "missing-patch", "incomplete-patch",
+    "identity-mismatch", "invalid-data", "diff-too-large",
+  ];
+  for (const localKind of ["missing-file", "missing-revision"] as const) {
+    for (const reason of reasons) {
+      const descriptor = {
+        contextId: CONTEXT_ID, filePath: "missing-file.ts", fileSystemPathSemantics: "posix" as const,
+        side: "modified" as const, revisionSource: "git-commit" as const, revision: B,
+      };
+      const results = await readReviewDiffContentsSequentially([descriptor],
+        new Map([[descriptor.filePath, { kind: localKind }]]),
+        async () => ({ kind: "unavailable", reason }));
+      const expected = reason === "missing-file" || reason === "missing-revision" ? reason : localKind;
+      assert.deepEqual(results, [{ kind: expected }], `local=${localKind}, remote=${reason}`);
+    }
+  }
+});
+
+test("registered production PR single/bulk readers agree for local revision presence and remote HTTP failures", async () => {
+  const fixture = await createPr108ProductionFixture({ contexts: [52], operationFeedback: true, includePullRequestProgress: true });
+  try {
+    await fixture.invoke("reviewRange.refreshReviewContexts");
+    const contextId = pr108ContextId(52);
+    const registration = fixture.registeredReaders.get(contextId);
+    assert.ok(registration?.readTextContents);
+    const fixtureFetch = globalThis.fetch;
+    try {
+      for (const locallyPresent of [true, false]) {
+        for (const status of [404, 401, 429, 503]) {
+          globalThis.fetch = async (input) => {
+            assert.ok(new URL(String(input)).pathname.includes("/contents/"), "this case must use the actual Contents reader");
+            return new Response("unavailable", { status });
+          };
+          const descriptor = {
+            contextId, filePath: "missing-file.ts", fileSystemPathSemantics: "posix" as const,
+            side: "modified" as const, revisionSource: "git-commit" as const,
+            revision: locallyPresent ? fixture.revisions.B : "f".repeat(40),
+          };
+          const expected = { kind: status === 404 || locallyPresent ? "missing-file" : "missing-revision" };
+          const single = await registration.readTextContent(descriptor);
+          const bulk: readonly RevisionTextContentReadResult[] = await registration.readTextContents([descriptor]);
+          assert.deepEqual(single, expected, `single: local=${locallyPresent}, HTTP=${status}`);
+          assert.deepEqual(bulk, [expected], `bulk: local=${locallyPresent}, HTTP=${status}`);
+        }
+      }
+    } finally { globalThis.fetch = fixtureFetch; }
+  } finally { await fixture.dispose(); }
 });
 
 test("PR remote content fallback stops before the next descriptor after cancellation", async () => {
