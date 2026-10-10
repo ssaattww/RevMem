@@ -55,6 +55,9 @@ const { CurrentContextRuntimeCoordinator } = await import(
 const { OperationFeedback } = await import(
   "../../test-dist/src/application/operation-feedback/operation-feedback.js"
 );
+const { setActiveOperationFeedback } = await import(
+  "../../test-dist/src/application/operation-feedback/operation-feedback.js"
+);
 const { refreshCurrentContextDependents } = await import(
   "../../test-dist/src/application/review-context/projection-refresh.js"
 );
@@ -73,7 +76,8 @@ test("Review Contexts refresh enters the same coordinator and orders selection b
   };
   const snapshot = { context: { kind: "pull-request", label: "#42", selection }, progress: undefined };
   const signal = new globalThis.AbortController().signal;
-  const feedbackContext = { owner: {}, id: 17 };
+  const feedback = new OperationFeedback({ showBusy() {}, clearBusy() {}, appendLog() {}, revealLog() {} });
+  let feedbackContext;
   const coordinator = new CurrentContextRuntimeCoordinator({
     refresh: async (actualSignal, actualFeedbackContext) => {
       assert.equal(actualSignal.aborted, signal.aborted);
@@ -92,7 +96,10 @@ test("Review Contexts refresh enters the same coordinator and orders selection b
 
   assert.equal(typeof coordinator.refreshFromReviewContexts, "function",
     "the Review Contexts command needs an entry into the shared refresh coordinator");
-  await coordinator.refreshFromReviewContexts(signal, feedbackContext);
+  await feedback.run("Current Contextを更新", async (owner) => {
+    feedbackContext = owner;
+    await coordinator.refreshFromReviewContexts(signal, owner);
+  });
 
   assert.deepEqual(events, [
     "recompute-current-context",
@@ -100,6 +107,30 @@ test("Review Contexts refresh enters the same coordinator and orders selection b
     "accept-pr-preparation",
     "refresh-list-and-progress",
   ]);
+});
+
+test("ownerless refresh omits identity aliases even when an unrelated ambient operation exists", async () => {
+  const logs = [];
+  const feedback = new OperationFeedback({ showBusy() {}, clearBusy() {}, appendLog: (entry) => logs.push(entry), revealLog() {} });
+  const { runtime } = createProgressFixture();
+  const selection = { kind: "pull-request", repositoryId: "opaque", repositoryRoot: "/fixture", contextId: "opaque-pr",
+    pullRequestNumber: 52, headRevision: "b".repeat(40) };
+  const coordinator = new CurrentContextRuntimeCoordinator({
+    refresh: async () => ({ snapshot: { context: { kind: "pull-request", label: "PR", selection, baseRevision: "a".repeat(40),
+      headRevision: selection.headRevision }, progress: undefined }, stale: false }),
+  }, {
+    refreshDependents: (owner) => refreshCurrentContextPullRequestViews({
+      selection, runtime, refreshList: async () => {}, refreshProgress: async () => runtime.activateProgress(selection.contextId),
+      refreshDecorations: async () => {}, refreshGlobal: async () => {}, reportProgressError() {},
+    }, owner),
+  });
+  setActiveOperationFeedback(feedback);
+  try {
+    await feedback.run("Current Contextを更新", () => coordinator.refresh());
+    assert.equal(logs.some((entry) => entry.pullRequestRefresh?.aliases !== undefined), false,
+      "allocator references require an explicit verified owner, not ambient attribution");
+    assert.ok(logs.some((entry) => entry.pullRequestRefresh?.stage === "tree-publication" && entry.pullRequestRefresh.status === "succeeded"));
+  } finally { setActiveOperationFeedback(undefined); }
 });
 
 test("R2 NR-001 owning cancellation reaches the actual list provider before publication", async () => {
@@ -506,7 +537,10 @@ test("R2 NR-003 actual Current Context and Review Contexts entries preserve veri
       assert.equal(selected.kind, "branch");
       fail = true;
       if (entry === "current-context-refresh") await runtime.refresh();
-      else await assert.rejects(runtime.refreshFromReviewContexts({ owner: {}, id: 1 }));
+      else {
+        const feedback = new OperationFeedback({ showBusy() {}, clearBusy() {}, appendLog() {}, revealLog() {} });
+        await assert.rejects(feedback.run("Current Contextを更新", (owner) => runtime.refreshFromReviewContexts(owner)));
+      }
       results.push({ entry, selectedKind: selected?.kind,
         items: providers.get("reviewRange.currentContext").getChildren().map((item) => item.label),
         files: progressRuntime.progress.getEffectiveProgress().files.length, clears });

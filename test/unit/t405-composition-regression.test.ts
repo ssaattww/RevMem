@@ -790,6 +790,8 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
         await assert.rejects(feedback.run("Current Contextを更新", (owner) => trigger === "current-context-selection"
           ? coordinator.selectContext(undefined, owner) : coordinator.refresh(undefined, owner, undefined, trigger)));
         assert.equal(dependents, 0);
+        assert.equal(entries.some((entry) => entry.pullRequestRefresh?.aliases !== undefined), false,
+          "rejected acquisition must not invent an alias for an unaccepted identity");
         assert.equal(entries.filter((entry) => entry.pullRequestRefresh?.stage === "repository-identity" && entry.pullRequestRefresh.status === "failed").length, 1,
           `${trigger}: rejected acquisition must close started identity`);
         assertClosedStages(entries);
@@ -824,6 +826,8 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
           else await feedback.run("Current Contextを更新", (owner) => coordinator.refresh(undefined, owner));
           release();
           await old;
+          assert.equal(entries.some((entry) => entry.operationId === 1 && entry.pullRequestRefresh?.aliases !== undefined), false,
+            "interrupted acquisition has no verified accepted identity to alias");
           for (const stage of ["repository-identity", "pr-acquisition", "current-context"] as const) {
             assert.equal(entries.filter((entry) => entry.operationId === 1 && entry.pullRequestRefresh?.stage === stage && entry.pullRequestRefresh.status === interruption).length, 1,
               `${trigger}/${interruption}: acquisition must close ${stage}`);
@@ -883,10 +887,24 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
         const operation = feedback.run("Current Contextを選択", (owner) => coordinator.selectContext(cancellation.signal, owner));
         if (interruption === "failed") await assert.rejects(operation); else await operation;
         assert.equal(accepted?.context.pullRequestCandidateCount, 2, "selection metadata must come from real T405 resolver");
+        const identityAliases = entries.find((entry) => entry.operationId === 1 && entry.pullRequestRefresh?.stage === "repository-identity" &&
+          entry.pullRequestRefresh.status === "succeeded")?.pullRequestRefresh?.aliases;
+        const registeredAliases = entries.find((entry) => entry.operationId === 1 && entry.pullRequestRefresh?.stage === "diff-registration" &&
+          entry.pullRequestRefresh.status === "succeeded")?.pullRequestRefresh?.aliases;
+        assert.ok(identityAliases?.repository && identityAliases.context && identityAliases.pullRequest);
+        assert.ok(registeredAliases?.snapshot, "actual matched registration must allocate snapshot identity before publication failure");
+        assert.deepEqual(registeredAliases.context, identityAliases.context);
         for (const stage of ["pr-progress", "tree-publication"] as const) {
           const terminals = entries.filter((entry) => entry.operationId === 1 && entry.pullRequestRefresh?.stage === stage && !["started", "progress"].includes(entry.pullRequestRefresh.status));
           assert.equal(terminals.length, 1, `${stage}/${interruption}: explicit publication must terminate once`);
           assert.equal(terminals[0]?.pullRequestRefresh?.status, interruption === "failed" ? "failed" : "superseded");
+          if (interruption === "failed") {
+            assert.deepEqual(terminals[0]?.pullRequestRefresh?.aliases, registeredAliases,
+              "failed publication retains the expected verified identity without claiming successful Tree output");
+          } else {
+            assert.equal(terminals[0]?.pullRequestRefresh?.aliases, undefined,
+              "cancelled/superseded owners discard their alias mapping before late terminal work");
+          }
         }
         assert.equal(entries.filter((entry) => entry.event === "failed").length, interruption === "failed" ? 1 : 0);
         if (interruption === "superseded") {

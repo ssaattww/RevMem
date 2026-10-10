@@ -8,6 +8,8 @@ Review Rangeの長時間処理について、通常利用時のprivacy-safeな�
 
 この設計はIssue #90で導入したoperation feedback / Global refresh schedulingを対象とする。PR Progressの性能アルゴリズム変更は含まない。
 
+現在のPR Progress診断には、canonical designの「PR context revision変更時の同期」とOutput秘匿契約が優先する。以下の旧PR file/path表示例および詳細ON時のfile名許可は適用しない。通常・詳細とも生のrepository、branch、PR番号/URL、revision、context、file/path、任意例外文、secretを出力せず、検証済み対象をowner内の短命匿名aliasと固定phase/reason、件数で相関する。Global固有の契約変更はこの追補の対象外である。
+
 ## 2. 設計原則
 
 ### 2.1 詳細診断はopt-in

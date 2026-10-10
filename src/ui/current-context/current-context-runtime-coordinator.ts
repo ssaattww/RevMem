@@ -2,6 +2,8 @@ import type { CurrentContextUiController } from "./current-context-ui-controller
 import type { SelectedReviewContext } from "../../application/review-context/index";
 import {
   reportActivePullRequestRefresh,
+  PullRequestRefreshAliasAllocator,
+  type PullRequestRefreshAliases,
   type OperationFeedbackContext,
   type PullRequestRefreshDiagnostic,
   type PullRequestRefreshStage,
@@ -41,6 +43,9 @@ export interface CurrentContextRefreshContext {
   setSelectionProvenance(reason: PullRequestRefreshReasonCode | undefined, candidateCount: number | undefined): void;
   setAcceptedSnapshot(snapshot: CurrentContextUiSnapshot | undefined): void;
   readonly acceptedIdentity: () => Readonly<{ contextId: string; baseSha?: string; headSha?: string }> | undefined;
+  /** Bind only a registered immutable snapshot already checked against accepted selection. */
+  acceptRegisteredSnapshot(snapshot: Readonly<{ contextId: string; baseSha: string; headSha: string; originalDiffId: string }>): void;
+  disposeAliases(): void;
   setPublicationCounts(counts: NonNullable<PullRequestRefreshDiagnostic["counts"]>): void;
   readonly publicationCounts: () => NonNullable<PullRequestRefreshDiagnostic["counts"]>;
   /** Closes every started stage on a rejected or interrupted owner, once per stage. */
@@ -201,6 +206,8 @@ export class CurrentContextRuntimeCoordinator {
       context.finishPendingStages(superseded ? (signal?.aborted ? "cancelled" : "superseded") : "failed",
         superseded ? "superseded" : "refresh-failed");
       if (!superseded) throw error;
+    } finally {
+      context.disposeAliases();
     }
   }
 
@@ -267,6 +274,8 @@ export class CurrentContextRuntimeCoordinator {
       context.finishPendingStages(superseded ? (signal?.aborted ? "cancelled" : "superseded") : "failed",
         superseded ? "superseded" : "refresh-failed");
       if (!superseded) throw error;
+    } finally {
+      context.disposeAliases();
     }
   }
 
@@ -330,6 +339,16 @@ export class CurrentContextRuntimeCoordinator {
     let candidateCount: number | undefined;
     let acceptedIdentity: Readonly<{ contextId: string; baseSha?: string; headSha?: string }> | undefined;
     let publicationCounts: NonNullable<PullRequestRefreshDiagnostic["counts"]> = {};
+    const allocator = new PullRequestRefreshAliasAllocator(generation, feedbackContext);
+    let aliases: PullRequestRefreshAliases = {};
+    let acceptedSelection: SelectedReviewContext | undefined;
+    const disposeAliases = (): void => {
+      allocator.dispose();
+      aliases = {};
+      acceptedSelection = undefined;
+    };
+    cancellation.signal.addEventListener("abort", disposeAliases, { once: true });
+    feedbackContext?.owner.onOperationFinished(feedbackContext, disposeAliases);
     const stageStartedAt = new Map<PullRequestRefreshStage, number>();
     const completedStages = new Set<PullRequestRefreshStage>();
     const context: CurrentContextRefreshContext = {
@@ -347,8 +366,22 @@ export class CurrentContextRuntimeCoordinator {
         candidateCount = count;
       },
       setAcceptedSnapshot: (snapshot) => {
+        if (!context.isCurrent()) return;
         const descriptor = snapshot?.context;
         const selection = descriptor?.selection;
+        acceptedSelection = selection;
+        aliases = {};
+        if (feedbackContext !== undefined && selection !== undefined && selection.kind !== "workspace") {
+          const repositoryKey = [selection.repositoryId, selection.repositoryRoot];
+          const branchRef = selection.kind === "branch" ? selection.branchRef : descriptor?.verifiedBranchRef;
+          aliases = {
+            repository: allocator.allocate("repo", repositoryKey),
+            ...(branchRef === undefined ? {} : { branch: allocator.allocate("branch", [...repositoryKey, branchRef]) }),
+            ...(selection.kind !== "pull-request" ? {} : { pullRequest: allocator.allocate("pr", [...repositoryKey, selection.pullRequestNumber]) }),
+            context: allocator.allocate("context", [...repositoryKey, selection.kind,
+              selection.kind === "pull-request" ? selection.contextId : selection.kind === "branch" ? selection.branchRef : selection.headRevision]),
+          };
+        }
         acceptedIdentity = selection?.kind !== "pull-request" ? undefined : {
           contextId: selection.contextId,
           ...(descriptor?.baseRevision === undefined ? {} : { baseSha: descriptor.baseRevision }),
@@ -356,6 +389,15 @@ export class CurrentContextRuntimeCoordinator {
         };
       },
       acceptedIdentity: () => acceptedIdentity,
+      acceptRegisteredSnapshot: (snapshot) => {
+        if (feedbackContext === undefined || !context.isCurrent() || acceptedSelection?.kind !== "pull-request" ||
+          snapshot.contextId !== acceptedSelection.contextId || snapshot.headSha !== acceptedSelection.headRevision ||
+          (acceptedIdentity?.baseSha !== undefined && snapshot.baseSha !== acceptedIdentity.baseSha) ||
+          (acceptedIdentity?.headSha !== undefined && snapshot.headSha !== acceptedIdentity.headSha)) return;
+        aliases = { ...aliases, snapshot: allocator.allocate("snapshot", [acceptedSelection.repositoryId,
+          acceptedSelection.repositoryRoot, snapshot.contextId, snapshot.baseSha, snapshot.headSha, snapshot.originalDiffId]) };
+      },
+      disposeAliases,
       setPublicationCounts: (counts) => { publicationCounts = { ...counts }; },
       publicationCounts: () => ({ ...publicationCounts }),
       finishPendingStages: (status, reasonCode, supersededByGeneration, causedByOperationId) => {
@@ -367,6 +409,7 @@ export class CurrentContextRuntimeCoordinator {
             ...(stage === "tree-publication" ? { counts: context.publicationCounts() } : {}),
           });
         }
+        disposeAliases();
       },
       report: (stage, status, details = {}) => {
         if (completedStages.has(stage)) return;
@@ -386,6 +429,7 @@ export class CurrentContextRuntimeCoordinator {
             ? { durationMs: Math.max(0, now - startedAt) }
             : {}),
           ...details,
+          ...(Object.keys(aliases).length === 0 ? {} : { aliases }),
         });
         if (status !== "started" && status !== "progress") {
           stageStartedAt.delete(stage);

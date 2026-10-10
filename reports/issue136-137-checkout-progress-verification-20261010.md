@@ -30,6 +30,8 @@ FA780 の既存 Node/TypeScript/node_modules/Git を使用。stdout/stderr、終
 
 ## Host の正確な阻害と未検証
 
+後続確認による補足: Issue136には既存の[Output抜粋](https://github.com/ssaattww/RevMem/issues/136#issuecomment-6027111986)がある。未取得なのは版・特定branch/PRに対応するcheckout前後のselection/registration/snapshot/Tree trace等であり、全Outputがないという意味ではない。またこの時点のcontext/snapshot ordinalは0/1の存在件数にとどまり、匿名identityの相関は証明していない。後続のIR138-REQ-003対応で短命aliasを追加する。cc59の同一HEAD PR38031385064/push38031382382 CIでは全Hostが成功し、独立reviewerはIR138-HOST-002をclosedとした。FA780の起動前mutex失敗および元実機再現は別の証拠である。
+
 既存 VS Code 1.130.0 cache を明示して利用し、新規ダウンロードはしていない。Code は `checkInnoSetupMutex: vscode-updating is held` で31秒待機後 `Code is currently being updated` として終了した。launch diagnostic は `status=failed`、`workerError=Test run failed with code 1`、`ownedExtensionHostPids=[]`。したがって Extension Host は開始しておらず、追加 Host assertion の合否は不明である。
 
 外部 cache 指定 wrapper が cleanup worker にも launch config を要求した誤りで、runner 終了ログの最後には wrapper error が出た。原本 launch diagnostic を先に退避し、cleanup worker はそのまま元 launcher へ渡す形に wrapper を修正した。mutex 阻害が判明したため再起動は重ねず、他の updater/process や設定を操作していない。最初の失敗時の一時 fixture cleanup 完了は確認できないため、完了とは扱わない。task-owned launch worker の停止は launcher が記録した。

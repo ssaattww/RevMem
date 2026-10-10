@@ -45,6 +45,7 @@ export const refreshCurrentContextPullRequestViews = async <Uri>(
         }
         const snapshot = selected === undefined ? undefined : dependencies.runtime.snapshotForContext(selected.contextId);
         const matches = matchesAcceptedIdentity(snapshot);
+        if (matches && snapshot !== undefined) refreshContext?.acceptRegisteredSnapshot(snapshot);
         refreshContext?.report("review-contexts-list", "succeeded");
         refreshContext?.report("diff-registration", selected !== undefined && !matches ? "failed" : "succeeded", {
           ...(selected !== undefined && !matches ? { reasonCode: "snapshot-unavailable" } : {}),

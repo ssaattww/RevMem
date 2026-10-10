@@ -882,6 +882,8 @@ Current Contextの再計算とReview Contexts一覧の明示更新は同じrefre
 
 PR ProgressのOutput診断は一つのoperation IDとgenerationで、開始、段階、成功、失敗、cancelled/supersededを相関する。記録項目はallowlist済みtrigger、stage、status、reason code、UTC時刻、所要時間、数値件数、および必要時にoperation内だけで有効な匿名aliasとする。生のrepository identity/name、branch、PR番号、URL、commit SHA、file path/name、source/diff本文、任意例外文字列、credentialおよびsecretは通常・詳細ログのいずれにも出力しない。詳細表示の有効化はこの秘匿契約を緩和しない。
 
+匿名aliasはrefresh ownerが持つ短命allocatorで発行する型付き参照とし、repository、検証済みbranch、PR、context、immutable snapshotを区別する。同一owner内の同一identityには同一参照を使い、別identityには別参照を発行する。selectionの受理、登録済みsnapshotの完全一致検査、Progressの計算、実Treeの公開で参照を引き継ぎ、未検証の対象にはaliasを付けない。branch情報は実candidate取得で検証した値だけを使い、PR labelやremote branchから推測しない。単純hashやidentity由来の符号化を使わず、対応表はmemoryだけに置く。success、failure、cancel、supersede時に対応表を破棄し、別operation/generationでは同一対象にも新しい参照を発行する。Outputには固定prefixとallocatorの番号だけを渡し、永続state、history、telemetryへ対応表を保存しない。存在を示す0/1件数はidentity相関の証拠とは扱わない。
+
 ### 16.3 PR Progress View
 
 分類:

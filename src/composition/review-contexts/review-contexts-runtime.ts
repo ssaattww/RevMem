@@ -738,6 +738,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
           detail: pr.title ?? pullRequest.displayName,
           baseRevision: pr.baseSha,
           headRevision: pr.headSha,
+          ...(owner.branchRef === undefined ? {} : { verifiedBranchRef: owner.branchRef }),
           selectionReason: selectionDecision.reason,
           pullRequestCandidateCount: selectionDecision.candidateCount,
           selection: {

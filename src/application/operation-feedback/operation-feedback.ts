@@ -1,4 +1,5 @@
 import type { PullRequestDiffAcquisitionAttempt } from "../github-pr-diff/contracts";
+import { formatPullRequestRefreshAliases, validatePullRequestRefreshAliases, type PullRequestRefreshAliases } from "./pull-request-refresh-aliases";
 
 /** Privacy-safe, count-only stages accepted by the shared operation feedback boundary. */
 export type OperationProgressStage =
@@ -75,7 +76,7 @@ export interface PullRequestRefreshCounts {
   readonly snapshotFiles?: number;
   readonly processedFiles?: number;
   readonly treeItems?: number;
-  /** Anonymous operation-local ordinal used only to correlate selection and snapshot stages. */
+  /** Selection/snapshot presence counts retained for compatibility; identities use aliases. */
   readonly selectedContextOrdinal?: number;
   readonly snapshotOrdinal?: number;
 }
@@ -88,6 +89,7 @@ export interface PullRequestRefreshDiagnostic {
   readonly status: PullRequestRefreshStatus;
   readonly durationMs?: number;
   readonly counts?: PullRequestRefreshCounts;
+  readonly aliases?: PullRequestRefreshAliases;
   readonly reasonCode?: PullRequestRefreshReasonCode;
   /** Numeric-only causal links between refresh owners; never an identity value. */
   readonly relatedOperationId?: number;
@@ -397,6 +399,7 @@ const validatePullRequestRefreshDiagnostic = (
     }
   }
   const counts: Partial<Record<keyof PullRequestRefreshCounts, number>> = {};
+  const aliases = validatePullRequestRefreshAliases(value.aliases, value.generation);
   for (const [rawKey, rawValue] of Object.entries(value.counts ?? {})) {
     const key = rawKey as keyof PullRequestRefreshCounts;
     if (!SAFE_PULL_REQUEST_REFRESH_COUNT_KEYS.has(key)) throw new TypeError("PR Progress refresh count is not allowlisted");
@@ -409,6 +412,7 @@ const validatePullRequestRefreshDiagnostic = (
     status: value.status,
     ...(value.durationMs === undefined ? {} : { durationMs: value.durationMs }),
     ...(Object.keys(counts).length === 0 ? {} : { counts: Object.freeze(counts) }),
+    ...(aliases === undefined ? {} : { aliases }),
     ...(value.reasonCode === undefined ? {} : { reasonCode: value.reasonCode }),
     ...(value.relatedOperationId === undefined ? {} : { relatedOperationId: value.relatedOperationId }),
     ...(value.relatedGeneration === undefined ? {} : { relatedGeneration: value.relatedGeneration }),
@@ -831,6 +835,7 @@ export class OperationFeedback {
         ? this.active.at(-1)
         : undefined;
     if (active === undefined) return;
+    validatePullRequestRefreshAliases(validated.aliases, validated.generation, { owner: this, id: active.id });
     if (validated.status === "cancelled" || validated.status === "superseded") {
       active.boundaryCancelled = true;
     }
@@ -972,6 +977,7 @@ export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
     ? ""
     : ` generation=${refresh.generation}` +
       ` trigger=${refresh.trigger} stage=${refresh.stage} status=${refresh.status}` +
+      formatPullRequestRefreshAliases(refresh.aliases, refresh.generation) +
       (refresh.ordinal === undefined ? "" : ` ordinal=${refresh.ordinal}`) +
       (refresh.relatedOperationId === undefined ? "" : ` relatedOp=${refresh.relatedOperationId}`) +
       (refresh.relatedGeneration === undefined ? "" : ` relatedGeneration=${refresh.relatedGeneration}`) +

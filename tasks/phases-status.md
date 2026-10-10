@@ -4,6 +4,8 @@
 
 ## 計画の前提
 
+- P4 current follow-up (2026-10-10 UTC): I137-ANONYMOUS-IDENTITY (M), IR138-REQ-003 at cc59. Actual alias Red6 and ownerless Red retained; typed short-lived verified selection/registration/snapshot/Tree correspondence, OFF/ON and owner/generation/terminal cleanup/privacy regressions Green. Final tooling32/unit1015, Git67+3existing skip, GitHub49/T50211, build/compile/lint/contracts/architecture pass. Review-target commit/push and exact-head CI status are recorded externally; independent closure pending. Original Issue136 Output excerpt exists; identified-target checkout-before/after evidence remains missing. Full local Host component remains unsupported by FA780 updater mutex.
+
 - 設計根拠: `doc/design/vscode-review-range-tracker-design.md` rev9
 - 対象成果物: TypeScriptで実装するVS Code Desktop向けWorkspace Extension
 - 開発単位: 原則として1タスクを1コミット・1PRで完了できる大きさにする
