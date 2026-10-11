@@ -1,35 +1,32 @@
-# Issue #142: private Current Context PR selection investigation
+# Issue #142: private Current Context PR selection
 
-## Scope and privacy boundary
+## Scope and version correction
 
-Investigate why a PR that appears in the PR list can fail when selected as Current Context in the reported `0.1.61-pre` extension. Keep the private repository's name, URL, branch, PR number, local path, credentials, and source data out of this public repository and its logs. Issue #136 and #137 remain related references; this work does not replace or close them.
+Investigate why a PR that appears in the list can fail when selected as Current Context in a private GitHub repository. The original report named `0.1.61-pre`; the user corrected this to `0.1.63` on 2026-10-11. Treat `0.1.61-pre` only as the superseded transcription, not the reproduction target. Do not publish the private repository's name, URL, branch, PR number, local path, credentials, or source data.
 
-## Source evidence read so far
+The corresponding public release tag is `0.1.63-pre`, at `ca9e6eea138ccd11b061f069fafc48ad545f6470`. The official VSIX SHA-256 `2fb19a46207fe3b6f492790d41a185d3714f97304200b3165bab35d673f5402a` matches the GitHub release digest. Its bundle contains the reported canonical stage keys. The earlier `0.1.61-pre` artifact probe is superseded and is not a blocker.
 
-- The affected report names release tag `0.1.61-pre` (`6ab5736d148fff0d403d250f2a262ab426dde714`). The current `main` checkout is `ca9e6eea138ccd11b061f069fafc48ad545f6470` (`0.1.63-pre`). Do not treat current-main behavior as proof of the installed release's behavior.
-- The public `0.1.61-pre` VSIX was downloaded read-only and its SHA-256 (`398631bbc13623a9b7e80c6341bf62a293b3ca4e11de8033c28b4092da77ecbe`) matched the GitHub release asset digest. Its bundled JS/JSON/source-map entries contain no literal `current-context-selection` or `pr-acquisition` diagnostic key. The first source history match for `current-context-selection` is PR #138, which is after the reported tag. The report's stage names therefore do not match the public `0.1.61-pre` artifact inspected here; verify which installed artifact/build produced the log before attributing it to private-repository authentication.
-- Current Context selection calls explicit PR-candidate preparation, enumerates candidates, opens the existing selection UI, then enumerates again and revalidates the selected candidate. The two enumerations mean a failure can happen before the picker or during post-picker revalidation.
-- Explicit preparation inspects the active local repository, checks persisted PR contexts, and runs PR detection when no current PR context matches. The PR detection path can request an interactive GitHub session; subsequent candidate enumeration uses the runtime's normal acquisition path.
-- The coordinator starts the `repository-identity` and `pr-acquisition` diagnostic stages before invoking the selection flow. A thrown selection error ends pending stages in one shared catch handler. Equal stage durations therefore do not identify two independent failing operations.
-- The generic `permanent` classification is not by itself evidence of authentication rejection. The user-supplied spellings `pr-aquisition` and `permament` are preserved in Issue #142 as transcription; their identity with canonical source events remains unverified.
-- `test/unit/t407-private-pr-context.test.ts` already contains private API fixtures covering authenticated Current Context selection, saved candidates, wrong preferred accounts, background non-interaction, and cancellation. The test file exists at `0.1.61-pre`; its current-main version has additional cases. A passing fixture does not yet explain the reported real-host failure.
+## Confirmed Current Context path
 
-## Investigation required before a product fix
+- The selection coordinator starts `current-context`, `repository-identity`, and `pr-acquisition` before invoking the selection controller.
+- Any thrown error from preparation, candidate enumeration, the picker, or revalidation reaches one coordinator catch. That catch finishes all still-pending stages as failed with `refresh-failed`. Their timers started together, so equal durations are expected from one exception boundary and do not prove independent identity and PR failures.
+- Explicit selection inspects the active local repository and parses its GitHub remote. If no persisted PR context is already current, it invokes PR detection; that path requests a VS Code GitHub session interactively (`createIfNone: true`) and searches by the resolved repository/head identity. An authenticated PR-search 404 may clear the preferred account and retry once.
+- Candidate enumeration then reads persisted PR contexts and refreshes their lifecycle metadata through `auth.getAccessToken(identity.host, signal)`, whose default is non-interactive. PR progress acquisition also reads auth non-interactively. This post-detection/readback path is distinct from the interactive PR search; a missing or wrong session could affect it, but the reported log does not establish that it did.
+- The VS Code auth adapter maps `github.com` to provider `github` (other configured hosts to `github-enterprise`), uses the `repo` scope, and converts `getSession` exceptions to an absent token unless cancellation occurred.
+- For lifecycle metadata, HTTP 401/403 is classified as authentication; other non-success responses, including 404, are `api`. `GITHUB_PR_DETECTION_UNAVAILABLE` with reason `api` maps to `validation`, not `permanent`.
 
-1. Confirm which installed artifact/build produced the log, because the diagnostic stage names are absent from the published `0.1.61-pre` VSIX checked above.
-2. On the matching artifact, determine whether the failure occurs during local repository identity inspection, interactive session acquisition, PR detection, candidate enumeration, or post-picker revalidation.
-3. Add a regression case for the first failing boundary, preserving the existing private-repository privacy contract.
-4. Make only the smallest evidence-supported product change; retain issue #136/#137 as related work.
+## Meaning of `permanent`
 
-## Acceptance evidence
+`permanent` is a generic operation-failure category, not an authentication diagnosis. `classifyOperationFailure` maps status 401/403 or a GitHub PR detection diagnostic with authentication reason to `authentication`; status 429 and known network timeouts to `retryable`; `GITHUB_PR_DETECTION_UNAVAILABLE` with reason `api` to `validation`. It maps `PR_PROGRESS_UNAVAILABLE` attempts with `git-failure` / `git-unavailable` to `permanent`, and any otherwise untyped error without a recognized status, type, or retryable code falls through to `permanent`. The user-provided spelling `permament` is preserved as a transcript spelling and is not the canonical source category `permanent`.
 
-- A regression test fails before the fix and passes after it for the identified boundary.
-- The existing private Current Context, wrong-account retry, cancellation, and background non-interaction contracts remain covered.
-- Build, focused tests, and lint pass on the implementation head.
-- Any diagnostic evidence is safe to publish and does not include repository identifiers, paths, PR numbers, tokens, or arbitrary exception text.
+## Existing coverage and gap
+
+`test/unit/t407-private-pr-context.test.ts` covers interactive private PR detection, normal authenticated Current Context selection, saved same-HEAD contexts, background non-interaction, one wrong-preferred-account retry, and cancellation. Its wrong-account scenario exercises the PR-search 404 reselect path. It does not simulate an account/session becoming unavailable between a successful PR-list/search operation and the later non-interactive candidate enumeration/revalidation.
+
+A focused regression should exercise that exact boundary before any product change. It should distinguish: interactive PR search/session; persisted context identity; non-interactive lifecycle refresh; and post-picker revalidation. Keep all fixture repository identifiers synthetic.
 
 ## Current conclusion
 
-The available evidence establishes a release/log provenance mismatch: the stage identifiers in the report are not present in the public `0.1.61-pre` VSIX, while they were introduced in later source history. This does not establish the underlying private-repository selection failure or an authentication cause. The identical `4644ms` durations and redacted `permanent` category are also insufficient to conclude that the account/session was rejected. Preserve the product cause as open until the producing build and failing boundary are verified.
+The source provides a plausible authentication/identity boundary to test, but the real failure stage and underlying cause remain unconfirmed. The matching two-stage durations follow from one shared catch; `permanent` does not prove auth failure. Do not change product behavior until a regression test reproduces the failing boundary.
 
 Closes #142
