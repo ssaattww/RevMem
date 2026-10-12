@@ -73,14 +73,12 @@ export const refreshSelectedPullRequestProgress = async <Source>(
     let failure = error;
     if (activation !== undefined && !activationSettled) {
       const activationOutcome = await settleProjectionRefresh(() => activation!);
-      activationSettled = true;
       if (activationOutcome.error !== undefined && activationOutcome.error !== error) {
         failure = new AggregateError([error, activationOutcome.error], "PR Progress setup and activation failed.");
       }
     }
     primaryFailure = failure;
     dependencies.feedbackContext?.owner.reportFailure("PR Progress projection", failure, dependencies.feedbackContext);
-    throw failure;
   } finally {
     if (dependencies.contextId !== undefined && dependencies.shouldContinue?.() !== false) {
       try {
@@ -89,11 +87,12 @@ export const refreshSelectedPullRequestProgress = async <Source>(
         const failure = primaryFailure === undefined
           ? treeError
           : new AggregateError([primaryFailure, treeError], "PR Progress activation and final tree publication failed.");
+        primaryFailure = failure;
         dependencies.feedbackContext?.owner.reportFailure("PR Progress tree publication", failure, dependencies.feedbackContext);
-        if (primaryFailure === undefined) throw treeError;
       }
     }
   }
+  if (primaryFailure !== undefined) throw primaryFailure;
 };
 
 /**

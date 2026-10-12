@@ -116,7 +116,9 @@ test("PR Progress activation and final Tree failure retain both causes", async (
     activateProgress: async () => { throw activationError; },
     clearProgress() {}, setSource() {},
     refreshTree() { treeRefreshes += 1; if (treeRefreshes === 2) throw treeError; },
-  })), (error: unknown) => error === activationError);
+  })), (error: unknown) => error instanceof AggregateError
+    && error.errors.includes(activationError)
+    && error.errors.includes(treeError));
   assert.equal(treeRefreshes, 2);
   assert.deepEqual(logs.map((entry) => entry.event), ["started", "failed"]);
   const causes = logs.at(-1)?.errorDetails?.causes ?? [];

@@ -807,7 +807,7 @@ export class PullRequestReviewRuntime<Uri> {
       try {
         this.progress.clear();
       } catch (cleanupError) {
-        throw new AggregateError([error, cleanupError], "PR Progress failed and its tree cleanup also failed.");
+        throw new AggregateError([error, cleanupError], "PR Progress failed and its tree cleanup also failed.", { cause: cleanupError });
       }
       throw error;
     } finally {

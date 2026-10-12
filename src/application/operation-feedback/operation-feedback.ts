@@ -770,7 +770,7 @@ const createErrorDiagnostic = (
   }
   const rawCauses = safeReadErrorField(error, "errors");
   const causes = Array.isArray(rawCauses)
-    ? rawCauses.slice(0, 4).map((causeValue) => depth >= MAX_ERROR_CAUSE_DEPTH
+    ? rawCauses.filter((causeValue) => causeValue !== rawCause).slice(0, 4).map((causeValue) => depth >= MAX_ERROR_CAUSE_DEPTH
       ? { kind: "non-error" as const, message: "Further error causes omitted after depth limit." }
       : createErrorDiagnostic(causeValue, seen, depth + 1))
     : undefined;

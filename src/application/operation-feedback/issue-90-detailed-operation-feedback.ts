@@ -101,7 +101,7 @@ export class OperationFeedback extends BaseOperationFeedback {
     const activities: ActivityState[] = [];
     const operationScope = new AsyncLocalStorage<number>();
     let isDetailed = (): boolean => false;
-    let reportConfigurationFailure = (_error: unknown): void => {};
+    let reportConfigurationFailure = (error: unknown): void => { void error; };
     isDetailed = () => {
       try { return detailedHost.isDetailedDiagnosticsEnabled?.() === true; }
       catch (error) { reportConfigurationFailure(error); return false; }
