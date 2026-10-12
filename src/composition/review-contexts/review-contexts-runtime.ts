@@ -55,6 +55,7 @@ import {
   type PullRequestRemoteDataPort,
 } from "../../application/github-pr-diff/index";
 import {
+  classifyOperationFailure,
   reportActiveOperationProgress,
   reportActiveOperationStageDiagnostic,
   reportActivePullRequestRefresh,
@@ -219,6 +220,17 @@ const listRepositoryContextsWithDiagnostic = async (
     reportActiveOperationStageDiagnostic("repository-context-catalog", error, feedbackContext);
     throw error;
   }
+};
+
+const reportRepositoryRootResolutionFailure = (
+  error: unknown,
+  feedbackContext?: OperationFeedbackContext,
+): void => {
+  if (
+    error instanceof ReviewContextsRepositorySelectionCancelled ||
+    classifyOperationFailure(error).kind === "stale"
+  ) return;
+  reportActiveOperationStageDiagnostic("repository-root-resolution", error, feedbackContext);
 };
 
 export interface RegisteredT405ReviewContextsRuntime
@@ -983,12 +995,12 @@ export function registerT405ReviewContextsRuntime(
     try {
       known = sourceRef.current?.repositoryRoot(repositoryId);
     } catch (error) {
-      reportActiveOperationStageDiagnostic("repository-root-resolution", error, feedbackContext);
+      reportRepositoryRootResolutionFailure(error, feedbackContext);
       throw error;
     }
     if (known !== undefined) return known;
     const active = await inspectActiveRepository().catch((error: unknown) => {
-      reportActiveOperationStageDiagnostic("repository-root-resolution", error, feedbackContext);
+      reportRepositoryRootResolutionFailure(error, feedbackContext);
       throw error;
     });
     if (active.repositoryId !== repositoryId) {

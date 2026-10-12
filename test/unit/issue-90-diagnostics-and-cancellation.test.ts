@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import Module, { createRequire } from "node:module";
+import path from "node:path";
+import { tmpdir } from "node:os";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
@@ -8,6 +11,7 @@ import {
   formatOperationLogEntry,
   queueOperationStartDetails,
   reportActiveOperationStageDiagnostic,
+  setActiveOperationFeedback,
   type OperationActivity,
   type OperationDiagnosticDetail,
   type OperationFeedbackContext,
@@ -20,6 +24,7 @@ import {
   describePullRequestProgressSummary,
 } from "../../src/application/operation-feedback/pr-progress-diagnostics.js";
 import { GlobalUnderstandingRefreshCoalescer } from "../../src/ui/global-understanding/issue-90-global-refresh.js";
+import { REVIEW_RANGE_SCHEMA_VERSION, type ReviewContextState } from "../../src/core/contracts/index.js";
 
 class DiagnosticHost implements OperationFeedbackHost {
   public readonly logs: OperationLogEntry[] = [];
@@ -40,6 +45,7 @@ const deferred = <T>() => {
   const promise = new Promise<T>((complete) => { resolve = complete; });
   return { promise, resolve };
 };
+const runtimeRequire = createRequire(__filename);
 const detail = (reason: string, target?: string, phase?: string): OperationDiagnosticDetail => ({ reason, ...(target === undefined ? {} : { target }), ...(phase === undefined ? {} : { phase }) });
 
 test("repository boundary diagnostics record fixed stages, safe classifications, counts, and no exception details", async () => {
@@ -61,6 +67,119 @@ test("repository boundary diagnostics record fixed stages, safe classifications,
   assert.match(output, /stage=repository-context-catalog status=failed category=permanent/u);
   assert.match(output, /stage=repository-root-resolution status=failed category=permanent code=EACCES/u);
   assert.doesNotMatch(output, /private\\repo|fixture-secret|private-owner|catalog\.json/u);
+});
+
+test("T405 root resolution suppresses selection cancellation and interruption diagnostics but retains I/O failures", async () => {
+  const rootA = path.join(tmpdir(), "review-range-root-cancel-a");
+  const rootB = path.join(tmpdir(), "review-range-root-cancel-b");
+  const secret = "C:\\private\\repo\\root token=fixture-secret repoId=private-owner";
+  let inspectionFailure: "none" | "abort" | "io" = "none";
+  const commands = new Map<string, (...args: unknown[]) => Promise<unknown>>();
+  const errors: string[] = [];
+  const host = new DiagnosticHost(true);
+  const feedback = new OperationFeedback(host, () => 4_600);
+  class Memento {
+    private readonly values = new Map<string, unknown>();
+    public get<T>(key: string, fallback?: T): T | undefined { return this.values.get(key) as T | undefined ?? fallback; }
+    public async update(key: string, value: unknown): Promise<void> { this.values.set(key, value); }
+  }
+  const toFileUri = (fsPath: string) => ({ scheme: "file", authority: "", path: fsPath.replace(/\\/gu, "/"), fsPath, query: "", fragment: "" });
+  const vscode = {
+    EventEmitter: class { public readonly event = () => undefined; public fire(): void {} public dispose(): void {} },
+    TreeItem: class {}, ThemeIcon: class {}, TreeItemCollapsibleState: { None: 0, Expanded: 1 },
+    commands: { registerCommand: (id: string, handler: (...args: unknown[]) => Promise<unknown>) => { commands.set(id, handler); return { dispose(): void {} }; } },
+    window: {
+      activeTextEditor: undefined,
+      createTreeView: () => ({ dispose(): void {} }),
+      showQuickPick: async () => undefined,
+      showErrorMessage: async (error: string) => { errors.push(error); },
+    },
+    workspace: {
+      workspaceFolders: [{ uri: toFileUri(rootA) }, { uri: toFileUri(rootB) }],
+      textDocuments: [],
+      getConfiguration: () => ({ get: () => undefined }),
+    },
+    authentication: { getSession: async () => ({ accessToken: "fixture-token" }) },
+  };
+  const loader = Module as unknown as { _load: (request: string, parent: unknown, isMain: boolean) => unknown };
+  const originalLoad = loader._load;
+  let runtime: { dispose(): void } | undefined;
+  setActiveOperationFeedback(feedback);
+  try {
+    loader._load = (request, parent, isMain) => request === "vscode"
+      ? vscode
+      : Reflect.apply(originalLoad, Module, [request, parent, isMain]) as unknown;
+    const runtimePath = runtimeRequire.resolve("../../src/composition/review-contexts/review-contexts-runtime.js");
+    const uiRuntimePath = runtimeRequire.resolve("../../src/ui/review-contexts/vscode-review-contexts-runtime.js");
+    const uiIndexPath = runtimeRequire.resolve("../../src/ui/review-contexts/index.js");
+    delete runtimeRequire.cache[runtimePath];
+    delete runtimeRequire.cache[uiRuntimePath];
+    delete runtimeRequire.cache[uiIndexPath];
+    const runtimeModule = runtimeRequire(runtimePath) as typeof import("../../src/composition/review-contexts/review-contexts-runtime.js");
+    loader._load = originalLoad;
+    const storageRoot = path.join(tmpdir(), "review-range-root-cancel-storage");
+    const registered = runtimeModule.registerT405ReviewContextsRuntime({
+      context: {
+        globalStorageUri: toFileUri(storageRoot), storageUri: toFileUri(storageRoot), workspaceState: new Memento(), subscriptions: [],
+      } as never,
+      git: {
+        inspectRepository: async (root: string) => {
+          if (inspectionFailure === "abort") throw new DOMException(secret, "AbortError");
+          if (inspectionFailure === "io") throw Object.assign(new Error(secret), { code: "EACCES" });
+          return { kind: "repository", repository: { rootPath: root, repositoryId: root.toLowerCase() } };
+        },
+      } as never,
+      enumerateCurrentContexts: async () => [],
+      refreshDecorations: async () => undefined,
+      refreshCurrentContext: async () => undefined,
+      registerPullRequestReviewDiff: () => undefined,
+      openPullRequestReviewDiff: async () => undefined,
+      getPullRequestReviewProgress: async () => ({ reviewedLineCount: 0, totalLineCount: 0, progress: 0 }),
+      reviewStateRepository: {
+        load: async () => undefined, loadGlobal: async () => undefined, listRepositoryContexts: async () => [],
+        commit: async () => undefined, create: async () => undefined,
+      },
+      reviewHistoryRecorder: { recordContextCreated: async () => undefined, recordRevisionMapping: async () => undefined },
+    } as never);
+    runtime = registered;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const refreshCache = commands.get("reviewRange.refreshReviewContextCache");
+    assert.ok(refreshCache);
+    const context: ReviewContextState = {
+      schemaVersion: REVIEW_RANGE_SCHEMA_VERSION,
+      contextId: "private-pr-context",
+      kind: "pull-request",
+      repositoryId: "private-owner/repository",
+      displayName: "PR #1",
+      pullRequest: { host: "github.com", owner: "private-owner", repository: "repository", number: 1, state: "open", baseSha: "a".repeat(40), headSha: "b".repeat(40) },
+      files: {},
+      createdAt: "2026-10-12T00:00:00.000Z",
+      updatedAt: "2026-10-12T00:00:00.000Z",
+    };
+    const item = { context };
+
+    await refreshCache(item);
+    assert.equal(host.logs.some((entry) => entry.operationDiagnostic?.stage === "repository-root-resolution"), false,
+      "user cancellation while choosing between repositories is not a root-resolution failure diagnostic");
+    inspectionFailure = "abort";
+    await refreshCache(item);
+    assert.equal(host.logs.some((entry) => entry.operationDiagnostic?.stage === "repository-root-resolution"), false,
+      "an interrupted root inspection is not a root-resolution failure diagnostic");
+    inspectionFailure = "io";
+    await refreshCache(item);
+    const diagnostics = host.logs.filter((entry) => entry.operationDiagnostic?.stage === "repository-root-resolution");
+    assert.equal(diagnostics.length, 1, "ordinary root-inspection I/O failure remains observable");
+    assert.deepEqual(diagnostics[0]?.operationDiagnostic, {
+      stage: "repository-root-resolution", status: "failed", category: "permanent", code: "EACCES",
+    });
+    const output = host.logs.map(formatOperationLogEntry).join("\n") + errors.join("\n");
+    assert.doesNotMatch(output, /private\\repo|fixture-secret|private-owner/u,
+      "cancellation and ordinary failures keep exception details redacted");
+  } finally {
+    runtime?.dispose();
+    loader._load = originalLoad;
+    setActiveOperationFeedback(undefined);
+  }
 });
 
 test("Issue #90 manifest exposes opt-in detailed diagnostics with a privacy-safe default", async () => {
