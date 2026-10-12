@@ -56,6 +56,7 @@ import {
 } from "../../application/github-pr-diff/index";
 import {
   reportActiveOperationProgress,
+  reportActiveOperationStageDiagnostic,
   reportActivePullRequestRefresh,
   reportActiveStorageLockDiagnostic,
   type PullRequestRefreshStage,
@@ -206,6 +207,19 @@ interface T405ReviewStateRepository {
   commit(transaction: Readonly<ReviewStateTransactionLike>): Promise<void>;
   create(transaction: Readonly<ReviewStateCreateTransactionLike>): Promise<void>;
 }
+
+const listRepositoryContextsWithDiagnostic = async (
+  repository: Pick<T405ReviewStateRepository, "listRepositoryContexts">,
+  repositoryId: string,
+  feedbackContext?: OperationFeedbackContext,
+): Promise<ReviewContextState[]> => {
+  try {
+    return await repository.listRepositoryContexts(repositoryId);
+  } catch (error) {
+    reportActiveOperationStageDiagnostic("repository-context-catalog", error, feedbackContext);
+    throw error;
+  }
+};
 
 export interface RegisteredT405ReviewContextsRuntime
 extends RegisteredReviewContextsRuntime {
@@ -470,7 +484,7 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
     if (owner.pullRequestSynchronizationRevision === owner.headRevision) return persisted;
     const completed = await this.synchronizeRepository(owner, persisted, signal, feedbackContext, operationCache);
     if (!completed) return persisted;
-    return this.repository.listRepositoryContexts(owner.repositoryId);
+    return listRepositoryContextsWithDiagnostic(this.repository, owner.repositoryId, feedbackContext);
   }
 
   public async load(
@@ -536,7 +550,11 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
           : undefined;
         const synchronized = preparedForOwner === undefined
           ? await (async () => {
-              let persisted: readonly ReviewContextState[] = await this.repository.listRepositoryContexts(owner.repositoryId);
+              let persisted: readonly ReviewContextState[] = await listRepositoryContextsWithDiagnostic(
+                this.repository,
+                owner.repositoryId,
+                feedbackContext,
+              );
               assertCurrent();
               persisted = await this.synchronizeTrackingTarget(owner, persisted, signal, feedbackContext, operationCache);
               assertCurrent();
@@ -692,7 +710,11 @@ class T405ReviewContextsSource implements ReviewContextsRuntimeSource {
       const owner = localOwner(candidate);
       if (owner === undefined) continue;
       this.rememberRoot(owner.repositoryId, owner.repositoryRoot);
-      let persisted: readonly ReviewContextState[] = await this.repository.listRepositoryContexts(owner.repositoryId);
+      let persisted: readonly ReviewContextState[] = await listRepositoryContextsWithDiagnostic(
+        this.repository,
+        owner.repositoryId,
+        feedbackContext,
+      );
       assertCurrent();
       persisted = await this.synchronizeTrackingTarget(owner, persisted, signal, feedbackContext, operationCache);
       assertCurrent();
@@ -953,11 +975,24 @@ export function registerT405ReviewContextsRuntime(
     return verified.repository;
   };
 
-  const resolveRepositoryRoot = async (repositoryId: string): Promise<string> => {
-    const known = sourceRef.current?.repositoryRoot(repositoryId);
+  const resolveRepositoryRoot = async (
+    repositoryId: string,
+    feedbackContext?: OperationFeedbackContext,
+  ): Promise<string> => {
+    let known: string | undefined;
+    try {
+      known = sourceRef.current?.repositoryRoot(repositoryId);
+    } catch (error) {
+      reportActiveOperationStageDiagnostic("repository-root-resolution", error, feedbackContext);
+      throw error;
+    }
     if (known !== undefined) return known;
-    const active = await inspectActiveRepository();
+    const active = await inspectActiveRepository().catch((error: unknown) => {
+      reportActiveOperationStageDiagnostic("repository-root-resolution", error, feedbackContext);
+      throw error;
+    });
     if (active.repositoryId !== repositoryId) {
+      reportActiveOperationStageDiagnostic("repository-root-resolution", new Error("Repository identity mismatch."), feedbackContext);
       throw new Error("対象PRのローカルGitリポジトリを解決できません。");
     }
     return active.rootPath;
@@ -1113,7 +1148,7 @@ export function registerT405ReviewContextsRuntime(
       if (signal?.aborted === true) throw new DOMException("PR progress acquisition was superseded.", "AbortError");
     };
     assertCurrent();
-    const root = await resolveRepositoryRoot(context.repositoryId);
+    const root = await resolveRepositoryRoot(context.repositoryId, feedbackContext);
     assertCurrent();
     const identity = repositoryIdentity(context);
     const token = await auth.getAccessToken(identity.host, signal);
@@ -1462,7 +1497,11 @@ export function registerT405ReviewContextsRuntime(
     const headRepository = branchTarget === undefined ? undefined : parseGitHubRemote(branchTarget.remoteUrl);
     const branchIdentity = branchTarget === undefined || headRepository === undefined ? undefined
       : { headRef: branchTarget.headRef, headRepository };
-    const persistedBefore = await timed("repository-inspection", () => repository.listRepositoryContexts(local.repositoryId));
+    const persistedBefore = await timed("repository-inspection", () => listRepositoryContextsWithDiagnostic(
+      repository,
+      local.repositoryId,
+      feedbackContext,
+    ));
     assertDetectionCurrent();
     let synchronizationCompleted = false;
     if (synchronizeBeforeSearch) {
@@ -1685,7 +1724,7 @@ export function registerT405ReviewContextsRuntime(
     if (identity === undefined) return;
     const pullRequestSynchronizationRevision = await options.git.resolveIdentityRemoteTrackingRevision(local, signal) ?? local.head;
     if (isSelectionAborted()) throw new DOMException("Current Context selection was superseded.", "AbortError");
-    const persisted = await repository.listRepositoryContexts(local.repositoryId);
+    const persisted = await listRepositoryContextsWithDiagnostic(repository, local.repositoryId, feedbackContext);
     const current = findCurrentPullRequestContext(
       persisted,
       local.repositoryId,
@@ -1887,7 +1926,7 @@ export function registerT405ReviewContextsRuntime(
       providerProjection: (registered.getProjectionSnapshotForTest?.() ?? []).map((item) => item.context.contextId),
       authoritativeContextCounts: await Promise.all(source.repositoryIds().map(async (repositoryId) => ({
         repositoryId,
-        count: (await repository.listRepositoryContexts(repositoryId)).length,
+        count: (await listRepositoryContextsWithDiagnostic(repository, repositoryId)).length,
       }))),
     }),
     workspaceUriToFilesystemPathForTest: (uri) => workspaceFilesystemPath(uri),

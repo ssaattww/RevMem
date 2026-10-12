@@ -7,6 +7,7 @@ import {
   OperationFeedback,
   formatOperationLogEntry,
   queueOperationStartDetails,
+  reportActiveOperationStageDiagnostic,
   type OperationActivity,
   type OperationDiagnosticDetail,
   type OperationFeedbackContext,
@@ -40,6 +41,27 @@ const deferred = <T>() => {
   return { promise, resolve };
 };
 const detail = (reason: string, target?: string, phase?: string): OperationDiagnosticDetail => ({ reason, ...(target === undefined ? {} : { target }), ...(phase === undefined ? {} : { phase }) });
+
+test("repository boundary diagnostics record fixed stages, safe classifications, counts, and no exception details", async () => {
+  const host = new DiagnosticHost(true);
+  const feedback = new OperationFeedback(host, () => 4_500);
+  const secret = "C:\\private\\repo\\catalog.json token=fixture-secret repoId=private-owner";
+  await feedback.run("Review Contexts refresh", async (context) => {
+    reportActiveOperationStageDiagnostic("repository-context-catalog", new SyntaxError(secret), context);
+    reportActiveOperationStageDiagnostic("repository-root-resolution", Object.assign(new Error(secret), { code: "EACCES" }), context);
+  });
+
+  const diagnostics = host.logs.filter((entry) => entry.operationDiagnostic !== undefined);
+  assert.equal(diagnostics.length, 2, "one record is emitted for each known failing boundary");
+  assert.deepEqual(diagnostics.map((entry) => entry.operationDiagnostic), [
+    { stage: "repository-context-catalog", status: "failed", category: "permanent" },
+    { stage: "repository-root-resolution", status: "failed", category: "permanent", code: "EACCES" },
+  ]);
+  const output = host.logs.map(formatOperationLogEntry).join("\n");
+  assert.match(output, /stage=repository-context-catalog status=failed category=permanent/u);
+  assert.match(output, /stage=repository-root-resolution status=failed category=permanent code=EACCES/u);
+  assert.doesNotMatch(output, /private\\repo|fixture-secret|private-owner|catalog\.json/u);
+});
 
 test("Issue #90 manifest exposes opt-in detailed diagnostics with a privacy-safe default", async () => {
   const manifest = JSON.parse(await readFile("package.json", "utf8")) as { contributes: { configuration: { properties: Record<string, { readonly type?: unknown; readonly default?: unknown; readonly description?: unknown }> } }; scripts: Record<string, string> };

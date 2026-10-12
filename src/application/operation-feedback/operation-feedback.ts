@@ -18,8 +18,9 @@ export interface OperationProgress {
 export type OperationLogEvent = "started" | "progress" | "refresh" | "succeeded" | "failed" | "cancelled";
 
 export interface OperationStageDiagnostic {
-  readonly stage: "cache-persistence";
+  readonly stage: "cache-persistence" | "repository-context-catalog" | "repository-root-resolution";
   readonly status: "failed";
+  readonly category?: OperationFailureCategory;
   readonly code?: "EACCES" | "EBUSY" | "EEXIST" | "EIO" | "EMFILE" | "ENFILE" | "ENOENT" | "ENOSPC" | "ENOTDIR" | "EPERM" | "EROFS";
 }
 
@@ -899,7 +900,12 @@ export class OperationFeedback {
       label: active.label,
       event: "refresh",
       operationId: active.id,
-      operationDiagnostic: { stage, status: "failed", ...(code === undefined ? {} : { code }) },
+      operationDiagnostic: {
+        stage,
+        status: "failed",
+        ...(stage === "cache-persistence" ? {} : { category: classifyOperationFailure(error).kind }),
+        ...(code === undefined ? {} : { code }),
+      },
     });
   }
 
@@ -1022,6 +1028,7 @@ export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
   const operationDetails = entry.operationDiagnostic === undefined
     ? ""
     : ` stage=${entry.operationDiagnostic.stage} status=${entry.operationDiagnostic.status}` +
+      (entry.operationDiagnostic.category === undefined ? "" : ` category=${entry.operationDiagnostic.category}`) +
       (entry.operationDiagnostic.code === undefined ? "" : ` code=${entry.operationDiagnostic.code}`);
   return boundedSingleLine(
     `[${entry.timestamp}] ${stage}${operation} ${boundedSingleLine(entry.label, MAX_OPERATION_LABEL_LENGTH)}` +
