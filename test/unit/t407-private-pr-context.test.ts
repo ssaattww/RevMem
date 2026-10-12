@@ -591,7 +591,10 @@ test("T407 revalidation records session loss after Current Context selection as 
   assert.ok(result.errors.length > 0, "the post-picker revalidation failure must reach the Current Context error path");
   assert.ok(result.privateAuthFailurePaths.some((requestPath) => /^\/repos\/example\/private-context\/pulls\/\d+$/.test(requestPath)),
     "T407 must reject the private PR detail endpoint when the session disappears after candidate selection");
-  assert.ok(result.operationLogs.some((entry) => entry.event === "failed"), "the failed revalidation must be visible in operation diagnostics");
+  const failedSelection = result.operationLogs.filter((entry) => entry.event === "failed" && entry.label === "Current Contextを選択");
+  assert.equal(failedSelection.length, 1, "the post-picker revalidation must fail the owning Current Context selection");
+  assert.equal(failedSelection[0]?.failureCategory, "validation",
+    "the concealed private PR detail 404 is categorized as API validation failure by the existing diagnostic classifier");
 });
 
 test("T407 cache persistence error is logged independently from private API authentication", async () => {
