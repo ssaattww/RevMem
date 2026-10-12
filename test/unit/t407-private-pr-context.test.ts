@@ -121,6 +121,8 @@ const runScenario = async (options: {
   readonly abortDuringPicker?: boolean;
   readonly latePickerResultAfterCancellation?: boolean;
   readonly supersedeDuringPicker?: boolean;
+  readonly loseSessionAfterCurrentContextPicker?: boolean;
+  readonly cacheWriteFailure?: boolean;
 }): Promise<{
   readonly candidates: readonly CurrentContextUiSnapshot[];
   readonly candidatesByRefresh: readonly (readonly CurrentContextUiSnapshot[])[];
@@ -135,6 +137,8 @@ const runScenario = async (options: {
   readonly currentContextQuickPickKinds: readonly string[];
   readonly mutationCountBeforeOldPickerCompletion: number | undefined;
   readonly operationLogs: readonly OperationLogEntry[];
+  readonly errors: readonly string[];
+  readonly privateAuthFailurePaths: readonly string[];
   readonly revealCount: number;
 }> => {
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "revmem-t407-private-context-"));
@@ -182,6 +186,7 @@ const runScenario = async (options: {
     const commands = new Map<string, () => Promise<void>>();
     const errors: string[] = [];
     const sessionRequests: boolean[] = [];
+    const privateAuthFailurePaths: string[] = [];
     let clearSessionPreferenceRequests = 0;
     let searchRequestCount = 0;
     const quickPickNumbers: number[] = [];
@@ -194,6 +199,7 @@ const runScenario = async (options: {
     const selectedPullRequestNumbers = [...(options.selectedPullRequestNumbers ?? [])];
     const pullRequestNumbers = options.multiplePullRequests ? [77, 78] : [77];
     let sessionCreated = false;
+    let sessionLost = false;
     let sessionPreferenceCleared = false;
     const fakeVscode = {
       EventEmitter: FakeEventEmitter,
@@ -223,7 +229,9 @@ const runScenario = async (options: {
         ): Promise<{ readonly candidate?: { readonly number: number }; readonly snapshot?: CurrentContextUiSnapshot } | undefined> => {
           if (quickPickOptions?.placeHolder === "レビューコンテキストを選択") {
             currentContextQuickPickKinds.push(...items.flatMap((item) => item.snapshot === undefined ? [] : [item.snapshot.context.kind]));
-            return items.find((item) => item.snapshot?.context.kind === "pull-request");
+            const selected = items.find((item) => item.snapshot?.context.kind === "pull-request");
+            if (selected && options.loseSessionAfterCurrentContextPicker) sessionLost = true;
+            return selected;
           }
           if (quickPickOptions?.placeHolder !== "現在HEADのPRを選択") return undefined;
           if (delayedPickerCount > 0) {
@@ -283,13 +291,17 @@ const runScenario = async (options: {
             return { accessToken: "wrong-session-token" };
           }
           if (sessionOptions.createIfNone && options.interactiveSession) sessionCreated = true;
-          return sessionCreated ? { accessToken: "test-session-token" } : undefined;
+          return sessionCreated && !sessionLost ? { accessToken: "test-session-token" } : undefined;
         },
       },
     };
     globalThis.fetch = async (input, init) => {
       const url = new URL(String(input));
       const authorization = new Headers(init?.headers).get("authorization");
+      if (options.privateApi && sessionLost && authorization !== "Bearer test-session-token") {
+        privateAuthFailurePaths.push(url.pathname);
+        return new Response(null, { status: 404 });
+      }
       if (url.pathname === "/repos/example/private-context/pulls" && url.searchParams.get("state") === "all") {
         searchRequestCount += 1;
         if (options.anonymousUnavailable && authorization === null) return new Response(null, { status: 404 });
@@ -382,6 +394,33 @@ const runScenario = async (options: {
         createEventId: () => "t407-event",
         appender: { append: async () => undefined },
       }),
+      ...(options.cacheWriteFailure ? {
+        createPullRequestCacheStorage: () => ({
+          read: async () => undefined,
+          write: async () => { throw Object.assign(new Error("cache persistence denied"), { code: "EACCES" }); },
+        }),
+        createPullRequestDiffAcquisition: () => ({
+          acquire: async (request: { readonly contextId: string; readonly number: number; readonly baseSha: string; readonly headSha: string }) => ({
+            kind: "acquired" as const,
+            source: "github-patch" as const,
+            snapshot: {
+              contextId: request.contextId,
+              baseSha: request.baseSha,
+              headSha: request.headSha,
+              originalDiffId: `${request.baseSha}..${request.headSha}`,
+              files: [],
+            },
+            metadata: {
+              number: request.number,
+              title: `test pull request ${request.number}`,
+              url: `https://github.com/example/private-context/pull/${request.number}`,
+              state: "open" as const,
+              baseSha: request.baseSha,
+              headSha: request.headSha,
+            },
+          }),
+        }),
+      } : {}),
     } as never);
 
     if (options.operation === "background") {
@@ -421,6 +460,8 @@ const runScenario = async (options: {
         currentContextQuickPickKinds,
         mutationCountBeforeOldPickerCompletion: undefined,
         operationLogs: feedbackHost.logs,
+        errors,
+        privateAuthFailurePaths,
         revealCount: feedbackHost.reveals,
       };
     } else if (options.operation === "public-context" || options.operation === "public-background") {
@@ -456,7 +497,7 @@ const runScenario = async (options: {
         resolvePendingPicker?.();
         await oldSelection;
         candidates = await runtime.augmentCurrentContextCandidates([branch]);
-        assert.deepEqual(errors, []);
+        if (!options.loseSessionAfterCurrentContextPicker && !options.cacheWriteFailure) assert.deepEqual(errors, []);
         return {
           candidates,
           candidatesByRefresh,
@@ -471,19 +512,27 @@ const runScenario = async (options: {
           currentContextQuickPickKinds,
           mutationCountBeforeOldPickerCompletion,
           operationLogs: feedbackHost.logs,
+          errors,
+          privateAuthFailurePaths,
           revealCount: feedbackHost.reveals,
         };
       }
       if (options.operation === "public-context") {
         for (let count = 0; count < (options.publicCommandCount ?? 1); count += 1) await select();
       }
-      candidates = await runtime.augmentCurrentContextCandidates([branch]);
+      try {
+        candidates = await runtime.augmentCurrentContextCandidates([branch]);
+      } catch (error) {
+        if (!options.loseSessionAfterCurrentContextPicker && !options.cacheWriteFailure) throw error;
+        errors.push(String(error));
+        candidates = [branch];
+      }
     } else {
       const redetect = commands.get("reviewRange.redetectPullRequest");
       assert.ok(redetect, `production PR redetect command must be registered; actual=${[...commands.keys()].join(",")}`);
       for (let count = 0; count < (options.redetectCount ?? 1); count += 1) await redetect();
     }
-    assert.deepEqual(errors, []);
+    if (!options.loseSessionAfterCurrentContextPicker && !options.cacheWriteFailure) assert.deepEqual(errors, []);
     return {
       candidates,
       candidatesByRefresh,
@@ -498,6 +547,8 @@ const runScenario = async (options: {
       currentContextQuickPickKinds,
       mutationCountBeforeOldPickerCompletion: undefined,
       operationLogs: feedbackHost.logs,
+      errors,
+      privateAuthFailurePaths,
       revealCount: feedbackHost.reveals,
     };
   } finally {
@@ -526,6 +577,34 @@ test("T407 public Current Context command uses the T305 factory to prepare a pri
   assert.equal(result.sessionRequests.filter((createIfNone) => createIfNone).length, 1, "the user command prompts once for the private session");
   assert.equal(result.searchRequestCount, 1, "the authenticated T405 search runs before candidate enumeration");
   assert.deepEqual([...result.currentContextQuickPickKinds].sort(), ["branch", "pull-request"], "the same Current Context Quick Pick receives the prepared PR candidate");
+});
+
+test("T407 revalidation records session loss after Current Context selection as an auth hypothesis", async () => {
+  const result = await runScenario({
+    privateApi: true,
+    interactiveSession: true,
+    operation: "public-context",
+    loseSessionAfterCurrentContextPicker: true,
+  });
+  assert.deepEqual([...result.currentContextQuickPickKinds].sort(), ["branch", "pull-request"]);
+  assert.equal(result.candidates.some((candidate) => candidate.context.kind === "pull-request"), false);
+  assert.ok(result.errors.length > 0, "the post-picker revalidation failure must reach the Current Context error path");
+  assert.ok(result.privateAuthFailurePaths.some((requestPath) => /^\/repos\/example\/private-context\/pulls\/\d+$/.test(requestPath)),
+    "T407 must reject the private PR detail endpoint when the session disappears after candidate selection");
+  assert.ok(result.operationLogs.some((entry) => entry.event === "failed"), "the failed revalidation must be visible in operation diagnostics");
+});
+
+test("T407 cache persistence error is logged independently from private API authentication", async () => {
+  const result = await runScenario({
+    privateApi: true,
+    interactiveSession: true,
+    operation: "public-context",
+    cacheWriteFailure: true,
+  });
+  assert.equal(result.searchRequestCount, 1, "private API authentication succeeds before cache persistence fails");
+  assert.ok(result.errors.some((message) => message.includes("cache persistence denied")));
+  assert.ok(result.operationLogs.some((entry) => entry.event === "failed" && entry.failureCategory === "permanent"),
+    "an untyped EACCES cache write is recorded as permanent by the current diagnostic classifier");
 });
 
 test("T407 public Current Context factory path preserves saved, background, and wrong-account private selection contracts", async () => {
