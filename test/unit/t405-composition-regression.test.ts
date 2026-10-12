@@ -1617,7 +1617,7 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     await current.runtime.refresh();
     cacheAtomicWrites = 0;
     cacheAtomicWriteFailure = "ENOSPC";
-    const cacheFailureLog: Array<{ event: string; label: string; message?: string }> = [];
+    const cacheFailureLog: OperationLogEntry[] = [];
     setActiveOperationFeedback(new OperationFeedback({
       showBusy: () => undefined,
       clearBusy: () => undefined,
@@ -1631,7 +1631,12 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     setActiveOperationFeedback(undefined);
     assert.equal(cacheAtomicWrites, 1, "a Node-backed atomic write fault cannot retry or start post-mutation refresh");
     assert.equal(errors.length, 1, "the command boundary reports the terminal cache mutation failure");
-    assert.deepEqual(cacheFailureLog.map((entry) => entry.event), ["started", "failed"]);
+    assert.deepEqual(cacheFailureLog.map((entry) => entry.event), ["started", "refresh", "failed"]);
+    assert.deepEqual(cacheFailureLog[1]?.operationDiagnostic, {
+      stage: "cache-persistence",
+      status: "failed",
+      code: "ENOSPC",
+    });
     cacheAtomicWriteFailure = undefined;
     errors.length = 0;
 
