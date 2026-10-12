@@ -214,10 +214,18 @@ const listRepositoryContextsWithDiagnostic = async (
   repositoryId: string,
   feedbackContext?: OperationFeedbackContext,
 ): Promise<ReviewContextState[]> => {
+  reportActiveOperationStageDiagnostic("repository-context-catalog", undefined, feedbackContext, "started");
   try {
-    return await repository.listRepositoryContexts(repositoryId);
+    const result = await repository.listRepositoryContexts(repositoryId);
+    reportActiveOperationStageDiagnostic("repository-context-catalog", undefined, feedbackContext, "succeeded");
+    return result;
   } catch (error) {
-    reportActiveOperationStageDiagnostic("repository-context-catalog", error, feedbackContext);
+    reportActiveOperationStageDiagnostic(
+      "repository-context-catalog",
+      error,
+      feedbackContext,
+      classifyOperationFailure(error).kind === "stale" ? "cancelled" : "failed",
+    );
     throw error;
   }
 };
@@ -226,11 +234,10 @@ const reportRepositoryRootResolutionFailure = (
   error: unknown,
   feedbackContext?: OperationFeedbackContext,
 ): void => {
-  if (
-    error instanceof ReviewContextsRepositorySelectionCancelled ||
-    classifyOperationFailure(error).kind === "stale"
-  ) return;
-  reportActiveOperationStageDiagnostic("repository-root-resolution", error, feedbackContext);
+  const status = error instanceof ReviewContextsRepositorySelectionCancelled || classifyOperationFailure(error).kind === "stale"
+    ? "cancelled"
+    : "failed";
+  reportActiveOperationStageDiagnostic("repository-root-resolution", error, feedbackContext, status);
 };
 
 export interface RegisteredT405ReviewContextsRuntime
@@ -991,6 +998,7 @@ export function registerT405ReviewContextsRuntime(
     repositoryId: string,
     feedbackContext?: OperationFeedbackContext,
   ): Promise<string> => {
+    reportActiveOperationStageDiagnostic("repository-root-resolution", undefined, feedbackContext, "started");
     let known: string | undefined;
     try {
       known = sourceRef.current?.repositoryRoot(repositoryId);
@@ -998,15 +1006,22 @@ export function registerT405ReviewContextsRuntime(
       reportRepositoryRootResolutionFailure(error, feedbackContext);
       throw error;
     }
-    if (known !== undefined) return known;
+    if (known !== undefined) {
+      reportActiveOperationStageDiagnostic("repository-root-resolution", undefined, feedbackContext, "succeeded");
+      return known;
+    }
     const active = await inspectActiveRepository().catch((error: unknown) => {
       reportRepositoryRootResolutionFailure(error, feedbackContext);
       throw error;
     });
     if (active.repositoryId !== repositoryId) {
-      reportActiveOperationStageDiagnostic("repository-root-resolution", new Error("Repository identity mismatch."), feedbackContext);
+      reportActiveOperationStageDiagnostic("repository-root-resolution", Object.assign(
+        new Error("Repository identity mismatch during active repository resolution."),
+        { code: "REVIEW_REPOSITORY_IDENTITY_MISMATCH" },
+      ), feedbackContext);
       throw new Error("対象PRのローカルGitリポジトリを解決できません。");
     }
+    reportActiveOperationStageDiagnostic("repository-root-resolution", undefined, feedbackContext, "succeeded");
     return active.rootPath;
   };
 

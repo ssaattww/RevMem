@@ -45,7 +45,8 @@ export interface ReviewContextsRuntimeDependencies {
 export const runReviewContextsPureRead = async <T>(
   read: () => Promise<T>,
   signal?: AbortSignal,
-): Promise<T> => (await runWithBoundedRetry(read, { maxAttempts: 3, signal })).value;
+  feedbackContext?: OperationFeedbackContext,
+): Promise<T> => (await runWithBoundedRetry(read, { maxAttempts: 3, signal, feedbackContext })).value;
 
 /** Stores display-only removals in workspaceState, separate from authoritative Review State and history. */
 export class VscodeReviewContextVisibilityStore implements ReviewContextVisibilityStore {
@@ -213,6 +214,7 @@ export class ReviewContextsTreeProvider implements vscode.TreeDataProvider<Revie
       let loaded = await runReviewContextsPureRead(
         () => this.source.load(controller.signal, feedbackContext),
         controller.signal,
+        feedbackContext,
       );
       if (controller.signal.aborted || generation !== this.generation) return;
       if (hasOperationFeedbackFailure(feedbackContext)) {

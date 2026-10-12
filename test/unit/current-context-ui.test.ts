@@ -5,6 +5,7 @@ import test from "node:test";
 import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index";
 import {
   OperationFeedback,
+  formatOperationLogEntry,
   type OperationFeedbackContext,
   type OperationFeedbackHost,
   type OperationLogEntry,
@@ -78,6 +79,30 @@ test("Issue #136 keeps a verified branch and clears old PR Progress when the ref
     "refresh-list",
     "clear-old-progress",
   ]);
+});
+
+test("branch refresh and PR progress cleanup failures both survive the local terminal", async () => {
+  const logs: OperationLogEntry[] = [];
+  const feedback = new OperationFeedback({ showBusy() {}, clearBusy() {}, appendLog(entry) { logs.push(entry); }, revealLog() {} }, () => 2);
+  const branch = branchSnapshot("checked-out", "refs/heads/checked-out");
+  const refreshError = new Error("Review Contexts refresh failed at C:\\private\\repo");
+  const cleanupError = Object.assign(new Error("PR Progress cleanup failed token=fixture-cleanup-secret"), { code: "EACCES" });
+  const coordinator = new CurrentContextRuntimeCoordinator(new CurrentContextUiController(createHost(), {
+    recompute: async () => branch,
+    selectContext: async () => branch,
+  }), {
+    refreshDependents: async () => { throw refreshError; },
+    clearPullRequestProgress: async () => { throw cleanupError; },
+  });
+  await assert.rejects(feedback.run("Current Context refresh", (context) => coordinator.refresh(undefined, context)),
+    (error: unknown) => error instanceof CurrentContextBranchRefreshError);
+
+  const terminal = logs.at(-1);
+  assert.equal(terminal?.event, "failed");
+  const causes = terminal?.errorDetails?.cause?.causes ?? [];
+  assert.equal(causes.some((cause) => cause.message.includes("Review Contexts refresh failed")), true);
+  assert.equal(causes.some((cause) => cause.message.includes("PR Progress cleanup failed")), true);
+  assert.doesNotMatch(logs.map((entry) => formatOperationLogEntry(entry)).join("\n"), /fixture-cleanup-secret/u);
 });
 
 test("Issue #136 coalesces an identical active-editor refresh and records the replacement cause", async () => {
@@ -255,6 +280,28 @@ test("runtime coordinator refreshes dependents after selected UI is applied", as
     "status:$(folder) chosen",
     "dependents"
   ]);
+});
+
+test("Current Context unresolved selection records the no-result stage and one operation terminal", async () => {
+  const entries: OperationLogEntry[] = [];
+  const feedback = new OperationFeedback({
+    showBusy() {}, clearBusy() {}, appendLog(entry) { entries.push(entry); }, revealLog() {},
+  }, () => 1);
+  const controller = new CurrentContextUiController(createHost(), {
+    recompute: async () => undefined,
+    selectContext: async () => ({ kind: "unresolved" }),
+  });
+  const coordinator = new CurrentContextRuntimeCoordinator(controller, { refreshDependents() {} });
+  await feedback.run("Current Context selection", (context) => coordinator.selectContext(undefined, context));
+
+  const refreshStages = entries.filter((entry) => entry.event === "refresh" && entry.pullRequestRefresh?.status !== "started").map((entry) => entry.pullRequestRefresh);
+  assert.deepEqual(refreshStages.map((stage) => [stage?.stage, stage?.status, stage?.reasonCode]), [
+    ["current-context", "no-result", "no-selected-pr"],
+    ["repository-identity", "no-result", "no-selected-pr"],
+    ["pr-acquisition", "no-result", "no-selected-pr"],
+  ]);
+  assert.ok(entries.every((entry) => entry.operationId === 1));
+  assert.deepEqual(entries.filter((entry) => ["succeeded", "failed", "cancelled", "no-result"].includes(entry.event)).map((entry) => entry.event), ["no-result"]);
 });
 
 test("selected context identity is applied to the review runtime before decorations refresh", async () => {
@@ -976,6 +1023,22 @@ test("Git refresh failures are reported instead of escaping fire-and-forget acti
   });
 
   assert.deepEqual(reported, ["Git inspection failed for /workspace"]);
+});
+
+test("fail-closed cleanup failure is reported with the original refresh cause", async () => {
+  const refreshError = new Error("repository refresh failed");
+  const cleanupError = new Error("fail-closed cleanup failed");
+  const controller = new CurrentContextUiController(createHost(), {
+    recompute: async () => { throw refreshError; },
+    selectContext: async () => undefined,
+  });
+  controller.failClosed = () => { throw cleanupError; };
+  const coordinator = new CurrentContextRuntimeCoordinator(controller, { refreshDependents() {} });
+  let reported: unknown;
+  await (coordinator as unknown as { refreshWithErrorBoundary(report: (error: unknown) => void): Promise<void> })
+    .refreshWithErrorBoundary((error) => { reported = error; });
+  assert.ok(reported instanceof AggregateError);
+  assert.deepEqual(reported.errors, [refreshError, cleanupError]);
 });
 
 test("refresh ignores stale asynchronous snapshots", async () => {

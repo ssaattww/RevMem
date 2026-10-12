@@ -139,7 +139,7 @@ test("T606 R5 invokes the registered Global open command with one generic UI err
     assert.equal(messages[0], "操作を完了できませんでした。詳細は Review Range Output を確認してください。");
     assert.doesNotMatch(messages[0]!, /private open failure|\/private\/a\.ts/u);
     assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "failed"]);
-    assert.equal(host.logs.at(-1)?.message, "Operation failed; details were redacted.");
+    assert.equal(host.logs.at(-1)?.message, "private open failure");
   } finally {
     setActiveOperationFeedback(undefined);
   }

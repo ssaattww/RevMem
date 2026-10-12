@@ -16,6 +16,7 @@ import type {
 } from "./contracts";
 import { requirePullRequestDiffAcquisitionRequest } from "./request-validation";
 import type { OperationFeedbackContext } from "../operation-feedback/index";
+import { reportActiveOperationAcquisitionAttempt } from "../operation-feedback/index";
 
 /** Dependencies for the ordered T402 diff-acquisition workflow. */
 export interface PullRequestDiffAcquisitionServiceOptions {
@@ -36,12 +37,19 @@ interface ContentLoadSuccess {
 interface ContentLoadFailure {
   readonly kind: "failure";
   readonly reason: PullRequestDiffUnavailableReason;
+  readonly error?: unknown;
 }
 
+const safeField = (value: unknown, key: string): unknown => {
+  try { return (typeof value === "object" && value !== null) || typeof value === "function" ? (value as Record<string, unknown>)[key] : undefined; }
+  catch { return undefined; }
+};
+
+const isAbortError = (error: unknown): boolean => safeField(error, "name") === "AbortError";
+
 const localFailureReason = (error: unknown): PullRequestDiffUnavailableReason =>
-  typeof error === "object" && error !== null &&
-  (error as { readonly name?: unknown }).name === "GitCommandFailedError" &&
-  (error as { readonly result?: { readonly exitCode?: unknown } }).result?.exitCode === -1
+  safeField(error, "name") === "GitCommandFailedError" &&
+  safeField(safeField(error, "result"), "exitCode") === -1
     ? "git-timeout"
     : "git-failure";
 
@@ -71,44 +79,79 @@ export class PullRequestDiffAcquisitionService {
     assertCurrent();
     const attempts: PullRequestDiffAcquisitionAttempt[] = [];
     let local: Awaited<ReturnType<LocalPullRequestDiffPort["loadDiff"]>>;
+    let localThrown: unknown;
+    reportActiveOperationAcquisitionAttempt({ source: "local-git", status: "started" }, feedbackContext);
     try {
       local = await this.local.loadDiff(request, feedbackContext, signal);
       assertCurrent();
     } catch (error) {
-      assertCurrent();
+      if (signal?.aborted === true || isAbortError(error)) {
+        reportActiveOperationAcquisitionAttempt({ source: "local-git", status: "cancelled", error }, feedbackContext);
+        assertCurrent();
+        throw error;
+      }
       local = { kind: "unavailable", reason: localFailureReason(error) };
+      localThrown = error;
     }
     if (local.kind === "available") {
-      const built = buildSnapshotFromLocalGitDiff(request, local.diff);
+      let built: ReturnType<typeof buildSnapshotFromLocalGitDiff>;
+      try {
+        built = buildSnapshotFromLocalGitDiff(request, local.diff);
+      } catch (error) {
+        reportActiveOperationAcquisitionAttempt({ source: "local-git", status: "failed", error }, feedbackContext);
+        throw error;
+      }
       if (built.kind === "success") {
+        reportActiveOperationAcquisitionAttempt({ source: "local-git", status: "succeeded" }, feedbackContext);
         return { kind: "acquired", source: "local-git", snapshot: built.snapshot };
       }
       attempts.push({ source: "local-git", reason: built.reason });
+      reportActiveOperationAcquisitionAttempt({ source: "local-git", status: "failed", reason: built.reason }, feedbackContext);
     } else {
       attempts.push({ source: "local-git", reason: local.reason });
+      if (local.kind === "unavailable") reportActiveOperationAcquisitionAttempt({ source: "local-git", status: "failed", reason: local.reason, ...(localThrown === undefined ? {} : { error: localThrown }) }, feedbackContext);
     }
 
     let remote: Awaited<ReturnType<PullRequestRemoteDataPort["fetch"]>>;
+    let remoteThrown: unknown;
+    reportActiveOperationAcquisitionAttempt({ source: "github-patch", status: "started" }, feedbackContext);
     try {
       remote = await this.remote.fetch(request, feedbackContext, signal);
       assertCurrent();
-    } catch {
-      assertCurrent();
+    } catch (error) {
+      if (signal?.aborted === true || isAbortError(error)) {
+        reportActiveOperationAcquisitionAttempt({ source: "github-patch", status: "cancelled", error }, feedbackContext);
+        assertCurrent();
+        throw error;
+      }
       remote = { kind: "unavailable", reason: "api" };
+      remoteThrown = error;
     }
     if (remote.kind === "unavailable") {
       attempts.push({ source: "github-patch", reason: remote.reason });
       attempts.push({ source: "github-content", reason: remote.reason });
+      if (remoteThrown === undefined) reportActiveOperationAcquisitionAttempt({ source: "github-patch", status: "failed", reason: remote.reason }, feedbackContext);
+      else reportActiveOperationAcquisitionAttempt({ source: "github-patch", status: "failed", reason: remote.reason, error: remoteThrown }, feedbackContext);
+      reportActiveOperationAcquisitionAttempt({ source: "github-content", status: "skipped", reason: remote.reason }, feedbackContext);
       return { kind: "unavailable", attempts };
     }
     if (!metadataMatches(request, remote.metadata)) {
       attempts.push({ source: "github-patch", reason: "identity-mismatch" });
       attempts.push({ source: "github-content", reason: "identity-mismatch" });
+      reportActiveOperationAcquisitionAttempt({ source: "github-patch", status: "failed", reason: "identity-mismatch" }, feedbackContext);
+      reportActiveOperationAcquisitionAttempt({ source: "github-content", status: "skipped", reason: "identity-mismatch" }, feedbackContext);
       return { kind: "unavailable", attempts };
     }
 
-    const patched = buildSnapshotFromGitHubPatches(request, remote.files);
+    let patched: ReturnType<typeof buildSnapshotFromGitHubPatches>;
+    try {
+      patched = buildSnapshotFromGitHubPatches(request, remote.files);
+    } catch (error) {
+      reportActiveOperationAcquisitionAttempt({ source: "github-patch", status: "failed", error }, feedbackContext);
+      throw error;
+    }
     if (patched.kind === "success") {
+      reportActiveOperationAcquisitionAttempt({ source: "github-patch", status: "succeeded" }, feedbackContext);
       return {
         kind: "acquired",
         source: "github-patch",
@@ -117,22 +160,40 @@ export class PullRequestDiffAcquisitionService {
       };
     }
     attempts.push({ source: "github-patch", reason: patched.reason });
+    reportActiveOperationAcquisitionAttempt({ source: "github-patch", status: "failed", reason: patched.reason }, feedbackContext);
     if (patched.reason === "invalid-data") {
       attempts.push({ source: "github-content", reason: "invalid-data" });
+      reportActiveOperationAcquisitionAttempt({ source: "github-content", status: "skipped", reason: "invalid-data" }, feedbackContext);
       return { kind: "unavailable", attempts };
     }
 
-    const loaded = await this.loadContents(request, remote.files, feedbackContext, signal);
-    assertCurrent();
+    reportActiveOperationAcquisitionAttempt({ source: "github-content", status: "started" }, feedbackContext);
+    let loaded: ContentLoadSuccess | ContentLoadFailure;
+    try {
+      loaded = await this.loadContents(request, remote.files, feedbackContext, signal);
+      assertCurrent();
+    } catch (error) {
+      reportActiveOperationAcquisitionAttempt({ source: "github-content", status: "cancelled", error }, feedbackContext);
+      throw error;
+    }
     if (loaded.kind === "failure") {
       attempts.push({ source: "github-content", reason: loaded.reason });
+      reportActiveOperationAcquisitionAttempt({ source: "github-content", status: "failed", reason: loaded.reason, ...(loaded.error === undefined ? {} : { error: loaded.error }) }, feedbackContext);
       return { kind: "unavailable", attempts };
     }
-    const contentBuilt = buildSnapshotFromFileContents(request, remote.files, loaded.contents);
+    let contentBuilt: ReturnType<typeof buildSnapshotFromFileContents>;
+    try {
+      contentBuilt = buildSnapshotFromFileContents(request, remote.files, loaded.contents);
+    } catch (error) {
+      reportActiveOperationAcquisitionAttempt({ source: "github-content", status: "failed", error }, feedbackContext);
+      throw error;
+    }
     if (contentBuilt.kind === "failure") {
       attempts.push({ source: "github-content", reason: contentBuilt.reason });
+      reportActiveOperationAcquisitionAttempt({ source: "github-content", status: "failed", reason: contentBuilt.reason }, feedbackContext);
       return { kind: "unavailable", attempts };
     }
+    reportActiveOperationAcquisitionAttempt({ source: "github-content", status: "succeeded" }, feedbackContext);
     return {
       kind: "acquired",
       source: "github-content",
@@ -161,8 +222,9 @@ export class PullRequestDiffAcquisitionService {
         try {
           oldResult = await this.remote.readFile(request.repository, request.baseSha, file.oldPath, feedbackContext, signal);
           if (signal?.aborted) throw new DOMException("PR diff acquisition was superseded.", "AbortError");
-        } catch {
-          return { kind: "failure", reason: "invalid-data" };
+        } catch (error) {
+          if (signal?.aborted === true || isAbortError(error)) throw error;
+          return { kind: "failure", reason: "invalid-data", error };
         }
         if (oldResult.kind === "unavailable") return { kind: "failure", reason: oldResult.reason };
         oldContent = oldResult.kind === "binary"
@@ -174,8 +236,9 @@ export class PullRequestDiffAcquisitionService {
         try {
           newResult = await this.remote.readFile(request.repository, request.headSha, file.newPath, feedbackContext, signal);
           if (signal?.aborted) throw new DOMException("PR diff acquisition was superseded.", "AbortError");
-        } catch {
-          return { kind: "failure", reason: "invalid-data" };
+        } catch (error) {
+          if (signal?.aborted === true || isAbortError(error)) throw error;
+          return { kind: "failure", reason: "invalid-data", error };
         }
         if (newResult.kind === "unavailable") return { kind: "failure", reason: newResult.reason };
         newContent = newResult.kind === "binary"

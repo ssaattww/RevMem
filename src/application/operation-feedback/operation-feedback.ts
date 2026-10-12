@@ -1,4 +1,8 @@
-import type { PullRequestDiffAcquisitionAttempt } from "../github-pr-diff/contracts";
+import type {
+  PullRequestDiffAcquisitionAttempt,
+  PullRequestDiffAcquisitionSource,
+  PullRequestDiffUnavailableReason,
+} from "../github-pr-diff/contracts";
 import { formatPullRequestRefreshAliases, validatePullRequestRefreshAliases, type PullRequestRefreshAliases } from "./pull-request-refresh-aliases";
 
 /** Privacy-safe, count-only stages accepted by the shared operation feedback boundary. */
@@ -15,13 +19,35 @@ export interface OperationProgress {
 }
 
 /** Lifecycle event written to the Review Range diagnostic output. */
-export type OperationLogEvent = "started" | "progress" | "refresh" | "succeeded" | "failed" | "cancelled";
+export type OperationLogEvent = "started" | "progress" | "retry" | "acquisition" | "refresh" | "succeeded" | "failed" | "cancelled" | "no-result" | "degraded";
+
+export interface OperationAcquisitionAttempt {
+  readonly source: PullRequestDiffAcquisitionSource;
+  readonly status: "started" | "succeeded" | "failed" | "skipped" | "cancelled";
+  readonly reason?: PullRequestDiffUnavailableReason;
+  readonly error?: OperationErrorDiagnostic;
+}
+
+export type OperationStageDiagnosticStatus = "started" | "succeeded" | "failed" | "cancelled" | "no-result" | "degraded";
+
+/** Local-only, secret-redacted failure evidence. Paths and stack locations remain useful locally. */
+export interface OperationErrorDiagnostic {
+  readonly kind: "error" | "non-error";
+  readonly name?: string;
+  readonly message: string;
+  readonly code?: string;
+  readonly status?: string;
+  readonly stack?: string;
+  readonly cause?: OperationErrorDiagnostic;
+  readonly causes?: readonly OperationErrorDiagnostic[];
+}
 
 export interface OperationStageDiagnostic {
-  readonly stage: "cache-persistence" | "repository-context-catalog" | "repository-root-resolution";
-  readonly status: "failed";
+  readonly stage: "cache-read" | "cache-persistence" | "repository-context-catalog" | "repository-root-resolution";
+  readonly status: OperationStageDiagnosticStatus;
   readonly category?: OperationFailureCategory;
-  readonly code?: "EACCES" | "EBUSY" | "EEXIST" | "EIO" | "EMFILE" | "ENFILE" | "ENOENT" | "ENOSPC" | "ENOTDIR" | "EPERM" | "EROFS";
+  readonly code?: string;
+  readonly error?: OperationErrorDiagnostic;
 }
 
 export type PullRequestRefreshTrigger =
@@ -53,7 +79,7 @@ export type PullRequestRefreshStage =
   | "context-save"
   | "global-state-preparation";
 
-export type PullRequestRefreshStatus = "started" | "progress" | "succeeded" | "failed" | "cancelled" | "superseded" | "coalesced";
+export type PullRequestRefreshStatus = "started" | "progress" | "succeeded" | "failed" | "cancelled" | "superseded" | "coalesced" | "no-result";
 
 export type PullRequestRefreshReasonCode =
   | "explicit-selection-kept"
@@ -117,14 +143,21 @@ export interface OperationLogEntry {
   readonly event: OperationLogEvent;
   /** Anonymous numeric progress for a progress event. */
   readonly progress?: OperationProgress;
+  /** Safe retry classification and one-based backoff attempt. */
+  readonly retryAttempt?: Readonly<{ readonly attempt: number; readonly category: OperationFailureCategory; readonly code?: string; readonly delayMs: number; readonly error?: OperationErrorDiagnostic }>;
+  readonly acquisitionAttempt?: OperationAcquisitionAttempt;
   /** Elapsed milliseconds for completed operations. */
   readonly durationMs?: number;
   /** Error class when the operation failed with an Error instance. */
   readonly errorName?: string;
-  /** Failure message sanitized for source-content-free Output diagnostics. */
+  /** Local failure evidence with secret values masked. */
   readonly message?: string;
+  /** Detailed local-only error evidence after secret-value redaction. */
+  readonly errorDetails?: OperationErrorDiagnostic;
   /** Safe classifier outcome for a failed operation; never includes dependency text. */
   readonly failureCategory?: OperationFailureCategory;
+  /** Reason retained when an operation ends without a selected result or is degraded/cancelled. */
+  readonly outcomeReason?: PullRequestRefreshReasonCode;
   /** Fixed-stage operation diagnostic containing only an allowlisted error code. */
   readonly operationDiagnostic?: OperationStageDiagnostic;
   /** Numeric correlation to the owning operation, present on PR refresh detail. */
@@ -192,6 +225,7 @@ export interface BoundedRetryOptions {
   readonly maxAttempts?: number;
   readonly signal?: AbortSignal;
   readonly sleep?: (milliseconds: number, signal?: AbortSignal) => Promise<void>;
+  readonly feedbackContext?: OperationFeedbackContext;
 }
 
 /** Successful value plus the safe retry sequence that preceded it. */
@@ -208,8 +242,8 @@ export interface OperationFeedbackContext {
 
 /** Explicit stale/cancelled terminal state; it is never retried. */
 export class OperationCancelledError extends Error {
-  public constructor() {
-    super("Operation was cancelled or superseded.");
+  public constructor(cause?: unknown) {
+    super("Operation was cancelled or superseded.", cause === undefined ? undefined : { cause });
     this.name = "OperationCancelledError";
   }
 }
@@ -223,6 +257,9 @@ interface ActiveOperation {
   boundaryFailure?: unknown;
   /** A superseded refresh makes the enclosing operation finish as cancelled. */
   boundaryCancelled?: boolean;
+  boundaryNoResult?: boolean;
+  boundaryDegraded?: boolean;
+  outcomeReason?: PullRequestRefreshReasonCode;
 }
 
 const MAX_OPERATION_LABEL_LENGTH = 96;
@@ -330,10 +367,6 @@ const SAFE_ERROR_CODES = new Set([
   "GITHUB_PR_DETECTION_UNAVAILABLE"
 ]);
 
-const SAFE_STAGE_DIAGNOSTIC_CODES = new Set<NonNullable<OperationStageDiagnostic["code"]>>([
-  "EACCES", "EBUSY", "EEXIST", "EIO", "EMFILE", "ENFILE", "ENOENT", "ENOSPC", "ENOTDIR", "EPERM", "EROFS",
-]);
-
 const SAFE_PR_PROGRESS_SOURCES = new Set([
   "local-git",
   "github-patch",
@@ -362,6 +395,11 @@ const SAFE_GITHUB_PR_DETECTION_REASONS = new Set(["rate-limit", "network", "api"
 const SAFE_GLOBAL_UNDERSTANDING_STAGES = new Set<GlobalUnderstandingFailureStage>(["path-discovery", "owner-capture", "scope-processing", "content-read", "calculation"]);
 const SAFE_GLOBAL_UNDERSTANDING_SCOPES = new Set(["repository-root", "folder"]);
 const SAFE_OPERATION_FAILURE_CATEGORIES = new Set<OperationFailureCategory>(["retryable", "permanent", "stale", "authentication", "validation"]);
+const SAFE_ACQUISITION_SOURCES = new Set<PullRequestDiffAcquisitionSource>(["local-git", "github-patch", "github-content"]);
+const SAFE_ACQUISITION_REASONS = new Set<PullRequestDiffUnavailableReason>([
+  "git-unavailable", "git-timeout", "missing-revision", "git-failure", "rate-limit", "authentication", "network", "timeout", "api",
+  "missing-file", "invalid-encoding", "missing-patch", "incomplete-patch", "identity-mismatch", "invalid-data", "diff-too-large",
+]);
 const SAFE_PULL_REQUEST_REFRESH_TRIGGERS = new Set<PullRequestRefreshTrigger>([
   "current-context-refresh", "review-contexts-refresh", "current-context-selection",
   "startup", "active-editor-change", "review-state-change", "retry", "pr-redetection",
@@ -373,7 +411,7 @@ const SAFE_PULL_REQUEST_REFRESH_STAGES = new Set<PullRequestRefreshStage>([
   "context-save", "global-state-preparation",
 ]);
 const SAFE_PULL_REQUEST_REFRESH_STATUSES = new Set<PullRequestRefreshStatus>([
-  "started", "progress", "succeeded", "failed", "cancelled", "superseded", "coalesced",
+  "started", "progress", "succeeded", "failed", "cancelled", "superseded", "coalesced", "no-result",
 ]);
 const SAFE_PULL_REQUEST_REFRESH_REASONS = new Set<PullRequestRefreshReasonCode>([
   "explicit-selection-kept", "unique-pr-match", "ambiguous-pr-match", "no-matching-pr",
@@ -487,22 +525,17 @@ const safeErrorName = (error: Error): string =>
   SAFE_ERROR_NAMES.has(error.name) ? error.name : "Error";
 
 const safeErrorCode = (error: unknown): string | undefined => {
-  if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
-  const code = (error as { readonly code?: unknown }).code;
+  const code = safeReadErrorField(error, "code");
   return typeof code === "string" && SAFE_ERROR_CODES.has(code) ? code : undefined;
 };
 
 const errorField = (error: unknown, field: "code" | "status" | "name"): unknown =>
-  typeof error === "object" && error !== null && field in error
-    ? (error as Record<string, unknown>)[field]
-    : undefined;
+  safeReadErrorField(error, field);
 
 const isTimedOutGitCommand = (error: unknown): boolean => {
   if (errorField(error, "name") !== "GitCommandFailedError") return false;
-  if (typeof error !== "object" || error === null || !("result" in error)) return false;
-  const result = (error as { readonly result?: unknown }).result;
-  return typeof result === "object" && result !== null &&
-    (result as { readonly exitCode?: unknown }).exitCode === -1;
+  const result = safeReadErrorField(error, "result");
+  return safeReadErrorField(result, "exitCode") === -1;
 };
 
 /**
@@ -623,10 +656,12 @@ export const runWithBoundedRetry = async <T>(
         rememberRetryAttempts(error, attempts);
         throw error;
       }
-      attempts.push(Object.freeze({
+      const retryAttempt = Object.freeze({
         category: classification.kind,
         ...(classification.code === undefined ? {} : { code: classification.code })
-      }));
+      });
+      attempts.push(retryAttempt);
+      options.feedbackContext?.owner.reportRetryAttempt(retryAttempt, attempt, 25 * (2 ** (attempt - 1)), options.feedbackContext, error);
       await sleep(25 * (2 ** (attempt - 1)), options.signal);
     }
   }
@@ -655,6 +690,103 @@ const formatOperationDiagnostic = (diagnostic: OperationDiagnostic): string => {
   return `${diagnostic.code} attempts=${attempts.length === 0 ? "none" : attempts.join(" -> ")}; final=${finalAttempt}${omitted}`;
 };
 
+const MAX_ERROR_MESSAGE_LENGTH = 4_000;
+const MAX_ERROR_STACK_LENGTH = 12_000;
+const MAX_ERROR_STACK_LINES = 48;
+const MAX_ERROR_CAUSE_DEPTH = 4;
+
+const redactDiagnosticSecrets = (value: string): string => value
+  .replace(/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/giu, "[REDACTED PRIVATE KEY]")
+  .replace(/\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/giu, "[REDACTED TOKEN]")
+  .replace(/\b(authorization|proxy-authorization)\s*[:=]\s*(?:bearer|basic)\s+[^\s,;]+/giu, "$1: [REDACTED]")
+  .replace(/\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}/giu, "$1 [REDACTED]")
+  .replace(/\b(cookie|set-cookie)\s*[:=]\s*[^\r\n]+/giu, "$1: [REDACTED]")
+  .replace(/\b(access[_-]?token|refresh[_-]?token|token|password|passwd|pwd|passphrase|client[_-]?secret|api[_-]?key|secret)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/giu, "$1=[REDACTED]")
+  .replace(/(https?:\/\/)[^/@\s]+:[^/@\s]+@/giu, "$1[REDACTED]@");
+
+const normalizedDiagnosticText = (value: string, maximum: number): string => {
+  const redacted = redactDiagnosticSecrets(value.replace(/\0/gu, "\\0"));
+  return redacted.length <= maximum ? redacted : `${redacted.slice(0, maximum - 32)} … [truncated ${redacted.length - maximum + 32} chars]`;
+};
+
+const safeReadErrorField = (error: unknown, field: string): unknown => {
+  try {
+    if ((typeof error !== "object" || error === null) && typeof error !== "function") return undefined;
+    return (error as Record<string, unknown>)[field];
+  } catch {
+    return undefined;
+  }
+};
+
+const safeDiagnosticScalar = (value: unknown): string | undefined => {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") return String(value);
+  return undefined;
+};
+
+const createErrorDiagnostic = (
+  error: unknown,
+  seen: Set<object> = new Set(),
+  depth = 0,
+): OperationErrorDiagnostic => {
+  const identity = ((typeof error === "object" && error !== null) || typeof error === "function") ? error as object : undefined;
+  if (identity !== undefined && seen.has(identity)) {
+    return { kind: "non-error", message: "Circular error cause omitted." };
+  }
+  if (identity !== undefined) seen.add(identity);
+  const isError = error instanceof Error;
+  const rawName = safeDiagnosticScalar(safeReadErrorField(error, "name"));
+  const rawMessage = safeDiagnosticScalar(safeReadErrorField(error, "message"));
+  const globalDiagnostic = identity === undefined ? undefined : globalUnderstandingFailureDiagnostics.get(identity);
+  const structuredMessage = globalDiagnostic !== undefined
+    ? formatGlobalUnderstandingFailureDiagnostic(globalDiagnostic)
+    : error instanceof OperationDiagnosticError
+      ? formatOperationDiagnostic(error.diagnostic)
+      : undefined;
+  const primitiveMessage = typeof error === "string" ? error :
+    error === null || error === undefined || typeof error === "number" || typeof error === "boolean" || typeof error === "bigint"
+      ? String(error)
+      : undefined;
+  const message = normalizedDiagnosticText(
+    structuredMessage ?? rawMessage ?? primitiveMessage ?? (isError ? "Error has no readable message." : "Thrown non-Error value has no readable message."),
+    MAX_ERROR_MESSAGE_LENGTH,
+  );
+  const rawCode = safeDiagnosticScalar(safeReadErrorField(error, "code"));
+  const rawStatus = safeDiagnosticScalar(safeReadErrorField(error, "status"));
+  const rawStack = safeDiagnosticScalar(safeReadErrorField(error, "stack"));
+  let stack: string | undefined;
+  if (rawStack !== undefined) {
+    const lines = rawStack.split(/\r?\n/u).slice(0, MAX_ERROR_STACK_LINES)
+      .map((line) => normalizedDiagnosticText(line, 1_000));
+    if (rawStack.split(/\r?\n/u).length > MAX_ERROR_STACK_LINES) lines.push("… [stack lines truncated]");
+    stack = normalizedDiagnosticText(lines.join("\n"), MAX_ERROR_STACK_LENGTH);
+  }
+  let cause: OperationErrorDiagnostic | undefined;
+  const rawCause = safeReadErrorField(error, "cause");
+  if (rawCause !== undefined) {
+    cause = depth >= MAX_ERROR_CAUSE_DEPTH
+      ? { kind: "non-error", message: "Further error causes omitted after depth limit." }
+      : createErrorDiagnostic(rawCause, seen, depth + 1);
+  }
+  const rawCauses = safeReadErrorField(error, "errors");
+  const causes = Array.isArray(rawCauses)
+    ? rawCauses.slice(0, 4).map((causeValue) => depth >= MAX_ERROR_CAUSE_DEPTH
+      ? { kind: "non-error" as const, message: "Further error causes omitted after depth limit." }
+      : createErrorDiagnostic(causeValue, seen, depth + 1))
+    : undefined;
+  if (identity !== undefined) seen.delete(identity);
+  return {
+    kind: isError ? "error" : "non-error",
+    ...(rawName === undefined ? {} : { name: normalizedDiagnosticText(rawName, 120) }),
+    message,
+    ...(rawCode === undefined ? {} : { code: normalizedDiagnosticText(rawCode, 256) }),
+    ...(rawStatus === undefined ? {} : { status: normalizedDiagnosticText(rawStatus, 128) }),
+    ...(stack === undefined ? {} : { stack }),
+    ...(cause === undefined ? {} : { cause }),
+    ...(causes === undefined || causes.length === 0 ? {} : { causes }),
+  };
+};
+
 const sanitizedFailureMessage = (error: unknown): string => {
   const identity = errorIdentity(error);
   const globalDiagnostic = identity === undefined ? undefined : globalUnderstandingFailureDiagnostics.get(identity);
@@ -662,23 +794,14 @@ const sanitizedFailureMessage = (error: unknown): string => {
   if (error instanceof OperationDiagnosticError) {
     return formatOperationDiagnostic(error.diagnostic);
   }
-
-  const errorName = error instanceof Error ? safeErrorName(error) : undefined;
-  if (errorName === "GitCommandFailedError") return "Git command failed.";
-  if (errorName === "GitExecutableNotFoundError") return "Git executable was not found.";
-  if (errorName === "OperationCancelledError") return "Operation was superseded by a newer refresh.";
-
-  const code = safeErrorCode(error);
-  const base = code === undefined
-    ? "Operation failed; details were redacted."
-    : `Operation failed (code ${code}); details were redacted.`;
+  const details = createErrorDiagnostic(error);
   const attempts = errorIdentity(error) === undefined ? undefined : retryAttemptsByError.get(errorIdentity(error)!);
-  if (attempts === undefined || attempts.length === 0) return base;
+  if (attempts === undefined || attempts.length === 0) return details.message;
   const retrySequence = attempts.map((attempt) => attempt.code ?? attempt.category).join(" -> ");
-  return `${base} retries=${retrySequence}; final=${classifyOperationFailure(error).kind}.`;
+  return `${details.message} retries=${retrySequence}; final=${classifyOperationFailure(error).kind}.`;
 };
 
-/** Projects a failure to a generic UI message without exposing dependency text. */
+/** Projects a failure to a generic user-facing message. */
 export const formatOperationFailureForUser = (error: unknown): string => {
   switch (classifyOperationFailure(error).kind) {
     case "authentication": return "認証を確認してから再試行してください。";
@@ -689,29 +812,50 @@ export const formatOperationFailureForUser = (error: unknown): string => {
   }
 };
 
-const failureDetails = (error: unknown): Pick<OperationLogEntry, "errorName" | "message" | "failureCategory"> =>
-  error instanceof Error
-    ? {
-      errorName: safeErrorName(error),
-      message: sanitizedFailureMessage(error),
-      failureCategory: classifyOperationFailure(error).kind,
-    }
-    : {
-      message: sanitizedFailureMessage(error),
-      failureCategory: classifyOperationFailure(error).kind,
-    };
+const failureDetails = (error: unknown): Pick<OperationLogEntry, "errorName" | "message" | "errorDetails" | "failureCategory"> => {
+  const errorDetails = createErrorDiagnostic(error);
+  return {
+    ...(errorDetails.name === undefined ? {} : { errorName: errorDetails.name }),
+    message: sanitizedFailureMessage(error),
+    errorDetails,
+    failureCategory: classifyOperationFailure(error).kind,
+  };
+};
 
 const errorIdentity = (error: unknown): object | undefined =>
   (typeof error === "object" && error !== null) || typeof error === "function"
     ? error as object
     : undefined;
 
+const failureComponents = (error: unknown, seen = new Set<unknown>()): unknown[] => {
+  if (seen.has(error)) return [];
+  seen.add(error);
+  const errors = safeReadErrorField(error, "errors");
+  return Array.isArray(errors) ? errors.slice(0, 8).flatMap((item) => failureComponents(item, seen)) : [error];
+};
+
+const mergeOperationFailures = (...errors: readonly unknown[]): unknown => {
+  const seen = new Set<unknown>();
+  const components = errors.flatMap((error) => failureComponents(error, seen));
+  if (components.length <= 1) return components[0];
+  return new AggregateError(components, "Multiple related operation failures occurred.");
+};
+
+const containsOperationFailure = (outer: unknown, sought: unknown, seen = new Set<unknown>()): boolean => {
+  if (outer === sought) return true;
+  if (seen.has(outer)) return false;
+  seen.add(outer);
+  const errors = safeReadErrorField(outer, "errors");
+  if (Array.isArray(errors) && errors.some((item) => containsOperationFailure(item, sought, seen))) return true;
+  return containsOperationFailure(safeReadErrorField(outer, "cause"), sought, seen);
+};
+
 /**
  * Coordinates operation lifecycle logging with one shared activity status.
  *
- * Labels are deliberately generic. Arbitrary dependency error messages are
- * never copied into Output. Only fixed messages, explicitly allowlisted stable
- * error names/codes, and validated structured diagnostics are projected.
+ * Operation output is local diagnostics. Error evidence is retained after
+ * secret-value redaction; callers must keep private environment data out of
+ * public comments and artifacts.
  */
 export class OperationFeedback {
   private readonly active: ActiveOperation[] = [];
@@ -722,7 +866,8 @@ export class OperationFeedback {
 
   public constructor(
     private readonly host: OperationFeedbackHost,
-    private readonly now: () => number = () => Date.now()
+    private readonly now: () => number = () => Date.now(),
+    private readonly fallbackWriter: (line: string) => void = (line) => console.error(line),
   ) {}
 
   /** Runs one operation while publishing start, success/failure, and busy status. */
@@ -734,7 +879,7 @@ export class OperationFeedback {
       startedAt: this.now()
     };
     this.active.push(active);
-    this.host.appendLog({
+    this.appendHostLog({
       timestamp: new Date(active.startedAt).toISOString(),
       label: active.label,
       event: "started",
@@ -745,44 +890,62 @@ export class OperationFeedback {
     try {
       const result = await operation({ owner: this, id: active.id });
       const finishedAt = this.now();
-      if (active.boundaryFailure === undefined && active.boundaryCancelled === true) {
-        this.host.appendLog({
+      if (active.boundaryFailure !== undefined) {
+        this.recordRunFailure(active.label, active.boundaryFailure, finishedAt, Math.max(0, finishedAt - active.startedAt), active.id);
+      } else if (active.boundaryCancelled === true) {
+        this.appendHostLog({
           timestamp: new Date(finishedAt).toISOString(),
           label: active.label,
           event: "cancelled",
           operationId: active.id,
-          durationMs: Math.max(0, finishedAt - active.startedAt)
+          durationMs: Math.max(0, finishedAt - active.startedAt),
+          ...(active.outcomeReason === undefined ? {} : { outcomeReason: active.outcomeReason }),
         });
-      } else if (active.boundaryFailure === undefined) {
-        this.host.appendLog({
+      } else if (active.boundaryNoResult === true) {
+        this.appendHostLog({
+          timestamp: new Date(finishedAt).toISOString(),
+          label: active.label,
+          event: "no-result",
+          operationId: active.id,
+          durationMs: Math.max(0, finishedAt - active.startedAt),
+          ...(active.outcomeReason === undefined ? {} : { outcomeReason: active.outcomeReason }),
+        });
+      } else if (active.boundaryDegraded === true) {
+        this.appendHostLog({
+          timestamp: new Date(finishedAt).toISOString(),
+          label: active.label,
+          event: "degraded",
+          operationId: active.id,
+          durationMs: Math.max(0, finishedAt - active.startedAt),
+          ...(active.outcomeReason === undefined ? {} : { outcomeReason: active.outcomeReason }),
+        });
+      } else {
+        this.appendHostLog({
           timestamp: new Date(finishedAt).toISOString(),
           label: active.label,
           event: "succeeded",
           operationId: active.id,
           durationMs: Math.max(0, finishedAt - active.startedAt)
         });
-      } else {
-        this.recordRunFailure(
-          active.label,
-          active.boundaryFailure,
-          finishedAt,
-          Math.max(0, finishedAt - active.startedAt),
-          active.id
-        );
       }
       return result;
     } catch (error) {
       const finishedAt = this.now();
       const durationMs = Math.max(0, finishedAt - active.startedAt);
       if (active.boundaryFailure !== undefined) {
-        this.recordRunFailure(active.label, active.boundaryFailure, finishedAt, durationMs, active.id);
-      } else if (active.boundaryCancelled === true && errorField(error, "name") === "AbortError") {
-        this.host.appendLog({
+        const terminalError = containsOperationFailure(error, active.boundaryFailure)
+          ? error
+          : mergeOperationFailures(active.boundaryFailure, error);
+        this.recordRunFailure(active.label, terminalError, finishedAt, durationMs, active.id);
+      } else if (classifyOperationFailure(error).kind === "stale") {
+        this.appendHostLog({
           timestamp: new Date(finishedAt).toISOString(),
           label: active.label,
           event: "cancelled",
           operationId: active.id,
-          durationMs
+          durationMs,
+          ...failureDetails(error),
+          outcomeReason: active.outcomeReason ?? "superseded-by-newer-generation",
         });
       } else {
         this.recordRunFailure(active.label, error, finishedAt, durationMs, active.id);
@@ -796,8 +959,8 @@ export class OperationFeedback {
       for (const listener of listeners ?? []) {
         try {
           listener();
-        } catch {
-          // Cleanup must not replace the operation's success/failure/cancellation result.
+        } catch (error) {
+          this.reportLoggerFailure("operation-finish-listener", error);
         }
       }
       this.publishStatus();
@@ -826,7 +989,7 @@ export class OperationFeedback {
     const validated = validateOperationProgress(progress);
     if (sameOperationProgress(active.progress, validated)) return;
     active.progress = validated;
-    this.host.appendLog({
+    this.appendHostLog({
       timestamp: new Date(this.now()).toISOString(),
       label: active.label,
       event: "progress",
@@ -834,6 +997,61 @@ export class OperationFeedback {
       progress: validated,
     });
     this.publishStatus();
+  }
+
+  /** Records a retry before backoff so a cancellation during sleep keeps its preceding cause. */
+  public reportRetryAttempt(
+    attempt: OperationRetryAttempt,
+    attemptNumber: number,
+    delayMs: number,
+    context: OperationFeedbackContext,
+    error?: unknown,
+  ): void {
+    if (context.owner !== this || !Number.isSafeInteger(attemptNumber) || attemptNumber < 1 ||
+      !Number.isSafeInteger(delayMs) || delayMs < 0 || !SAFE_OPERATION_FAILURE_CATEGORIES.has(attempt.category)) return;
+    const active = this.active.find((candidate) => candidate.id === context.id);
+    if (active === undefined) return;
+    this.appendHostLog({
+      timestamp: new Date(this.now()).toISOString(),
+      label: active.label,
+      event: "retry",
+      operationId: active.id,
+      retryAttempt: {
+        attempt: attemptNumber,
+        category: attempt.category,
+        ...(attempt.code === undefined ? {} : { code: attempt.code }),
+        delayMs,
+        ...(error === undefined ? {} : { error: createErrorDiagnostic(error) }),
+      },
+    });
+  }
+
+  /** Records one route in the PR diff fallback chain, preserving its local error evidence. */
+  public reportAcquisitionAttempt(
+    attempt: Omit<OperationAcquisitionAttempt, "error"> & { readonly error?: unknown },
+    context?: OperationFeedbackContext,
+  ): void {
+    if (!SAFE_ACQUISITION_SOURCES.has(attempt.source) ||
+      (attempt.reason !== undefined && !SAFE_ACQUISITION_REASONS.has(attempt.reason))) return;
+    const active = context?.owner === this
+      ? this.active.find((candidate) => candidate.id === context.id)
+      : context === undefined
+        ? this.active.at(-1)
+        : undefined;
+    if (active === undefined) return;
+    const error = attempt.error === undefined ? undefined : createErrorDiagnostic(attempt.error);
+    this.appendHostLog({
+      timestamp: new Date(this.now()).toISOString(),
+      label: active.label,
+      event: "acquisition",
+      operationId: active.id,
+      acquisitionAttempt: {
+        source: attempt.source,
+        status: attempt.status,
+        ...(attempt.reason === undefined ? {} : { reason: attempt.reason }),
+        ...(error === undefined ? {} : { error }),
+      },
+    });
   }
 
   /** Appends one validated PR Progress refresh event to its owning operation. */
@@ -851,9 +1069,13 @@ export class OperationFeedback {
     validatePullRequestRefreshAliases(validated.aliases, validated.generation, { owner: this, id: active.id });
     if (validated.status === "cancelled" || validated.status === "superseded") {
       active.boundaryCancelled = true;
+      active.outcomeReason = validated.reasonCode ?? "superseded";
+    } else if (validated.status === "no-result") {
+      active.boundaryNoResult = true;
+      active.outcomeReason = validated.reasonCode ?? "no-matching-pr";
     }
     const event: OperationLogEvent = "refresh";
-    this.host.appendLog({
+    this.appendHostLog({
       timestamp: new Date(this.now()).toISOString(),
       label: "PR Progress refresh",
       event,
@@ -873,38 +1095,54 @@ export class OperationFeedback {
       ? this.active.find((candidate) => candidate.id === context.id)
       : undefined;
     if (active !== undefined) {
-      active.boundaryFailure ??= error;
+      active.boundaryFailure = active.boundaryFailure === undefined
+        ? error
+        : mergeOperationFailures(active.boundaryFailure, error);
       return;
     }
     const timestamp = this.now();
     const normalizedLabel = requireLabel(label);
     const id = ++this.nextId;
-    this.host.appendLog({ timestamp: new Date(timestamp).toISOString(), label: normalizedLabel, event: "started", operationId: id });
+    this.appendHostLog({ timestamp: new Date(timestamp).toISOString(), label: normalizedLabel, event: "started", operationId: id });
     this.appendFailure(normalizedLabel, error, timestamp, undefined, id);
   }
 
   /** Records an optional cache persistence failure without failing the owning operation. */
-  public reportStageDiagnostic(stage: OperationStageDiagnostic["stage"], error: unknown, context?: OperationFeedbackContext): void {
+  public reportStageDiagnostic(
+    stage: OperationStageDiagnostic["stage"],
+    error: unknown,
+    context?: OperationFeedbackContext,
+    status: OperationStageDiagnosticStatus = "failed",
+  ): void {
     const active = context?.owner === this
       ? this.active.find((candidate) => candidate.id === context.id)
       : context === undefined
         ? this.active.at(-1)
         : undefined;
     if (active === undefined) return;
-    const candidateCode = safeErrorCode(error);
-    const code = candidateCode !== undefined && SAFE_STAGE_DIAGNOSTIC_CODES.has(candidateCode as NonNullable<OperationStageDiagnostic["code"]>)
-      ? candidateCode as NonNullable<OperationStageDiagnostic["code"]>
-      : undefined;
-    this.host.appendLog({
+    const errorDetails = error === undefined ? undefined : createErrorDiagnostic(error);
+    const code = errorDetails?.code;
+    if (status === "cancelled" && stage !== "cache-read") {
+      active.boundaryCancelled = true;
+      active.outcomeReason = "superseded-by-newer-generation";
+    } else if (status === "no-result" && stage !== "cache-read") {
+      active.boundaryNoResult = true;
+      active.outcomeReason = "no-matching-pr";
+    } else if (status === "degraded") {
+      active.boundaryDegraded = true;
+      active.outcomeReason = "refresh-failed";
+    }
+    this.appendHostLog({
       timestamp: new Date(this.now()).toISOString(),
       label: active.label,
       event: "refresh",
       operationId: active.id,
       operationDiagnostic: {
         stage,
-        status: "failed",
-        ...(stage === "cache-persistence" ? {} : { category: classifyOperationFailure(error).kind }),
+        status,
+        ...(error === undefined || stage === "cache-persistence" ? {} : { category: classifyOperationFailure(error).kind }),
         ...(code === undefined ? {} : { code }),
+        ...(errorDetails === undefined ? {} : { error: errorDetails }),
       },
     });
   }
@@ -934,14 +1172,14 @@ export class OperationFeedback {
       return;
     }
     const timestamp = new Date(this.now()).toISOString();
-    this.host.appendLog({ timestamp, label: "Storage lock", event: "started" });
-    this.host.appendLog({
+    this.appendHostLog({ timestamp, label: "Storage lock", event: "started" });
+    this.appendHostLog({
       timestamp,
       label: "Storage lock",
       event: kind === "stale-recovered" ? "succeeded" : "failed",
       message: `Storage lock ${kind}.`
     });
-    if (kind !== "stale-recovered") this.host.revealLog();
+    if (kind !== "stale-recovered") this.revealHostLog();
   }
 
   private recordRunFailure(
@@ -966,7 +1204,7 @@ export class OperationFeedback {
     durationMs?: number,
     operationId?: number,
   ): void {
-    this.host.appendLog({
+    this.appendHostLog({
       timestamp: new Date(timestamp).toISOString(),
       label,
       event: "failed",
@@ -974,43 +1212,96 @@ export class OperationFeedback {
       ...(durationMs === undefined ? {} : { durationMs }),
       ...failureDetails(error)
     });
-    this.host.revealLog();
+    this.revealHostLog();
   }
 
   private publishStatus(): void {
     const latest = this.active.at(-1);
     if (latest === undefined) {
-      this.host.clearBusy();
+      try { this.host.clearBusy(); } catch (error) { this.reportLoggerFailure("clear-busy", error); }
       return;
     }
-    this.host.showBusy(latest.label, this.active.length, latest.progress);
+    try { this.host.showBusy(latest.label, this.active.length, latest.progress); }
+    catch (error) { this.reportLoggerFailure("show-busy", error); }
+  }
+
+  private appendHostLog(entry: OperationLogEntry): void {
+    try { this.host.appendLog(entry); }
+    catch (error) {
+      let line = "Review Range Output logger failed while writing an operation record.";
+      try { line += ` record=${formatOperationLogEntry(entry)}`; } catch { /* keep fallback safe */ }
+      this.reportLoggerFailure(line, error);
+    }
+  }
+
+  private revealHostLog(): void {
+    try { this.host.revealLog(); }
+    catch (error) { this.reportLoggerFailure("reveal-output", error); }
+  }
+
+  protected reportLoggerFailure(action: string, error: unknown): void {
+    try {
+      const details = createErrorDiagnostic(error);
+      const line = `[Review Range local fallback] ${action}: ${details.name ?? details.kind}: ${details.message}` +
+        (details.code === undefined ? "" : ` code=${details.code}`) +
+        (details.stack === undefined ? "" : `\n${details.stack}`);
+      this.fallbackWriter(line);
+    } catch {
+      // The fallback sink is best-effort and must never replace application outcomes.
+    }
   }
 }
 
-/** Formats one compact, source-content-free line for the VS Code Output channel. */
+const appendErrorEvidence = (details: OperationErrorDiagnostic, prefix: string, lines: string[]): void => {
+  const identity = details.name ?? details.kind;
+  const code = details.code === undefined ? "" : ` code=${details.code}`;
+  const status = details.status === undefined ? "" : ` status=${details.status}`;
+  lines.push(`${prefix}${identity}${code}${status}: ${details.message}`);
+  if (details.stack !== undefined) {
+    lines.push(`${prefix}stack:`);
+    for (const stackLine of details.stack.split("\n")) lines.push(`${prefix}  ${stackLine}`);
+  }
+  if (details.cause !== undefined) appendErrorEvidence(details.cause, `${prefix}caused by `, lines);
+  for (const cause of details.causes ?? []) appendErrorEvidence(cause, `${prefix}also caused by `, lines);
+};
+
+/** Formats local Output diagnostics, preserving error evidence after masking secret values. */
 export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
   const stage = entry.event === "started"
     ? "START"
     : entry.event === "progress"
       ? "PROGRESS"
+      : entry.event === "retry"
+        ? "RETRY"
+      : entry.event === "acquisition"
+        ? "ACQUIRE"
       : entry.event === "refresh"
         ? "REFRESH"
       : entry.event === "succeeded"
         ? "OK"
         : entry.event === "cancelled"
           ? "CANCEL"
-        : "ERROR";
+          : entry.event === "no-result"
+            ? "NO-RESULT"
+            : entry.event === "degraded"
+              ? "DEGRADED"
+              : "ERROR";
   const progress = entry.event === "progress" && entry.progress !== undefined
     ? ` stage=${entry.progress.stage} progress=${entry.progress.completed}${entry.progress.total === undefined ? "" : `/${entry.progress.total}`}`
     : "";
+  const retry = entry.retryAttempt === undefined ? "" :
+    ` attempt=${entry.retryAttempt.attempt} category=${entry.retryAttempt.category}${entry.retryAttempt.code === undefined ? "" : ` code=${entry.retryAttempt.code}`} backoff=${entry.retryAttempt.delayMs}ms`;
+  const acquisition = entry.acquisitionAttempt === undefined ? "" :
+    ` route=${entry.acquisitionAttempt.source} status=${entry.acquisitionAttempt.status}${entry.acquisitionAttempt.reason === undefined ? "" : ` reason=${entry.acquisitionAttempt.reason}`}`;
   const operation = entry.operationId === undefined ? "" : ` op=${entry.operationId}`;
   const duration = entry.durationMs === undefined ? "" : ` (${entry.durationMs} ms)`;
-  const error = entry.event !== "failed" || entry.message === undefined
-    ? ""
-    : `: ${entry.errorName === undefined ? "" : `${boundedSingleLine(entry.errorName, 80)}: `}${boundedSingleLine(entry.message, 320)}`;
-  const failureCategory = entry.event === "failed" && entry.failureCategory !== undefined
+  const error = entry.errorDetails === undefined
+    ? (entry.message === undefined ? "" : `: ${normalizedDiagnosticText(entry.message, MAX_ERROR_MESSAGE_LENGTH)}`)
+    : `: ${entry.errorDetails.name ?? entry.errorDetails.kind}: ${entry.errorDetails.message}`;
+  const failureCategory = entry.failureCategory !== undefined
     ? ` category=${entry.failureCategory}`
     : "";
+  const outcomeReason = entry.outcomeReason === undefined ? "" : ` reason=${entry.outcomeReason}`;
   const refresh = entry.pullRequestRefresh;
   const refreshDetails = refresh === undefined
     ? ""
@@ -1030,10 +1321,18 @@ export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
     : ` stage=${entry.operationDiagnostic.stage} status=${entry.operationDiagnostic.status}` +
       (entry.operationDiagnostic.category === undefined ? "" : ` category=${entry.operationDiagnostic.category}`) +
       (entry.operationDiagnostic.code === undefined ? "" : ` code=${entry.operationDiagnostic.code}`);
-  return boundedSingleLine(
+  const lines = [
     `[${entry.timestamp}] ${stage}${operation} ${boundedSingleLine(entry.label, MAX_OPERATION_LABEL_LENGTH)}` +
-    `${progress}${duration}${refreshDetails}${operationDetails}${error}${failureCategory}`,
-  );
+    `${progress}${retry}${acquisition}${duration}${refreshDetails}${operationDetails}${error}${failureCategory}${outcomeReason}`,
+  ];
+  if (entry.errorDetails !== undefined) appendErrorEvidence(entry.errorDetails, "  ", lines);
+  if (entry.operationDiagnostic?.error !== undefined) appendErrorEvidence(entry.operationDiagnostic.error, "  ", lines);
+  if (entry.acquisitionAttempt?.error !== undefined) appendErrorEvidence(entry.acquisitionAttempt.error, "  ", lines);
+  if (entry.retryAttempt?.error !== undefined) appendErrorEvidence(entry.retryAttempt.error, "  ", lines);
+  const formatted = lines.join("\n");
+  return formatted.length <= 24_000
+    ? formatted
+    : `${formatted.slice(0, 23_960)}\n… [diagnostic output truncated after 24,000 chars]`;
 };
 
 let activeOperationFeedback: OperationFeedback | undefined;
@@ -1056,7 +1355,7 @@ export const runWithActiveOperationFeedback = <T>(
 ): Promise<T> => {
   const execute = (context: OperationFeedbackContext | undefined): Promise<T> => retry === undefined
     ? operation(context)
-    : runWithBoundedRetry(() => operation(context), retry).then((result) => result.value);
+    : runWithBoundedRetry(() => operation(context), { ...retry, feedbackContext: retry.feedbackContext ?? context }).then((result) => result.value);
   const feedback = activeOperationFeedback;
   if (parentContext !== undefined) return execute(parentContext);
   if (feedback === undefined) return execute(undefined);
@@ -1069,6 +1368,14 @@ export const reportActiveOperationProgress = (
   context?: OperationFeedbackContext,
 ): void => {
   (context?.owner ?? activeOperationFeedback)?.reportProgress(progress, context);
+};
+
+/** Records a safe attempt in the active GitHub/local PR diff acquisition fallback chain. */
+export const reportActiveOperationAcquisitionAttempt = (
+  attempt: Omit<OperationAcquisitionAttempt, "error"> & { readonly error?: unknown },
+  context?: OperationFeedbackContext,
+): void => {
+  (context?.owner ?? activeOperationFeedback)?.reportAcquisitionAttempt(attempt, context);
 };
 
 /** Reports one validated PR Progress lifecycle stage through the shared Output boundary. */
@@ -1098,8 +1405,9 @@ export const reportActiveOperationStageDiagnostic = (
   stage: OperationStageDiagnostic["stage"],
   error: unknown,
   context?: OperationFeedbackContext,
+  status: OperationStageDiagnosticStatus = "failed",
 ): void => {
-  (context?.owner ?? activeOperationFeedback)?.reportStageDiagnostic(stage, error, context);
+  (context?.owner ?? activeOperationFeedback)?.reportStageDiagnostic(stage, error, context, status);
 };
 
 /** Returns whether activation has already installed the shared Output lifecycle. */

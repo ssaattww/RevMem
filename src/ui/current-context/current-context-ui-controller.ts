@@ -187,7 +187,7 @@ export class CurrentContextUiController {
     if (signal !== undefined && signal.aborted) return { snapshot: undefined, stale: true };
     const result = (await runWithBoundedRetry(
       () => this.actions!.recompute(signal, feedbackContext, options),
-      { maxAttempts: 3, signal },
+      { maxAttempts: 3, signal, feedbackContext },
     )).value;
     if (signal?.aborted === true) return { snapshot: undefined, stale: true };
     if (isNonDestructiveOutcome(result)) return { snapshot: undefined, stale: false, nonDestructive: true };
@@ -204,21 +204,21 @@ export class CurrentContextUiController {
     }
     return { snapshot: undefined, stale: generation !== this.generation };
   }
-  public async selectContext(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextUiSnapshot | undefined> {
-    if (this.actions === undefined) return undefined;
+  public async selectContext(signal?: AbortSignal, feedbackContext?: OperationFeedbackContext): Promise<CurrentContextResolution> {
+    if (this.actions === undefined) return { kind: "unresolved" };
     const generation = ++this.generation;
-    if (signal !== undefined && signal.aborted) return undefined;
+    if (signal !== undefined && signal.aborted) return { kind: "stale" };
     // A Quick Pick is an observable user interaction.  Unlike the preceding
     // candidate acquisition it must never be replayed after a partial result.
     const selection = await this.actions.selectContext(signal, feedbackContext);
-    if (signal?.aborted === true) return undefined;
-    if (isNonDestructiveOutcome(selection)) return undefined;
+    if (signal?.aborted === true) return { kind: "stale" };
+    if (isNonDestructiveOutcome(selection)) return selection;
     if (selection !== undefined && generation === this.generation) {
       this.update(selection);
       this.actions.acceptExplicit?.(selection);
       return selection;
     }
-    return undefined;
+    return { kind: "stale" };
   }
   /** Clears an indeterminate context so an old snapshot is never presented as fresh. */
   public failClosed(): void {

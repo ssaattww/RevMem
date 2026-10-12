@@ -15,6 +15,12 @@ import {
   type GitHubPullRequestCacheEntry,
   type PullRequestDiffAcquisitionPort
 } from "../../src/application/github-pr-cache/index";
+import {
+  OperationFeedback,
+  formatOperationLogEntry,
+  type OperationFeedbackHost,
+  type OperationLogEntry,
+} from "../../src/application/operation-feedback/index";
 import { NodeGitHubPullRequestCacheStorage } from "../../src/adapters/github/index";
 import { NodeAtomicTextFileStore } from "../../src/adapters/state-repository/index";
 import type { PullRequestDiffSnapshot } from "../../src/core/pr-progress/index";
@@ -311,6 +317,57 @@ test("offline-eligible acquisition remains unavailable when reading the cache fa
   }).acquire(request);
 
   assert.deepEqual(result, acquisition.result, "a failed cache read cannot provide stale or unverifiable data");
+});
+
+test("cache fallback logs missing, unreadable, invalid, and usable cache outcomes without replacing live attempts", async () => {
+  const acquisition = new MutableAcquisition();
+  acquisition.result = {
+    kind: "unavailable",
+    attempts: [
+      { source: "local-git", reason: "missing-revision" },
+      { source: "github-patch", reason: "network" },
+      { source: "github-content", reason: "network" },
+    ],
+  };
+  const run = async (read: () => Promise<unknown>) => {
+    const logs: OperationLogEntry[] = [];
+    const feedback = new OperationFeedback({
+      showBusy() {}, clearBusy() {}, appendLog(entry) { logs.push(entry); }, revealLog() {},
+    } satisfies OperationFeedbackHost, () => 2_500);
+    const storage = { read, write: async () => undefined } as never;
+    const service = new GitHubPullRequestCacheService({ acquisition, storage, freshnessMs: 60_000, now: fixedDate(2_000) });
+    const result = await feedback.run("PR cache fallback", (context) => service.acquire(request, context));
+    return { result, logs, output: logs.map(formatOperationLogEntry).join("\n") };
+  };
+
+  const readFailure = await run(async () => { throw Object.assign(new Error("read C:\\private\\cache.json token=fixture-cache-token"), { code: "EACCES" }); });
+  assert.deepEqual(readFailure.result, acquisition.result);
+  assert.match(readFailure.output, /stage=cache-read status=failed category=permanent code=EACCES/u);
+  assert.match(readFailure.output, /C:\\private\\cache\.json/u);
+  assert.doesNotMatch(readFailure.output, /fixture-cache-token/u);
+  assert.deepEqual(readFailure.logs.filter((entry) => entry.operationDiagnostic?.stage === "cache-read").map((entry) => entry.operationDiagnostic?.status), ["started", "failed"]);
+
+  const missing = await run(async () => undefined);
+  assert.deepEqual(missing.result, acquisition.result);
+  assert.deepEqual(missing.logs.filter((entry) => entry.operationDiagnostic?.stage === "cache-read").map((entry) => entry.operationDiagnostic?.status), ["started", "no-result"]);
+
+  const invalid = await run(async () => ({ schemaVersion: 1, request: { ...request, number: 99 } }));
+  assert.deepEqual(invalid.result, acquisition.result);
+  assert.match(invalid.output, /invalid or does not match the requested PR identity/u);
+  assert.deepEqual(invalid.logs.filter((entry) => entry.operationDiagnostic?.stage === "cache-read").map((entry) => entry.operationDiagnostic?.status), ["started", "failed"]);
+
+  const usableStorage = new InMemoryGitHubPullRequestCacheStorage();
+  const liveAcquisition = new MutableAcquisition();
+  await new GitHubPullRequestCacheService({ acquisition: liveAcquisition, storage: usableStorage, freshnessMs: 60_000, now: fixedDate(1_000) }).acquire(request);
+  liveAcquisition.result = acquisition.result;
+  const logs: OperationLogEntry[] = [];
+  const feedback = new OperationFeedback({ showBusy() {}, clearBusy() {}, appendLog(entry) { logs.push(entry); }, revealLog() {} }, () => 2_600);
+  const cachedResult = await feedback.run("PR cache fallback", (context) => new GitHubPullRequestCacheService({
+    acquisition: liveAcquisition, storage: usableStorage, freshnessMs: 60_000, now: fixedDate(2_000),
+  }).acquire(request, context));
+  assert.equal(cachedResult.kind, "acquired");
+  assert.equal(cachedResult.source, "offline-cache");
+  assert.deepEqual(logs.filter((entry) => entry.operationDiagnostic?.stage === "cache-read").map((entry) => entry.operationDiagnostic?.status), ["started", "succeeded"]);
 });
 
 test("cache write cancellation is not converted into a successful uncached result", async () => {

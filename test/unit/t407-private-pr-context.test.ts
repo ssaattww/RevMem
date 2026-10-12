@@ -608,14 +608,17 @@ test("T407 cache persistence error does not discard the authenticated live Curre
   assert.equal(result.candidates.some((candidate) => candidate.context.kind === "pull-request"), true,
     "a failed optional cache write must not discard the already acquired exact live snapshot");
   assert.deepEqual(result.errors, [], "cache persistence failure does not fail Current Context selection");
-  const diagnostic = result.operationLogs.find((entry) => entry.operationDiagnostic?.stage === "cache-persistence");
-  assert.deepEqual(diagnostic?.operationDiagnostic, { stage: "cache-persistence", status: "failed", code: "EACCES" });
+  const diagnostic = result.operationLogs.find((entry) => entry.operationDiagnostic?.stage === "cache-persistence" && entry.operationDiagnostic.status === "degraded");
+  assert.deepEqual({ stage: diagnostic?.operationDiagnostic?.stage, status: diagnostic?.operationDiagnostic?.status, code: diagnostic?.operationDiagnostic?.code },
+    { stage: "cache-persistence", status: "degraded", code: "EACCES" });
   const renderedDiagnostic = diagnostic === undefined ? "" : formatOperationLogEntry(diagnostic);
-  assert.match(renderedDiagnostic, /stage=cache-persistence status=failed code=EACCES/u);
-  assert.doesNotMatch(renderedDiagnostic, /cache persistence denied|example\/private-context|src\/example\.ts/u,
-    "cache persistence diagnostics contain no exception text, repository identity, or path");
-  assert.ok(result.operationLogs.some((entry) => entry.event === "succeeded" && entry.label === "Current Contextを選択"),
-    "the owning Current Context selection remains successful while its optional cache write is reported separately");
+  assert.match(renderedDiagnostic, /stage=cache-persistence status=degraded code=EACCES/u);
+  assert.match(renderedDiagnostic, /cache persistence denied/u,
+    "cache persistence diagnostics explain the local failure while preserving the live result");
+  assert.match(renderedDiagnostic, /at GitHubPullRequestCacheService\.acceptLive/u,
+    "the local stack identifies the cache persistence failure boundary");
+  assert.ok(result.operationLogs.some((entry) => entry.event === "degraded" && entry.label === "Current Contextを選択"),
+    "the owning Current Context selection records degraded completion while retaining its live result");
 });
 
 test("T407 public Current Context factory path preserves saved, background, and wrong-account private selection contracts", async () => {

@@ -99,6 +99,7 @@ export class CurrentContextRuntimeComposition {
     if (isAborted(signal)) throw new OperationCancelledError();
     const candidates = await this.port.enumerateCandidates(signal, feedbackContext);
     if (isAborted(signal)) throw new OperationCancelledError();
+    if (candidates.length === 0) return { kind: "unresolved" };
     const selected = await this.selection.select(
       candidates,
       (available) => this.port.requestSelection(available, signal)

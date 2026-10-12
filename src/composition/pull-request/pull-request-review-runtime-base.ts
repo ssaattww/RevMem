@@ -697,10 +697,9 @@ export class PullRequestReviewRuntime<Uri> {
     signal?.addEventListener("abort", abort, { once: true });
     const generation = ++this.progressGeneration;
     this.activeProgressContextId = contextId;
-    this.progress.clear();
-    const registration = this.requireRegistration(contextId);
+    let registration: PullRequestReviewRuntimeRegistration | undefined;
     const assertCurrent = (): void => {
-      if (!this.isCurrentProgressGeneration(contextId, generation, registration) || cancellation.signal.aborted) {
+      if (registration === undefined || !this.isCurrentProgressGeneration(contextId, generation, registration) || cancellation.signal.aborted) {
         throw new OperationCancelledError();
       }
     };
@@ -708,7 +707,10 @@ export class PullRequestReviewRuntime<Uri> {
       await runWithActiveOperationFeedback(
         "PR進捗を計算",
         async (feedbackContext) => {
-          const total = registration.snapshot.files.length;
+          this.progress.clear();
+          const currentRegistration = this.requireRegistration(contextId);
+          registration = currentRegistration;
+          const total = currentRegistration.snapshot.files.length;
           reportActiveOperationProgress({
             stage: "pull-request-files",
             completed: 0,
@@ -785,7 +787,7 @@ export class PullRequestReviewRuntime<Uri> {
           }, {
             maxFilesPerStage: 128,
             yieldControl: () => new Promise<void>((resolve) => setImmediate(resolve)),
-            isCurrent: () => this.isCurrentProgressGeneration(contextId, generation, registration) && !cancellation.signal.aborted,
+            isCurrent: () => this.isCurrentProgressGeneration(contextId, generation, currentRegistration) && !cancellation.signal.aborted,
           });
           assertCurrent();
           reportActiveOperationProgress({
@@ -798,10 +800,15 @@ export class PullRequestReviewRuntime<Uri> {
         parentFeedbackContext,
       );
     } catch (error) {
-      if (!this.isCurrentProgressGeneration(contextId, generation, registration)) {
-        throw error instanceof OperationCancelledError ? error : new OperationCancelledError();
+      const ownerIsCurrent = this.progressGeneration === generation && this.activeProgressContextId === contextId;
+      if (!ownerIsCurrent || cancellation.signal.aborted) {
+        throw error instanceof OperationCancelledError ? error : new OperationCancelledError(error);
       }
-      this.progress.clear();
+      try {
+        this.progress.clear();
+      } catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], "PR Progress failed and its tree cleanup also failed.");
+      }
       throw error;
     } finally {
       signal?.removeEventListener("abort", abort);

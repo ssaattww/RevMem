@@ -52,21 +52,47 @@ const settleProjectionRefresh = async (
 export const refreshSelectedPullRequestProgress = async <Source>(
   dependencies: SelectedPullRequestProgressRefreshDependencies<Source>
 ): Promise<void> => {
-  if (dependencies.shouldContinue?.() === false) return;
-  if (dependencies.contextId === undefined) {
-    dependencies.clearProgress();
-    dependencies.setSource(undefined);
-    dependencies.refreshTree();
-    return;
-  }
-
-  const activation = dependencies.activateProgress(dependencies.contextId, dependencies.feedbackContext);
-  dependencies.setSource(dependencies.source);
-  dependencies.refreshTree();
+  let primaryFailure: unknown;
+  let activation: Promise<void> | undefined;
+  let activationSettled = false;
   try {
-    await activation;
+    if (dependencies.shouldContinue?.() === false) return;
+    if (dependencies.contextId === undefined) {
+      dependencies.clearProgress();
+      dependencies.setSource(undefined);
+      dependencies.refreshTree();
+      return;
+    }
+
+    activation = dependencies.activateProgress(dependencies.contextId, dependencies.feedbackContext);
+    dependencies.setSource(dependencies.source);
+    dependencies.refreshTree();
+    try { await activation; }
+    finally { activationSettled = true; }
+  } catch (error) {
+    let failure = error;
+    if (activation !== undefined && !activationSettled) {
+      const activationOutcome = await settleProjectionRefresh(() => activation!);
+      activationSettled = true;
+      if (activationOutcome.error !== undefined && activationOutcome.error !== error) {
+        failure = new AggregateError([error, activationOutcome.error], "PR Progress setup and activation failed.");
+      }
+    }
+    primaryFailure = failure;
+    dependencies.feedbackContext?.owner.reportFailure("PR Progress projection", failure, dependencies.feedbackContext);
+    throw failure;
   } finally {
-    if (dependencies.shouldContinue?.() !== false) dependencies.refreshTree();
+    if (dependencies.contextId !== undefined && dependencies.shouldContinue?.() !== false) {
+      try {
+        dependencies.refreshTree();
+      } catch (treeError) {
+        const failure = primaryFailure === undefined
+          ? treeError
+          : new AggregateError([primaryFailure, treeError], "PR Progress activation and final tree publication failed.");
+        dependencies.feedbackContext?.owner.reportFailure("PR Progress tree publication", failure, dependencies.feedbackContext);
+        if (primaryFailure === undefined) throw treeError;
+      }
+    }
   }
 };
 
@@ -80,12 +106,12 @@ export const refreshSelectedPullRequestProgress = async <Source>(
 export const refreshCurrentContextDependents = async (
   dependencies: CurrentContextDependentRefreshDependencies
 ): Promise<void> => {
-  let dependentError: unknown;
+  const dependentErrors: unknown[] = [];
   let reviewContextsReady = true;
   try {
     await dependencies.refreshReviewContexts();
   } catch (error) {
-    dependentError = error;
+    dependentErrors.push(error);
     reviewContextsReady = false;
   }
 
@@ -105,17 +131,22 @@ export const refreshCurrentContextDependents = async (
     try {
       await refresh();
     } catch (error) {
-      dependentError ??= error;
+      dependentErrors.push(error);
     }
   }
   if (progress !== undefined) {
     const outcome = await progress;
     if (dependencies.shouldContinue?.() === false) return;
     if (outcome.error !== undefined) {
-      await dependencies.reportPullRequestProgressError(outcome.error);
+      try {
+        await dependencies.reportPullRequestProgressError(outcome.error);
+      } catch (reportError) {
+        dependentErrors.push(new AggregateError([outcome.error, reportError], "PR Progress calculation and error reporting failed."));
+      }
     }
   }
-  if (dependentError !== undefined) throw dependentError;
+  if (dependentErrors.length === 1) throw dependentErrors[0];
+  if (dependentErrors.length > 1) throw new AggregateError(dependentErrors, "Multiple Current Context dependent refreshes failed.");
 };
 
 /**

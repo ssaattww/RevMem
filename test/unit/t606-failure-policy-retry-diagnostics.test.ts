@@ -82,6 +82,50 @@ test("T606 retries only retryable faults with a bounded cancellable sequence", a
   );
 });
 
+test("retry success, exhaustion, backoff cancellation, and stale failure retain retry history and one owner terminal", async () => {
+  const host = new FakeHost();
+  const feedback = new OperationFeedback(host, () => 10);
+  let calls = 0;
+  await feedback.run("retry succeeds", (context) => runWithBoundedRetry(async () => {
+    calls += 1;
+    if (calls === 1) throw Object.assign(new Error("network token=fixture-retry-token"), { code: "ECONNRESET" });
+    return "snapshot";
+  }, { maxAttempts: 3, feedbackContext: context, sleep: async () => undefined }).then((result) => result.value));
+  const successLifecycle = host.logs.slice(0, 3);
+  assert.deepEqual(successLifecycle.map((entry) => entry.event), ["started", "retry", "succeeded"]);
+  assert.ok(successLifecycle.every((entry) => entry.operationId === 1));
+  assert.deepEqual({
+    attempt: successLifecycle[1]?.retryAttempt?.attempt,
+    category: successLifecycle[1]?.retryAttempt?.category,
+    code: successLifecycle[1]?.retryAttempt?.code,
+    delayMs: successLifecycle[1]?.retryAttempt?.delayMs,
+  }, { attempt: 1, category: "retryable", code: "ECONNRESET", delayMs: 25 });
+  const successfulRetryOutput = host.logs.map(formatOperationLogEntry).join("\n");
+  assert.match(successfulRetryOutput, /network token=\[REDACTED\]/u);
+  assert.doesNotMatch(successfulRetryOutput, /fixture-retry-token/u);
+
+  const exhausted = new Error("network timeout at C:\\local\\repo");
+  await assert.rejects(feedback.run("retry exhausted", (context) => runWithBoundedRetry(async () => {
+    throw Object.assign(new Error(exhausted.message), { code: "ECONNRESET" });
+  }, { feedbackContext: context, sleep: async () => undefined })), /network timeout/u);
+  const exhaustedEvents = host.logs.slice(3);
+  assert.deepEqual(exhaustedEvents.map((entry) => entry.event), ["started", "retry", "retry", "failed"]);
+  assert.equal(exhaustedEvents.at(-1)?.operationId, 2);
+  assert.match(exhaustedEvents.at(-1)?.message ?? "", /retries=ECONNRESET -> ECONNRESET/u);
+
+  await assert.rejects(feedback.run("backoff cancelled", (context) => runWithBoundedRetry(async () => {
+    throw Object.assign(new Error("socket reset"), { code: "ECONNRESET" });
+  }, { feedbackContext: context, sleep: async () => { throw new DOMException("backoff cancelled token=fixture-backoff-secret", "AbortError"); } })), /backoff cancelled/u);
+  const cancelledEvents = host.logs.slice(7);
+  assert.deepEqual(cancelledEvents.map((entry) => entry.event), ["started", "retry", "cancelled"]);
+  assert.equal(cancelledEvents.at(-1)?.operationId, 3);
+  assert.match(host.logs.map(formatOperationLogEntry).join("\n"), /retryable code=ECONNRESET backoff=25ms/u);
+
+  await assert.rejects(feedback.run("stale retry boundary", async () => { throw new DOMException("stale", "AbortError"); }),
+    (error: unknown) => error instanceof DOMException);
+  assert.deepEqual(host.logs.slice(-2).map((entry) => entry.event), ["started", "cancelled"]);
+});
+
 test("T606 never retries authentication, validation, stale, or partial-side-effect failures", async () => {
   const nonRetryable = [
     Object.assign(new Error("auth"), { status: 401 }),
@@ -99,7 +143,7 @@ test("T606 never retries authentication, validation, stale, or partial-side-effe
   }
 });
 
-test("T606 emits one bounded single-line redacted ERROR and always clears activity", async () => {
+test("T606 emits one local ERROR with the original code and message and always clears activity", async () => {
   const host = new FakeHost();
   const feedback = new OperationFeedback(host, () => 1);
   const failure = Object.assign(new Error("token=abc\nC:\\private\\repo\\source.ts"), { code: "ENOSPC" });
@@ -107,8 +151,9 @@ test("T606 emits one bounded single-line redacted ERROR and always clears activi
   feedback.reportFailure("Storage state", failure);
   const errors = host.logs.filter((entry) => entry.event === "failed");
   assert.equal(errors.length, 1);
-  assert.equal(errors[0]?.message, "Operation failed (code ENOSPC); details were redacted.");
-  assert.ok((errors[0]?.message?.length ?? 0) <= 160);
+  assert.match(errors[0]?.message ?? "", /token=\[REDACTED\]/u);
+  assert.match(errors[0]?.message ?? "", /C:\\private\\repo\\source\.ts/u);
+  assert.equal(errors[0]?.errorDetails?.code, "ENOSPC");
   assert.equal(host.clear, 1);
 });
 
@@ -132,7 +177,9 @@ test("Issue #136 operation ERROR retains safe failure classification with detail
       const errors = host.logs.filter((entry) => entry.event === "failed");
       assert.equal(errors.length, 1);
       const formatted = formatOperationLogEntry(errors[0]!);
-      assert.doesNotMatch(formatted, /untrusted failure text|private-fixture|source\.ts|fixture-secret/u);
+      assert.match(formatted, /untrusted failure text/u);
+      assert.match(formatted, /private-fixture\/source\.ts/u);
+      assert.doesNotMatch(formatted, /fixture-secret/u);
       formattedFailures.push(formatted);
       assert.match(formatted, new RegExp(`\\bcategory=${expectedCategories[index]}\\b`, "u"),
         `safe category must be visible with detailed diagnostics ${detailedDiagnostics ? "on" : "off"}`);

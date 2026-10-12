@@ -107,16 +107,39 @@ export class GitHubPullRequestCacheService {
     if (!allowsOfflineFallback(live.attempts)) return live;
 
     let cached: GitHubPullRequestCacheEntry | undefined;
+    reportActiveOperationStageDiagnostic("cache-read", undefined, feedbackContext, "started");
     try {
       cached = await this.storage.read(request, feedbackContext, signal);
-    } catch {
-      if (signal?.aborted) throw new DOMException("PR cache acquisition was superseded.", "AbortError");
+    } catch (error) {
+      if (signal?.aborted) {
+        const cancelled = new DOMException("PR cache acquisition was superseded.", "AbortError");
+        reportActiveOperationStageDiagnostic("cache-read", cancelled, feedbackContext, "cancelled");
+        throw cancelled;
+      }
+      reportActiveOperationStageDiagnostic("cache-read", error, feedbackContext, "failed");
       return live;
     }
-    const validated = cached === undefined
-      ? undefined
-      : parseGitHubPullRequestCacheEntry(cached, request);
-    if (validated === undefined) return live;
+    if (signal?.aborted === true) {
+      const cancelled = new DOMException("PR cache acquisition was superseded.", "AbortError");
+      reportActiveOperationStageDiagnostic("cache-read", cancelled, feedbackContext, "cancelled");
+      throw cancelled;
+    }
+    if (cached === undefined) {
+      reportActiveOperationStageDiagnostic("cache-read", undefined, feedbackContext, "no-result");
+      return live;
+    }
+    let validated: GitHubPullRequestCacheEntry | undefined;
+    try {
+      validated = parseGitHubPullRequestCacheEntry(cached, request);
+    } catch (error) {
+      reportActiveOperationStageDiagnostic("cache-read", error, feedbackContext, "failed");
+      return live;
+    }
+    if (validated === undefined) {
+      reportActiveOperationStageDiagnostic("cache-read", new Error("Stored PR cache entry is invalid or does not match the requested PR identity."), feedbackContext, "failed");
+      return live;
+    }
+    reportActiveOperationStageDiagnostic("cache-read", undefined, feedbackContext, "succeeded");
 
     const currentMilliseconds = requireClockMilliseconds(this.now);
     return {
@@ -210,13 +233,24 @@ export class GitHubPullRequestCacheService {
       expiresAt
     };
     if (signal?.aborted) throw new DOMException("PR cache publication was superseded.", "AbortError");
+    reportActiveOperationStageDiagnostic("cache-persistence", undefined, feedbackContext, "started");
     try {
       await this.storage.write(entry, feedbackContext, signal);
     } catch (error) {
-      if (signal?.aborted === true) throw new DOMException("PR cache publication was superseded.", "AbortError");
-      if (typeof error === "object" && error !== null && "name" in error && error.name === "AbortError") throw error;
-      if (writeFailurePolicy === "throw") throw error;
-      reportActiveOperationStageDiagnostic("cache-persistence", error, feedbackContext);
+      if (signal?.aborted === true) {
+        const cancelled = new DOMException("PR cache publication was superseded.", "AbortError");
+        reportActiveOperationStageDiagnostic("cache-persistence", cancelled, feedbackContext, "cancelled");
+        throw cancelled;
+      }
+      if (typeof error === "object" && error !== null && "name" in error && error.name === "AbortError") {
+        reportActiveOperationStageDiagnostic("cache-persistence", error, feedbackContext, "cancelled");
+        throw error;
+      }
+      if (writeFailurePolicy === "throw") {
+        reportActiveOperationStageDiagnostic("cache-persistence", error, feedbackContext, "failed");
+        throw error;
+      }
+      reportActiveOperationStageDiagnostic("cache-persistence", error, feedbackContext, "degraded");
       return {
         ...live,
         snapshot: cloneGitHubPullRequestDiffSnapshot(live.snapshot, false),
@@ -224,7 +258,12 @@ export class GitHubPullRequestCacheService {
         cache: { origin: "live", freshness: "not-cached" },
       };
     }
-    if (signal?.aborted) throw new DOMException("PR cache publication was superseded.", "AbortError");
+    if (signal?.aborted) {
+      const cancelled = new DOMException("PR cache publication was superseded.", "AbortError");
+      reportActiveOperationStageDiagnostic("cache-persistence", cancelled, feedbackContext, "cancelled");
+      throw cancelled;
+    }
+    reportActiveOperationStageDiagnostic("cache-persistence", undefined, feedbackContext, "succeeded");
     return {
       ...live,
       snapshot: cloneGitHubPullRequestDiffSnapshot(live.snapshot, false),

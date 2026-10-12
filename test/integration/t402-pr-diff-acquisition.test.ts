@@ -11,6 +11,11 @@ import {
 } from "../../src/application/github-pr-diff/index";
 import { FetchGitHubPullRequestDiffAdapter } from "../../src/adapters/github/index";
 import {
+  OperationFeedback,
+  formatOperationLogEntry,
+  type OperationLogEntry,
+} from "../../src/application/operation-feedback/index";
+import {
   LocalGitPullRequestDiffAdapter,
   type GitCommandExecutor,
   type GitCommandInvocation
@@ -306,6 +311,57 @@ test("all failed routes return no snapshot and never infer reviewed changes", as
     { source: "github-patch", reason: "missing-patch" },
     { source: "github-content", reason: "network" }
   ]);
+});
+
+test("successful patch fallback retains local Git cause, route order, and shared operation identity", async () => {
+  const localFailure = Object.assign(new Error("git read failed at C:\\private\\repo token=fixture-route-token"), { code: "EACCES" });
+  const logs: OperationLogEntry[] = [];
+  const feedback = new OperationFeedback({
+    showBusy() {}, clearBusy() {}, appendLog(entry) { logs.push(entry); }, revealLog() {},
+  }, () => 12_000);
+  const remote = remoteData([modifiedPatchFile("@@ -1 +1 @@\n-old\n+new")], async () => {
+    throw new Error("the patch route should succeed without content reads");
+  });
+  const service = new PullRequestDiffAcquisitionService({
+    local: { loadDiff: async () => { throw localFailure; } },
+    remote,
+  });
+
+  const result = await feedback.run("PR diff acquisition", (context) => service.acquire(request, context));
+
+  assert.equal(result.kind, "acquired");
+  assert.equal(result.source, "github-patch");
+  const attempts = logs.filter((entry) => entry.event === "acquisition");
+  assert.deepEqual(attempts.map((entry) => [entry.acquisitionAttempt?.source, entry.acquisitionAttempt?.status]), [
+    ["local-git", "started"], ["local-git", "failed"], ["github-patch", "started"], ["github-patch", "succeeded"],
+  ]);
+  assert.ok(attempts.every((entry) => entry.operationId === 1), "route evidence correlates to one parent operation");
+  const output = logs.map(formatOperationLogEntry).join("\n");
+  assert.match(output, /C:\\private\\repo/u);
+  assert.match(output, /code=EACCES/u);
+  assert.match(output, /local-git status=failed reason=git-failure/u);
+  assert.doesNotMatch(output, /fixture-route-token/u);
+  assert.deepEqual(logs.filter((entry) => ["succeeded", "failed", "degraded", "cancelled"].includes(entry.event)).map((entry) => entry.event), ["succeeded"]);
+});
+
+test("incomplete patch to content fallback keeps both route outcomes in order", async () => {
+  const logs: OperationLogEntry[] = [];
+  const feedback = new OperationFeedback({ showBusy() {}, clearBusy() {}, appendLog(entry) { logs.push(entry); }, revealLog() {} }, () => 13_000);
+  const service = new PullRequestDiffAcquisitionService({
+    local: unavailableLocal("missing-revision"),
+    remote: remoteData([modifiedPatchFile(undefined)], async (_repository, revision) => ({
+      kind: "found", content: revision === BASE_SHA ? "old\n" : "new\n",
+    })),
+  });
+  const result = await feedback.run("PR diff acquisition", (context) => service.acquire(request, context));
+  assert.equal(result.kind, "acquired");
+  assert.equal(result.source, "github-content");
+  assert.deepEqual(logs.filter((entry) => entry.event === "acquisition").map((entry) => [entry.acquisitionAttempt?.source, entry.acquisitionAttempt?.status, entry.acquisitionAttempt?.reason]), [
+    ["local-git", "started", undefined], ["local-git", "failed", "missing-revision"],
+    ["github-patch", "started", undefined], ["github-patch", "failed", "missing-patch"],
+    ["github-content", "started", undefined], ["github-content", "succeeded", undefined],
+  ]);
+  assert.ok(logs.every((entry) => entry.operationId === 1));
 });
 
 test("GitHub patch parser accepts ordinary context lines while preserving changed coordinates", async () => {

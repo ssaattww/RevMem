@@ -2,6 +2,7 @@ import type { CurrentContextUiController } from "./current-context-ui-controller
 import type { SelectedReviewContext } from "../../application/review-context/index";
 import {
   reportActivePullRequestRefresh,
+  reportActiveOperationFailure,
   PullRequestRefreshAliasAllocator,
   type PullRequestRefreshAliases,
   type OperationFeedbackContext,
@@ -11,7 +12,7 @@ import {
   type PullRequestRefreshTrigger,
   type PullRequestRefreshReasonCode,
 } from "../../application/operation-feedback/index";
-import type { CurrentContextRecomputeOptions } from "./current-context-runtime-composition";
+import type { CurrentContextNonDestructiveOutcome, CurrentContextRecomputeOptions } from "./current-context-runtime-composition";
 import type { CurrentContextUiSnapshot } from "./current-context-ui-controller";
 
 export interface CurrentContextDependentRefresher {
@@ -73,8 +74,8 @@ export interface CurrentContextRefreshContext {
 
 /** Indicates PR-list refresh failed while a verified branch context remains safe to show. */
 export class CurrentContextBranchRefreshError extends Error {
-  public constructor() {
-    super("PR context refresh failed; the verified branch context remains active.");
+  public constructor(cause?: unknown) {
+    super("PR context refresh failed; the verified branch context remains active.", cause === undefined ? undefined : { cause });
     this.name = "CurrentContextBranchRefreshError";
   }
 }
@@ -188,11 +189,16 @@ export class CurrentContextRuntimeCoordinator {
           context.report("tree-publication", "failed", { reasonCode: "refresh-failed", counts: context.publicationCounts() });
         }
         if (acceptedSnapshot?.context.kind === "branch") {
+          let branchFailure: unknown = error;
           if (context.generation === this.generation && !isSignalAborted(signal)) {
-            await this.dependentRefresher.clearPullRequestProgress?.();
+            try {
+              await this.dependentRefresher.clearPullRequestProgress?.();
+            } catch (cleanupError) {
+              branchFailure = new AggregateError([error, cleanupError], "Dependent refresh and PR Progress cleanup failed.");
+            }
           }
           context.report("review-contexts-list", "failed", { reasonCode: "refresh-failed" });
-          throw new CurrentContextBranchRefreshError();
+          throw new CurrentContextBranchRefreshError(branchFailure);
         }
         throw error;
       }
@@ -232,10 +238,19 @@ export class CurrentContextRuntimeCoordinator {
         context.report("pr-acquisition", "superseded", { reasonCode: "superseded" });
         return;
       }
-      if (selection === undefined) {
-        context.report("current-context", "cancelled", { reasonCode: "identity-changed" });
-        context.report("repository-identity", "cancelled", { reasonCode: "no-selected-pr" });
-        context.report("pr-acquisition", "cancelled", { reasonCode: "no-selected-pr" });
+      if (selection === undefined || "kind" in selection) {
+        const outcome = selection === undefined ? "unresolved" : (selection as CurrentContextNonDestructiveOutcome).kind;
+        const status: PullRequestRefreshStatus = outcome === "cancelled" ? "cancelled" : outcome === "stale" ? "superseded" : "no-result";
+        const reasonCode: PullRequestRefreshReasonCode = outcome === "cancelled"
+          ? "quick-pick-cancelled"
+          : outcome === "stale"
+            ? "identity-changed"
+            : selection === undefined
+              ? "no-matching-pr"
+              : "no-selected-pr";
+        context.report("current-context", status, { reasonCode });
+        context.report("repository-identity", status, { reasonCode });
+        context.report("pr-acquisition", status, { reasonCode });
         return;
       }
       this.reportAcquisitionOutcome(context, selection);
@@ -303,8 +318,19 @@ export class CurrentContextRuntimeCoordinator {
     try {
       await this.refresh();
     } catch (error) {
-      if (!this.isPreservedBranchRefreshFailure(error)) await this.failClosed();
-      await report(error);
+      let reportedError = error;
+      if (!this.isPreservedBranchRefreshFailure(error)) {
+        try {
+          await this.failClosed();
+        } catch (cleanupError) {
+          reportedError = new AggregateError([error, cleanupError], "Refresh failed and fail-closed cleanup also failed.");
+        }
+      }
+      try {
+        await report(reportedError);
+      } catch (reportingError) {
+        reportActiveOperationFailure("Current Context refresh reporting", new AggregateError([reportedError, reportingError], "Refresh failed and its error reporter also failed."));
+      }
     }
   }
 

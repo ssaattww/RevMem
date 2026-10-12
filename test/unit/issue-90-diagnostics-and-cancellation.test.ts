@@ -48,10 +48,10 @@ const deferred = <T>() => {
 const runtimeRequire = createRequire(__filename);
 const detail = (reason: string, target?: string, phase?: string): OperationDiagnosticDetail => ({ reason, ...(target === undefined ? {} : { target }), ...(phase === undefined ? {} : { phase }) });
 
-test("repository boundary diagnostics record fixed stages, safe classifications, counts, and no exception details", async () => {
+test("repository boundary diagnostics record lifecycle, useful error evidence, and redact only secret values", async () => {
   const host = new DiagnosticHost(true);
   const feedback = new OperationFeedback(host, () => 4_500);
-  const secret = "C:\\private\\repo\\catalog.json token=fixture-secret repoId=private-owner";
+  const secret = "C:\\local-fixture\\catalog.json token=fixture-secret repoId=synthetic-owner";
   await feedback.run("Review Contexts refresh", async (context) => {
     reportActiveOperationStageDiagnostic("repository-context-catalog", new SyntaxError(secret), context);
     reportActiveOperationStageDiagnostic("repository-root-resolution", Object.assign(new Error(secret), { code: "EACCES" }), context);
@@ -59,20 +59,131 @@ test("repository boundary diagnostics record fixed stages, safe classifications,
 
   const diagnostics = host.logs.filter((entry) => entry.operationDiagnostic !== undefined);
   assert.equal(diagnostics.length, 2, "one record is emitted for each known failing boundary");
-  assert.deepEqual(diagnostics.map((entry) => entry.operationDiagnostic), [
-    { stage: "repository-context-catalog", status: "failed", category: "permanent" },
-    { stage: "repository-root-resolution", status: "failed", category: "permanent", code: "EACCES" },
+  assert.deepEqual(diagnostics.map((entry) => ({ ...entry.operationDiagnostic, code: entry.operationDiagnostic?.code, error: undefined })), [
+    { stage: "repository-context-catalog", status: "failed", category: "permanent", code: undefined, error: undefined },
+    { stage: "repository-root-resolution", status: "failed", category: "permanent", code: "EACCES", error: undefined },
   ]);
+  assert.equal(diagnostics[0]?.operationDiagnostic?.error?.name, "SyntaxError");
+  assert.equal(diagnostics[0]?.operationDiagnostic?.error?.message.includes("C:\\local-fixture\\catalog.json"), true);
   const output = host.logs.map(formatOperationLogEntry).join("\n");
   assert.match(output, /stage=repository-context-catalog status=failed category=permanent/u);
   assert.match(output, /stage=repository-root-resolution status=failed category=permanent code=EACCES/u);
-  assert.doesNotMatch(output, /private\\repo|fixture-secret|private-owner|catalog\.json/u);
+  assert.match(output, /C:\\local-fixture\\catalog\.json/u);
+  assert.match(output, /repoId=synthetic-owner/u);
+  assert.doesNotMatch(output, /fixture-secret/u);
+});
+
+test("operation failure keeps local paths, codes, stack, and causes while masking credentials", async () => {
+  const host = new DiagnosticHost(true);
+  const feedback = new OperationFeedback(host, () => 4_510);
+  const cause = Object.assign(new Error("read failed at C:\\local-fixture\\state.json client_secret=fixture-child-secret"), { code: "EACCES" });
+  const failure = new Error("open C:\\local-fixture\\state.json token=fixture-access-token Authorization: Bearer fixture-bearer Cookie=fixture-cookie-value password=fixture-password", { cause });
+  await assert.rejects(feedback.run("Review Contexts refresh", async () => { throw failure; }), failure);
+
+  const terminal = host.logs.at(-1);
+  assert.equal(terminal?.event, "failed");
+  assert.equal(terminal?.errorDetails?.name, "Error");
+  assert.equal(terminal?.errorDetails?.cause?.code, "EACCES");
+  assert.match(terminal?.errorDetails?.stack ?? "", /issue-90-diagnostics-and-cancellation\.test\.js/u);
+  const output = host.logs.map(formatOperationLogEntry).join("\n");
+  assert.match(output, /C:\\local-fixture\\state\.json/u);
+  assert.match(output, /caused by Error code=EACCES/u);
+  assert.match(output, /client_secret=\[REDACTED\]/u);
+  for (const secret of ["fixture-access-token", "fixture-bearer", "fixture-cookie-value", "fixture-password", "fixture-child-secret"]) {
+    assert.doesNotMatch(output, new RegExp(secret, "u"));
+  }
+});
+
+test("non-Error and circular causes are bounded and safely diagnosed", async () => {
+  const host = new DiagnosticHost(true);
+  const feedback = new OperationFeedback(host, () => 4_520);
+  const first = new Error("outer token=fixture-token");
+  const second = new Error("inner");
+  Object.defineProperty(first, "cause", { value: second });
+  Object.defineProperty(second, "cause", { value: first });
+  await assert.rejects(feedback.run("non-error failure", async () => { throw first; }), first);
+  const circular = host.logs.at(-1)?.errorDetails;
+  assert.equal(circular?.cause?.cause?.message, "Circular error cause omitted.");
+
+  const nonError = Object.defineProperty({}, "message", { get: () => { throw new Error("getter failed"); } });
+  await assert.rejects(feedback.run("thrown value", async () => { throw nonError; }), (error) => error === nonError);
+  const nonErrorDetails = host.logs.at(-1)?.errorDetails;
+  assert.equal(nonErrorDetails?.kind, "non-error");
+  assert.equal(nonErrorDetails?.message, "Thrown non-Error value has no readable message.");
+  assert.equal(host.logs.at(-1)?.event, "failed");
+});
+
+test("logger and status sink exceptions never replace outcomes or leak active operations", async () => {
+  class ThrowingHost extends DiagnosticHost {
+    public readonly attemptedEvents: string[] = [];
+    public throwEvents = new Set<string>(["started", "progress", "refresh", "failed", "succeeded"]);
+    public throwStatus = true;
+    public clearCount = 0;
+    public override showBusy(): void { if (this.throwStatus) throw new Error("status sink failed token=fixture-token"); }
+    public override clearBusy(): void { this.clearCount += 1; if (this.throwStatus) throw new Error("clear sink failed"); }
+    public override appendLog(entry: OperationLogEntry): void {
+      this.attemptedEvents.push(entry.event);
+      if (this.throwEvents.has(entry.event)) throw new Error(`append failed for ${entry.event} apiKey=fixture-api-key`);
+      super.appendLog(entry);
+    }
+    public override revealLog(): void { throw new Error("reveal sink failed"); }
+  }
+  const host = new ThrowingHost(true);
+  const fallback: string[] = [];
+  const feedback = new OperationFeedback(host, () => 4_530, (line) => fallback.push(line));
+  const original = new Error("application failure at C:\\local-fixture\\operation.json token=fixture-operation-secret");
+  await assert.rejects(feedback.run("fails despite logger", async (context) => {
+    feedback.reportProgress({ stage: "repositories", completed: 1 }, context);
+    feedback.reportPullRequestRefresh(context, {
+      generation: 1, trigger: "current-context-refresh", stage: "pr-progress", status: "progress",
+    });
+    throw original;
+  }), original);
+  assert.deepEqual(host.attemptedEvents, ["started", "progress", "refresh", "failed"]);
+  assert.equal(host.clearCount, 1, "cleanup status is attempted after failure");
+  assert.ok(fallback.some((line) => line.includes("append failed for started")));
+  assert.ok(fallback.some((line) => line.includes("append failed for progress")));
+  assert.ok(fallback.some((line) => line.includes("append failed for refresh")));
+  assert.ok(fallback.some((line) => line.includes("append failed for failed")));
+  assert.ok(fallback.some((line) => line.includes("status sink failed")));
+  assert.ok(fallback.some((line) => line.includes("clear sink failed")));
+  assert.ok(fallback.some((line) => line.includes("reveal-output")));
+  assert.ok(fallback.every((line) => !line.includes("fixture-token") && !line.includes("fixture-api-key")));
+
+  assert.equal(await feedback.run("success despite logger", async () => "live result"), "live result");
+  assert.ok(host.attemptedEvents.includes("succeeded"), "success-terminal sink failures are exercised too");
+  assert.ok(fallback.some((line) => line.includes("append failed for succeeded")));
+  await feedback.run("cleanup observer fails", async (context) => {
+    feedback.onOperationFinished(context, () => { throw new Error("observer failed token=fixture-observer-secret"); });
+  });
+  assert.ok(fallback.some((line) => line.includes("operation-finish-listener")));
+  assert.ok(fallback.every((line) => !line.includes("fixture-observer-secret")));
+
+  host.throwEvents.clear();
+  host.throwStatus = false;
+  const result = await feedback.run("recovered operation", async () => "result");
+  assert.equal(result, "result");
+  assert.deepEqual(host.logs.slice(-2).map((entry) => entry.event), ["started", "succeeded"]);
+  assert.equal(host.clearCount, 4);
+});
+
+test("detailed configuration getter failures fall back to privacy-safe diagnostics", async () => {
+  class ConfigurationHost extends DiagnosticHost {
+    public override isDetailedDiagnosticsEnabled(): boolean { throw new Error("configuration read failed Cookie: fixture-cookie-value"); }
+  }
+  const host = new ConfigurationHost(false);
+  const fallback: string[] = [];
+  const feedback = new OperationFeedback(host, () => 4_540, (line) => fallback.push(line));
+  assert.equal(await feedback.run("configuration failure", async () => "unchanged"), "unchanged");
+  assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "succeeded"]);
+  assert.ok(fallback.some((line) => line.includes("diagnostics-configuration")));
+  assert.ok(fallback.every((line) => !line.includes("fixture-cookie-value")));
 });
 
 test("T405 root resolution suppresses selection cancellation and interruption diagnostics but retains I/O failures", async () => {
   const rootA = path.join(tmpdir(), "review-range-root-cancel-a");
   const rootB = path.join(tmpdir(), "review-range-root-cancel-b");
-  const secret = "C:\\private\\repo\\root token=fixture-secret repoId=private-owner";
+  const secret = "C:\\local-fixture\\root token=fixture-secret repoId=synthetic-owner";
   let inspectionFailure: "none" | "abort" | "io" = "none";
   const commands = new Map<string, (...args: unknown[]) => Promise<unknown>>();
   const errors: string[] = [];
@@ -159,22 +270,23 @@ test("T405 root resolution suppresses selection cancellation and interruption di
     const item = { context };
 
     await refreshCache(item);
-    assert.equal(host.logs.some((entry) => entry.operationDiagnostic?.stage === "repository-root-resolution"), false,
-      "user cancellation while choosing between repositories is not a root-resolution failure diagnostic");
+    assert.equal(host.logs.some((entry) => entry.operationDiagnostic?.stage === "repository-root-resolution" && entry.operationDiagnostic.status === "cancelled"), true,
+      "user cancellation while choosing between repositories is logged as cancellation, not failure");
     inspectionFailure = "abort";
     await refreshCache(item);
-    assert.equal(host.logs.some((entry) => entry.operationDiagnostic?.stage === "repository-root-resolution"), false,
-      "an interrupted root inspection is not a root-resolution failure diagnostic");
+    assert.equal(host.logs.some((entry) => entry.operationDiagnostic?.stage === "repository-root-resolution" && entry.operationDiagnostic.status === "cancelled"), true,
+      "an interrupted root inspection is logged as cancellation, not failure");
     inspectionFailure = "io";
     await refreshCache(item);
     const diagnostics = host.logs.filter((entry) => entry.operationDiagnostic?.stage === "repository-root-resolution");
-    assert.equal(diagnostics.length, 1, "ordinary root-inspection I/O failure remains observable");
-    assert.deepEqual(diagnostics[0]?.operationDiagnostic, {
-      stage: "repository-root-resolution", status: "failed", category: "permanent", code: "EACCES",
-    });
+    const ioFailure = diagnostics.find((entry) => entry.operationDiagnostic?.status === "failed" && entry.operationDiagnostic.error?.code === "EACCES");
+    assert.ok(ioFailure, "ordinary root-inspection I/O failure remains observable");
+    assert.ok(diagnostics.some((entry) => entry.operationDiagnostic?.status === "cancelled"), "selection and interruption remain cancellation terminals");
     const output = host.logs.map(formatOperationLogEntry).join("\n") + errors.join("\n");
-    assert.doesNotMatch(output, /private\\repo|fixture-secret|private-owner/u,
-      "cancellation and ordinary failures keep exception details redacted");
+    assert.match(output, /C:\\local-fixture\\root/u,
+      "local Output keeps actionable repository paths");
+    assert.doesNotMatch(output, /fixture-secret/u,
+      "secret values remain redacted in local Output");
   } finally {
     runtime?.dispose();
     loader._load = originalLoad;
@@ -306,14 +418,14 @@ test("a reported boundary failure takes priority over a later AbortError", async
   assert.equal(host.reveals, 1);
 });
 
-test("an unreported AbortError retains the existing failed terminal behavior", async () => {
+test("an unreported AbortError receives a cancelled terminal without revealing Output as an error", async () => {
   const host = new DiagnosticHost(true);
   const feedback = new OperationFeedback(host, () => 4_300);
   const cancellation = new DOMException("unreported abort", "AbortError");
   await assert.rejects(feedback.run("PR refresh", async () => { throw cancellation; }), (error: unknown) => error === cancellation);
-  assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "failed"]);
+  assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "cancelled"]);
   assert.equal(host.logs.at(-1)?.failureCategory, "stale");
-  assert.equal(host.reveals, 1);
+  assert.equal(host.reveals, 0);
 });
 
 test("Issue #137 production formatter preserves refresh payloads and hides queued PR file paths", async () => {
@@ -347,7 +459,9 @@ test("Issue #137 production formatter preserves refresh payloads and hides queue
     assert.deepEqual(host.logs.filter((entry) => entry.event === "started").map((entry) => entry.operationId), [1, 2]);
     await assert.rejects(feedback.run("PR進捗を計算", async () => { throw new Error(hostileValues[7]); }), /exception/u);
     const withFailure = host.logs.map(formatOperationLogEntry).join("\n");
-    for (const hostile of hostileValues) assert.equal(withFailure.includes(hostile), false);
+    assert.match(withFailure, /exception containing \/private\/repo\/source\.ts/u,
+      "local exception paths remain available when diagnosing the failed operation");
+    for (const secret of ["do-not-log", "private content", "source body"]) assert.equal(withFailure.includes(secret), false);
   }
 });
 
