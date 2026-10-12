@@ -1631,12 +1631,9 @@ test("T406 executes the T405 production seam across PR selection, failure fallba
     setActiveOperationFeedback(undefined);
     assert.equal(cacheAtomicWrites, 1, "a Node-backed atomic write fault cannot retry or start post-mutation refresh");
     assert.equal(errors.length, 1, "the command boundary reports the terminal cache mutation failure");
-    assert.deepEqual(cacheFailureLog.map((entry) => entry.event), ["started", "refresh", "failed"]);
-    assert.deepEqual(cacheFailureLog[1]?.operationDiagnostic, {
-      stage: "cache-persistence",
-      status: "failed",
-      code: "ENOSPC",
-    });
+    assert.deepEqual(cacheFailureLog.map((entry) => entry.event), ["started", "failed"]);
+    assert.equal(cacheFailureLog.some((entry) => entry.operationDiagnostic !== undefined), false,
+      "an explicit cache mutation remains a terminal failure rather than an optional-persistence diagnostic");
     cacheAtomicWriteFailure = undefined;
     errors.length = 0;
 

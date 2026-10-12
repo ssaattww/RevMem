@@ -1107,6 +1107,7 @@ export function registerT405ReviewContextsRuntime(
     signal?: AbortSignal,
     feedbackContext?: OperationFeedbackContext,
     deferCachePublish = false,
+    writeFailurePolicy: "throw" | "preserve-live" = "preserve-live",
   ) => {
     const assertCurrent = (): void => {
       if (signal?.aborted === true) throw new DOMException("PR progress acquisition was superseded.", "AbortError");
@@ -1149,7 +1150,7 @@ export function registerT405ReviewContextsRuntime(
       throw new Error("Pull-request diff snapshot does not match the selected immutable context.");
     }
     const publish = async (): Promise<void> => {
-      result = await cache.publish(diffRequest(context), result, feedbackContext, signal);
+      result = await cache.publish(diffRequest(context), result, feedbackContext, signal, writeFailurePolicy);
       assertCurrent();
       cacheStatusByContextId.set(
         context.contextId,
@@ -1815,7 +1816,7 @@ export function registerT405ReviewContextsRuntime(
       });
     },
     refreshPullRequestCache: async (context, feedbackContext) => {
-      const { result } = await acquire(context, true, undefined, feedbackContext);
+      const { result } = await acquire(context, true, undefined, feedbackContext, false, "throw");
     if (result.kind !== "acquired") {
         throw new Error(`PR cacheを更新できませんでした: ${result.attempts.map((attempt) => `${attempt.source}:${attempt.reason}`).join(", ")}`);
       }

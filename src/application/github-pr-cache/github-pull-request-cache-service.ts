@@ -59,8 +59,9 @@ const requireIsoTimestamp = (milliseconds: number, name: string): string => {
 
 /**
  * Adds exact-identity metadata/diff caching around T402 acquisition.
- * Only rate-limit and network failures may read the offline cache. Cache write
- * failures never discard a complete live result.
+ * Only rate-limit and network failures may read the offline cache. Callers may
+ * treat cache publication as best-effort to retain a complete live result, or
+ * require persistence and propagate the write failure.
  */
 export class GitHubPullRequestCacheService {
   private readonly acquisition: PullRequestDiffAcquisitionPort;
@@ -139,6 +140,8 @@ export class GitHubPullRequestCacheService {
     result: GitHubPullRequestCacheAcquisitionResult,
     feedbackContext?: OperationFeedbackContext,
     signal?: AbortSignal,
+    /** Preserve an exact live result only for callers where cache persistence is optional. */
+    writeFailurePolicy: "throw" | "preserve-live" = "throw",
   ): Promise<GitHubPullRequestCacheAcquisitionResult> {
     if (result.kind !== "acquired" || result.source === "offline-cache" || result.cache.origin !== "live" || result.metadata === undefined) return result;
     return this.acceptLive(request, {
@@ -146,7 +149,7 @@ export class GitHubPullRequestCacheService {
       source: result.source,
       snapshot: result.snapshot,
       metadata: result.metadata,
-    }, feedbackContext, signal);
+    }, feedbackContext, signal, writeFailurePolicy);
   }
 
   private projectLive(
@@ -177,6 +180,7 @@ export class GitHubPullRequestCacheService {
     live: Extract<PullRequestDiffAcquisitionResult, { readonly kind: "acquired" }>,
     feedbackContext?: OperationFeedbackContext,
     signal?: AbortSignal,
+    writeFailurePolicy: "throw" | "preserve-live" = "throw",
   ): Promise<GitHubPullRequestCacheAcquisitionResult> {
     if (
       live.metadata === undefined ||
@@ -211,6 +215,7 @@ export class GitHubPullRequestCacheService {
     } catch (error) {
       if (signal?.aborted === true) throw new DOMException("PR cache publication was superseded.", "AbortError");
       if (typeof error === "object" && error !== null && "name" in error && error.name === "AbortError") throw error;
+      if (writeFailurePolicy === "throw") throw error;
       reportActiveOperationStageDiagnostic("cache-persistence", error, feedbackContext);
       return {
         ...live,
