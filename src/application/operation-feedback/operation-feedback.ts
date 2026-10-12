@@ -17,6 +17,12 @@ export interface OperationProgress {
 /** Lifecycle event written to the Review Range diagnostic output. */
 export type OperationLogEvent = "started" | "progress" | "refresh" | "succeeded" | "failed" | "cancelled";
 
+export interface OperationStageDiagnostic {
+  readonly stage: "cache-persistence";
+  readonly status: "failed";
+  readonly code?: "EACCES" | "EBUSY" | "EEXIST" | "EIO" | "EMFILE" | "ENFILE" | "ENOENT" | "ENOSPC" | "ENOTDIR" | "EPERM" | "EROFS";
+}
+
 export type PullRequestRefreshTrigger =
   | "current-context-refresh"
   | "review-contexts-refresh"
@@ -118,6 +124,8 @@ export interface OperationLogEntry {
   readonly message?: string;
   /** Safe classifier outcome for a failed operation; never includes dependency text. */
   readonly failureCategory?: OperationFailureCategory;
+  /** Fixed-stage operation diagnostic containing only an allowlisted error code. */
+  readonly operationDiagnostic?: OperationStageDiagnostic;
   /** Numeric correlation to the owning operation, present on PR refresh detail. */
   readonly operationId?: number;
   readonly pullRequestRefresh?: PullRequestRefreshDiagnostic;
@@ -319,6 +327,10 @@ const SAFE_ERROR_CODES = new Set([
   "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
   "PR_PROGRESS_UNAVAILABLE",
   "GITHUB_PR_DETECTION_UNAVAILABLE"
+]);
+
+const SAFE_STAGE_DIAGNOSTIC_CODES = new Set<NonNullable<OperationStageDiagnostic["code"]>>([
+  "EACCES", "EBUSY", "EEXIST", "EIO", "EMFILE", "ENFILE", "ENOENT", "ENOSPC", "ENOTDIR", "EPERM", "EROFS",
 ]);
 
 const SAFE_PR_PROGRESS_SOURCES = new Set([
@@ -870,6 +882,27 @@ export class OperationFeedback {
     this.appendFailure(normalizedLabel, error, timestamp, undefined, id);
   }
 
+  /** Records an optional cache persistence failure without failing the owning operation. */
+  public reportStageDiagnostic(stage: OperationStageDiagnostic["stage"], error: unknown, context?: OperationFeedbackContext): void {
+    const active = context?.owner === this
+      ? this.active.find((candidate) => candidate.id === context.id)
+      : context === undefined
+        ? this.active.at(-1)
+        : undefined;
+    if (active === undefined) return;
+    const candidateCode = safeErrorCode(error);
+    const code = candidateCode !== undefined && SAFE_STAGE_DIAGNOSTIC_CODES.has(candidateCode as NonNullable<OperationStageDiagnostic["code"]>)
+      ? candidateCode as NonNullable<OperationStageDiagnostic["code"]>
+      : undefined;
+    this.host.appendLog({
+      timestamp: new Date(this.now()).toISOString(),
+      label: active.label,
+      event: "refresh",
+      operationId: active.id,
+      operationDiagnostic: { stage, status: "failed", ...(code === undefined ? {} : { code }) },
+    });
+  }
+
   /** Returns whether an explicit parent operation already has a terminal handled failure. */
   public hasBoundaryFailure(context: OperationFeedbackContext | undefined): boolean {
     if (context?.owner !== this) return false;
@@ -986,9 +1019,13 @@ export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
       (refresh.durationMs === undefined ? "" : ` duration=${refresh.durationMs}ms`) +
       Object.entries(refresh.counts ?? {}).map(([key, value]) => ` ${key}=${value}`).join("") +
       (refresh.reasonCode === undefined ? "" : ` reason=${refresh.reasonCode}`);
+  const operationDetails = entry.operationDiagnostic === undefined
+    ? ""
+    : ` stage=${entry.operationDiagnostic.stage} status=${entry.operationDiagnostic.status}` +
+      (entry.operationDiagnostic.code === undefined ? "" : ` code=${entry.operationDiagnostic.code}`);
   return boundedSingleLine(
     `[${entry.timestamp}] ${stage}${operation} ${boundedSingleLine(entry.label, MAX_OPERATION_LABEL_LENGTH)}` +
-    `${progress}${duration}${refreshDetails}${error}${failureCategory}`,
+    `${progress}${duration}${refreshDetails}${operationDetails}${error}${failureCategory}`,
   );
 };
 
@@ -1047,6 +1084,15 @@ export const reportActiveOperationFailure = (
   context?: OperationFeedbackContext,
 ): void => {
   (context?.owner ?? activeOperationFeedback)?.reportFailure(label, error, context);
+};
+
+/** Records a fixed-stage diagnostic without changing operation success or failure. */
+export const reportActiveOperationStageDiagnostic = (
+  stage: OperationStageDiagnostic["stage"],
+  error: unknown,
+  context?: OperationFeedbackContext,
+): void => {
+  (context?.owner ?? activeOperationFeedback)?.reportStageDiagnostic(stage, error, context);
 };
 
 /** Returns whether activation has already installed the shared Output lifecycle. */

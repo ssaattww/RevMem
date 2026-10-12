@@ -9,7 +9,7 @@ import test from "node:test";
 
 import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index.js";
 import { FileSystemReviewStateRepository } from "../../src/adapters/state-repository/index.js";
-import { OperationFeedback, setActiveOperationFeedback, type OperationFeedbackHost, type OperationLogEntry } from "../../src/application/operation-feedback/index.js";
+import { formatOperationLogEntry, OperationFeedback, setActiveOperationFeedback, type OperationFeedbackHost, type OperationLogEntry } from "../../src/application/operation-feedback/index.js";
 import { ReviewHistoryRecorder } from "../../src/application/review-history/index.js";
 import { CurrentContextCandidateSelection, type CurrentContextUiSnapshot } from "../../src/ui/current-context/index.js";
 
@@ -597,7 +597,7 @@ test("T407 revalidation records session loss after Current Context selection as 
     "the concealed private PR detail 404 is categorized as API validation failure by the existing diagnostic classifier");
 });
 
-test("T407 cache persistence error is logged independently from private API authentication", async () => {
+test("T407 cache persistence error does not discard the authenticated live Current Context candidate", async () => {
   const result = await runScenario({
     privateApi: true,
     interactiveSession: true,
@@ -605,9 +605,17 @@ test("T407 cache persistence error is logged independently from private API auth
     cacheWriteFailure: true,
   });
   assert.equal(result.searchRequestCount, 1, "private API authentication succeeds before cache persistence fails");
-  assert.ok(result.errors.some((message) => message.includes("cache persistence denied")));
-  assert.ok(result.operationLogs.some((entry) => entry.event === "failed" && entry.failureCategory === "permanent"),
-    "an untyped EACCES cache write is recorded as permanent by the current diagnostic classifier");
+  assert.equal(result.candidates.some((candidate) => candidate.context.kind === "pull-request"), true,
+    "a failed optional cache write must not discard the already acquired exact live snapshot");
+  assert.deepEqual(result.errors, [], "cache persistence failure does not fail Current Context selection");
+  const diagnostic = result.operationLogs.find((entry) => entry.operationDiagnostic?.stage === "cache-persistence");
+  assert.deepEqual(diagnostic?.operationDiagnostic, { stage: "cache-persistence", status: "failed", code: "EACCES" });
+  const renderedDiagnostic = diagnostic === undefined ? "" : formatOperationLogEntry(diagnostic);
+  assert.match(renderedDiagnostic, /stage=cache-persistence status=failed code=EACCES/u);
+  assert.doesNotMatch(renderedDiagnostic, /cache persistence denied|example\/private-context|src\/example\.ts/u,
+    "cache persistence diagnostics contain no exception text, repository identity, or path");
+  assert.ok(result.operationLogs.some((entry) => entry.event === "succeeded" && entry.label === "Current Contextを選択"),
+    "the owning Current Context selection remains successful while its optional cache write is reported separately");
 });
 
 test("T407 public Current Context factory path preserves saved, background, and wrong-account private selection contracts", async () => {

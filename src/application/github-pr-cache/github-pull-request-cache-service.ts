@@ -20,6 +20,7 @@ import type {
   PullRequestDiffAcquisitionPort
 } from "./contracts";
 import type { OperationFeedbackContext } from "../operation-feedback/index";
+import { reportActiveOperationStageDiagnostic } from "../operation-feedback/index";
 
 const isOfflineFailure = (attempt: PullRequestDiffAcquisitionAttempt): boolean =>
   attempt.reason === "rate-limit" || attempt.reason === "network";
@@ -205,7 +206,19 @@ export class GitHubPullRequestCacheService {
       expiresAt
     };
     if (signal?.aborted) throw new DOMException("PR cache publication was superseded.", "AbortError");
-    await this.storage.write(entry, feedbackContext, signal);
+    try {
+      await this.storage.write(entry, feedbackContext, signal);
+    } catch (error) {
+      if (signal?.aborted === true) throw new DOMException("PR cache publication was superseded.", "AbortError");
+      if (typeof error === "object" && error !== null && "name" in error && error.name === "AbortError") throw error;
+      reportActiveOperationStageDiagnostic("cache-persistence", error, feedbackContext);
+      return {
+        ...live,
+        snapshot: cloneGitHubPullRequestDiffSnapshot(live.snapshot, false),
+        metadata: cloneGitHubPullRequestMetadata(live.metadata),
+        cache: { origin: "live", freshness: "not-cached" },
+      };
+    }
     if (signal?.aborted) throw new DOMException("PR cache publication was superseded.", "AbortError");
     return {
       ...live,
