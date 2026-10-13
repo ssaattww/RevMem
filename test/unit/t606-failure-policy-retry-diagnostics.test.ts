@@ -126,6 +126,63 @@ test("retry success, exhaustion, backoff cancellation, and stale failure retain 
   assert.deepEqual(host.logs.slice(-2).map((entry) => entry.event), ["started", "cancelled"]);
 });
 
+test("T606 backoff cancellation retains the retry cause and both stacks on one cancelled lifecycle", async () => {
+  const host = new FakeHost();
+  const feedback = new OperationFeedback(host, () => 12);
+  const networkCause = new Error("socket layer reset token=fixture-cause-secret");
+  const retryFailure = Object.assign(
+    new Error("GitHub request reset token=fixture-retry-secret", { cause: networkCause }),
+    { code: "ECONNRESET" },
+  );
+  const abortCause = new Error("caller cancelled during backoff");
+  const abortError = Object.assign(
+    new Error("backoff cancelled token=fixture-abort-secret", { cause: abortCause }),
+    { name: "AbortError" },
+  );
+  let calls = 0;
+
+  await assert.rejects(
+    feedback.run("backoff cancellation", (context) => runWithBoundedRetry(async () => {
+      calls += 1;
+      throw retryFailure;
+    }, {
+      feedbackContext: context,
+      sleep: async (delayMs, signal) => {
+        assert.equal(delayMs, 25);
+        assert.equal(signal, undefined);
+        throw abortError;
+      },
+    })),
+    (error: unknown) => error === abortError,
+  );
+
+  assert.equal(calls, 1, "cancellation during the first backoff prevents a second attempt");
+  assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "retry", "cancelled"]);
+  assert.ok(host.logs.every((entry) => entry.operationId === 1));
+  const retry = host.logs[1]!;
+  assert.deepEqual({
+    attempt: retry.retryAttempt?.attempt,
+    category: retry.retryAttempt?.category,
+    code: retry.retryAttempt?.code,
+    delayMs: retry.retryAttempt?.delayMs,
+  }, { attempt: 1, category: "retryable", code: "ECONNRESET", delayMs: 25 });
+  assert.equal(retry.retryAttempt?.error?.message, "GitHub request reset token=[REDACTED]");
+  assert.equal(retry.retryAttempt?.error?.code, "ECONNRESET");
+  assert.match(retry.retryAttempt?.error?.stack ?? "", /GitHub request reset token=\[REDACTED\]/u);
+  assert.equal(retry.retryAttempt?.error?.cause?.message, "socket layer reset token=[REDACTED]");
+  assert.match(retry.retryAttempt?.error?.cause?.stack ?? "", /socket layer reset token=\[REDACTED\]/u);
+
+  const cancelled = host.logs[2]!;
+  assert.equal(cancelled.failureCategory, "stale");
+  assert.equal(cancelled.errorDetails?.message, "backoff cancelled token=[REDACTED]");
+  assert.match(cancelled.errorDetails?.stack ?? "", /backoff cancelled token=\[REDACTED\]/u);
+  assert.equal(cancelled.errorDetails?.cause?.message, "caller cancelled during backoff");
+  assert.match(cancelled.errorDetails?.cause?.stack ?? "", /caller cancelled during backoff/u);
+  const output = host.logs.map(formatOperationLogEntry).join("\n");
+  assert.match(output, /attempt=1 category=retryable code=ECONNRESET backoff=25ms/u);
+  assert.doesNotMatch(output, /fixture-(?:cause|retry|abort)-secret/u);
+});
+
 test("T606 never retries authentication, validation, stale, or partial-side-effect failures", async () => {
   const nonRetryable = [
     Object.assign(new Error("auth"), { status: 401 }),
