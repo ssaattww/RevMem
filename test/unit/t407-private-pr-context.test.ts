@@ -397,7 +397,10 @@ const runScenario = async (options: {
       ...(options.cacheWriteFailure ? {
         createPullRequestCacheStorage: () => ({
           read: async () => undefined,
-          write: async () => { throw Object.assign(new Error("cache persistence denied"), { code: "EACCES" }); },
+          write: async () => {
+            const cause = Object.assign(new Error("underlying cache file write denied"), { code: "EACCES" });
+            throw Object.assign(new Error("cache persistence denied", { cause }), { code: "ENOSPC" });
+          },
         }),
         createPullRequestDiffAcquisition: () => ({
           acquire: async (request: { readonly contextId: string; readonly number: number; readonly baseSha: string; readonly headSha: string }) => ({
@@ -610,11 +613,32 @@ test("T407 cache persistence error does not discard the authenticated live Curre
   assert.deepEqual(result.errors, [], "cache persistence failure does not fail Current Context selection");
   const diagnostic = result.operationLogs.find((entry) => entry.operationDiagnostic?.stage === "cache-persistence" && entry.operationDiagnostic.status === "degraded");
   assert.deepEqual({ stage: diagnostic?.operationDiagnostic?.stage, status: diagnostic?.operationDiagnostic?.status, code: diagnostic?.operationDiagnostic?.code },
-    { stage: "cache-persistence", status: "degraded", code: "EACCES" });
+    { stage: "cache-persistence", status: "degraded", code: "ENOSPC" });
+  assert.deepEqual({
+    name: diagnostic?.operationDiagnostic?.error?.name,
+    code: diagnostic?.operationDiagnostic?.error?.code,
+    message: diagnostic?.operationDiagnostic?.error?.message,
+    causeName: diagnostic?.operationDiagnostic?.error?.cause?.name,
+    causeCode: diagnostic?.operationDiagnostic?.error?.cause?.code,
+    causeMessage: diagnostic?.operationDiagnostic?.error?.cause?.message,
+  }, {
+    name: "Error",
+    code: "ENOSPC",
+    message: "cache persistence denied",
+    causeName: "Error",
+    causeCode: "EACCES",
+    causeMessage: "underlying cache file write denied",
+  }, "the safe degraded diagnostic retains the original error and nested cause fields");
+  assert.match(diagnostic?.operationDiagnostic?.error?.stack ?? "", /cache persistence denied/u,
+    "the original cache write stack remains available in the diagnostic");
+  assert.match(diagnostic?.operationDiagnostic?.error?.cause?.stack ?? "", /underlying cache file write denied/u,
+    "the original nested cause stack remains available in the diagnostic");
   const renderedDiagnostic = diagnostic === undefined ? "" : formatOperationLogEntry(diagnostic);
-  assert.match(renderedDiagnostic, /stage=cache-persistence status=degraded code=EACCES/u);
+  assert.match(renderedDiagnostic, /stage=cache-persistence status=degraded code=ENOSPC/u);
   assert.match(renderedDiagnostic, /cache persistence denied/u,
     "cache persistence diagnostics explain the local failure while preserving the live result");
+  assert.match(renderedDiagnostic, /underlying cache file write denied/u,
+    "the rendered safe diagnostic includes the nested write failure cause");
   assert.match(renderedDiagnostic, /at GitHubPullRequestCacheService\.acceptLive/u,
     "the local stack identifies the cache persistence failure boundary");
   assert.ok(result.operationLogs.some((entry) => entry.event === "degraded" && entry.label === "Current Contextを選択"),
