@@ -21,6 +21,11 @@ import {
   type GlobalUnderstandingFileSource
 } from "../../src/application/global-understanding/index";
 import {
+  OperationFeedback,
+  type OperationFeedbackHost,
+  type OperationLogEntry
+} from "../../src/application/operation-feedback/index";
+import {
   NodeGlobalUnderstandingFileSource
 } from "../../src/adapters/repository-files/node-global-understanding-file-source";
 
@@ -222,6 +227,68 @@ test("background recalculation prioritizes open files, yields between chunks, an
   assert.equal(result.progress.totalNonEmptyLineCount, 4);
   assert.equal(result.cacheHitCount, 0);
   assert.equal(result.calculatedFileCount, 4);
+});
+
+test("T610 yields at the 128th real calculation item and reports scheduler rejection with original cause and stack", async () => {
+  const runCase = async (itemCount: number, rejectAtYield = false): Promise<void> => {
+    const logs: OperationLogEntry[] = [];
+    const batches: Array<{ kind: string; count: number }> = [];
+    const host: OperationFeedbackHost = {
+      showBusy(): void {},
+      clearBusy(): void {},
+      appendLog(entry): void { logs.push(entry); },
+      revealLog(): void {}
+    };
+    const feedback = new OperationFeedback(host, () => 1);
+    const schedulerCause = new Error("scheduler event loop handoff unavailable");
+    const schedulerFailure = new Error("T610 yield rejected token=fixture-yield-secret", { cause: schedulerCause });
+    let yields = 0;
+    const recalculator = new GlobalUnderstandingBackgroundRecalculator({
+      source: sourceFrom({}, []),
+      cache: new InMemoryGlobalUnderstandingProgressCache(),
+      accountWorkBatch: (batch) => { batches.push(batch); },
+      yieldControl: async () => {
+        yields += 1;
+        if (rejectAtYield) throw schedulerFailure;
+      }
+    });
+    const operation = () => recalculator.recalculate({
+      globalState: globalState(Array.from({ length: itemCount }, (_, index) =>
+        globalFile(`file-${index}`, `src/file-${index}.ts`, []))),
+      included: [],
+      configurationKey: "t610-yield-boundary"
+    });
+
+    if (rejectAtYield) {
+      await assert.rejects(
+        feedback.run("T610 calculation yield", operation),
+        (error: unknown) => error === schedulerFailure,
+        "the real calculation rejects with the original scheduler error"
+      );
+      assert.equal(yields, 1, "the 128th mapped calculation item reaches the injected scheduler exactly once");
+      assert.deepEqual(batches, [{ kind: "mapped-global-file", count: 128 }]);
+      assert.deepEqual(logs.map((entry) => entry.event), ["started", "failed"]);
+      const failed = logs[1]!;
+      assert.equal(failed.failureCategory, "permanent");
+      assert.equal(failed.errorDetails?.message, "T610 yield rejected token=[REDACTED]");
+      assert.match(failed.errorDetails?.stack ?? "", /T610 yield rejected token=\[REDACTED\]/u);
+      assert.equal(failed.errorDetails?.cause?.message, "scheduler event loop handoff unavailable");
+      assert.match(failed.errorDetails?.cause?.stack ?? "", /scheduler event loop handoff unavailable/u);
+      const diagnostic = logs.map((entry) => entry.errorDetails?.stack ?? "").join("\n");
+      assert.doesNotMatch(diagnostic, /fixture-yield-secret/u);
+    } else {
+      await feedback.run("T610 calculation boundary", operation);
+      const expectedYields = itemCount < 128 ? 0 : 1;
+      assert.equal(yields, expectedYields, `${itemCount} real mapped items should produce ${expectedYields} scheduler yields`);
+      assert.deepEqual(batches, expectedYields === 0 ? [] : [{ kind: "mapped-global-file", count: 128 }]);
+      assert.deepEqual(logs.map((entry) => entry.event), ["started", "succeeded"]);
+    }
+  };
+
+  await runCase(127);
+  await runCase(128);
+  await runCase(129);
+  await runCase(128, true);
 });
 
 test("progress cache reuses exact file evidence and setting or Global changes force recalculation", async () => {
