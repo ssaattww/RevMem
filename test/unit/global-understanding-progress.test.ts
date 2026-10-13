@@ -22,6 +22,7 @@ import {
 } from "../../src/application/global-understanding/index";
 import {
   OperationFeedback,
+  formatOperationLogEntry,
   type OperationFeedbackHost,
   type OperationLogEntry
 } from "../../src/application/operation-feedback/index";
@@ -274,8 +275,15 @@ test("T610 yields at the 128th real calculation item and reports scheduler rejec
       assert.match(failed.errorDetails?.stack ?? "", /T610 yield rejected token=\[REDACTED\]/u);
       assert.equal(failed.errorDetails?.cause?.message, "scheduler event loop handoff unavailable");
       assert.match(failed.errorDetails?.cause?.stack ?? "", /scheduler event loop handoff unavailable/u);
-      const diagnostic = logs.map((entry) => entry.errorDetails?.stack ?? "").join("\n");
-      assert.doesNotMatch(diagnostic, /fixture-yield-secret/u);
+      const formatted = formatOperationLogEntry(failed);
+      assert.match(formatted, /T610 yield rejected token=\[REDACTED\]/u);
+      assert.match(formatted, /scheduler event loop handoff unavailable/u);
+      assert.match(formatted, /T610 yield rejected token=\[REDACTED\][\s\S]*scheduler event loop handoff unavailable/u);
+      const failureStackFrame = schedulerFailure.stack?.split("\n")[1]?.trim();
+      const causeStackFrame = schedulerCause.stack?.split("\n")[1]?.trim();
+      assert.ok(failureStackFrame && formatted.includes(failureStackFrame), "formatted output retains the original scheduler failure stack frame");
+      assert.ok(causeStackFrame && formatted.includes(causeStackFrame), "formatted output retains the original scheduler cause stack frame");
+      assert.doesNotMatch(formatted, /fixture-yield-secret/u);
     } else {
       await feedback.run("T610 calculation boundary", operation);
       const expectedYields = itemCount < 128 ? 0 : 1;
