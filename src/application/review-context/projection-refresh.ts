@@ -1,4 +1,17 @@
-import type { OperationFeedbackContext } from "../operation-feedback/index";
+import { reportActiveOperationFailure, type OperationFeedbackContext } from "../operation-feedback/index";
+
+export const reportDocumentEditFailure = async (
+  label: string,
+  error: unknown,
+  notify: () => void | Promise<void>,
+): Promise<void> => {
+  reportActiveOperationFailure(label, error);
+  try {
+    await notify();
+  } catch {
+    // Keep a failed UI notification from replacing the original operation failure.
+  }
+};
 
 export interface SelectedPullRequestProgressRefreshDependencies<Source> {
   readonly shouldContinue?: () => boolean;

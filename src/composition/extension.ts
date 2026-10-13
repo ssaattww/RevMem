@@ -51,6 +51,7 @@ import {
   registerGlobalUnderstandingRuntime
 } from "../ui/global-understanding/index";
 import {
+  reportDocumentEditFailure,
   refreshAfterDocumentEdit,
   refreshSelectedPullRequestProgress
 } from "../application/review-context/projection-refresh";
@@ -901,6 +902,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     documentChangeRefresh.flush(detail, nextGlobalRefreshMutationIdentity());
   const requestGlobalUnderstandingForMutation = (detail: OperationDiagnosticDetail): void =>
     documentChangeRefresh.request(detail, nextGlobalRefreshMutationIdentity());
+  const reportDocumentEditFailureToUser = (
+    label: string,
+    error: unknown,
+    message: string,
+  ): Promise<void> => reportDocumentEditFailure(label, error, async () => {
+    await vscode.window.showErrorMessage(
+      `${message}: ${error instanceof Error ? error.message : String(error)}`
+    );
+  });
   const requestRefreshForDocumentChange = (event: vscode.TextDocumentChangeEvent): void => {
     if (!FILESYSTEM_SCHEMES.has(event.document.uri.scheme)) return;
     requestGlobalUnderstandingForMutation({ reason: "document-changed", target: event.document.uri.fsPath, phase: "global-refresh-trigger" });
@@ -931,17 +941,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
             refreshPullRequestProgress: refreshPullRequestProgressForSelection,
             refreshDecorations: () => runtimePort.refreshVisibleEditorDecorations(),
             refreshGlobal: () => refreshGlobalUnderstandingForMutation({ reason: "document-review-state-applied", target: event.document.uri.fsPath, phase: "global-refresh-trigger" }),
-            reportPullRequestProgressError
+            reportPullRequestProgressError: (error) => reportDocumentEditFailureToUser(
+              "Document edit PR Progress refresh",
+              error,
+              "PR Progressを更新できませんでした",
+            )
           });
         } catch (error) {
-          await vscode.window.showErrorMessage(
-            `編集後のレビュー表示を更新できませんでした: ${error instanceof Error ? error.message : String(error)}`
+          await reportDocumentEditFailureToUser(
+            "Document edit projection refresh",
+            error,
+            "編集後のレビュー表示を更新できませんでした",
           );
         }
       },
       async (error: unknown) => {
-        await vscode.window.showErrorMessage(
-          `編集後のレビュー状態を更新できませんでした: ${error instanceof Error ? error.message : String(error)}`
+        await reportDocumentEditFailureToUser(
+          "Document edit state apply",
+          error,
+          "編集後のレビュー状態を更新できませんでした",
         );
       }
     );

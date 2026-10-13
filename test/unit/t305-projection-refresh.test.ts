@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { OperationFeedback, type OperationLogEntry } from "../../src/application/operation-feedback/index.js";
+import { OperationFeedback, setActiveOperationFeedback, type OperationLogEntry } from "../../src/application/operation-feedback/index.js";
 
 import {
+  reportDocumentEditFailure,
   refreshAfterDocumentEdit,
   refreshCurrentContextDependents,
   refreshSelectedPullRequestProgress,
@@ -21,6 +22,51 @@ const deferred = <T>(): Deferred<T> => {
   });
   return { promise, resolve };
 };
+
+test("document edit failure reporting preserves original diagnostics when notification fails and avoids lower-level duplicates", async () => {
+  const logs: OperationLogEntry[] = [];
+  const feedback = new OperationFeedback({
+    showBusy() {}, clearBusy() {}, appendLog(entry) { logs.push(entry); }, revealLog() {}
+  }, () => 7);
+  setActiveOperationFeedback(feedback);
+  try {
+    const cause = Object.assign(new Error("underlying edit persistence failure"), { code: "EACCES" });
+    const applyError = Object.assign(new Error("document review state apply failed", { cause }), { code: "EIO" });
+    let notifications = 0;
+    await reportDocumentEditFailure("Document edit state apply", applyError, async () => {
+      notifications += 1;
+      throw new Error("notification surface unavailable");
+    });
+    assert.equal(notifications, 1, "the original error notification is still attempted");
+    assert.deepEqual(logs.map((entry) => entry.event), ["started", "failed"]);
+    assert.deepEqual({
+      code: logs[1]?.errorDetails?.code,
+      message: logs[1]?.errorDetails?.message,
+      causeCode: logs[1]?.errorDetails?.cause?.code,
+      causeMessage: logs[1]?.errorDetails?.cause?.message,
+    }, {
+      code: "EIO",
+      message: "document review state apply failed",
+      causeCode: "EACCES",
+      causeMessage: "underlying edit persistence failure",
+    });
+    assert.match(logs[1]?.errorDetails?.stack ?? "", /document review state apply failed/u);
+    assert.match(logs[1]?.errorDetails?.cause?.stack ?? "", /underlying edit persistence failure/u);
+
+    const projectionError = new Error("projection calculation failed");
+    await assert.rejects(feedback.run("PR Progress projection", async () => { throw projectionError; }),
+      (error: unknown) => error === projectionError);
+    const loggedCount = logs.length;
+    await reportDocumentEditFailure("Document edit PR Progress refresh", projectionError, async () => {
+      notifications += 1;
+      throw new Error("notification surface unavailable");
+    });
+    assert.equal(notifications, 2);
+    assert.equal(logs.length, loggedCount, "a failure already recorded by the lower-level operation is not duplicated");
+  } finally {
+    setActiveOperationFeedback(undefined);
+  }
+});
 
 test("PR68-R003 source switch never publishes the previous PR snapshot under the new PR source", async () => {
   const gate = deferred<void>();
