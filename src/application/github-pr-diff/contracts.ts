@@ -86,7 +86,7 @@ export interface PullRequestRemoteDataPort {
         readonly metadata: PullRequestRemoteMetadata;
         readonly files: readonly PullRequestRemoteFile[];
       }
-    | { readonly kind: "unavailable"; readonly reason: PullRequestDiffUnavailableReason }
+    | { readonly kind: "unavailable"; readonly reason: PullRequestDiffUnavailableReason; readonly error?: unknown }
   >;
 
   readFile(

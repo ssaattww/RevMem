@@ -130,8 +130,13 @@ export class PullRequestDiffAcquisitionService {
     if (remote.kind === "unavailable") {
       attempts.push({ source: "github-patch", reason: remote.reason });
       attempts.push({ source: "github-content", reason: remote.reason });
-      if (remoteThrown === undefined) reportActiveOperationAcquisitionAttempt({ source: "github-patch", status: "failed", reason: remote.reason }, feedbackContext);
-      else reportActiveOperationAcquisitionAttempt({ source: "github-patch", status: "failed", reason: remote.reason, error: remoteThrown }, feedbackContext);
+      const failure = remoteThrown === undefined ? remote.error : remoteThrown;
+      reportActiveOperationAcquisitionAttempt({
+        source: "github-patch",
+        status: "failed",
+        reason: remote.reason,
+        ...(failure === undefined ? {} : { error: failure }),
+      }, feedbackContext);
       reportActiveOperationAcquisitionAttempt({ source: "github-content", status: "skipped", reason: remote.reason }, feedbackContext);
       return { kind: "unavailable", attempts };
     }
