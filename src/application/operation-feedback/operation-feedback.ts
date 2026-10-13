@@ -900,6 +900,23 @@ const failureComponents = (error: unknown, seen = new Set<unknown>()): unknown[]
   return errors === undefined ? [error] : errors.values.flatMap((item) => failureComponents(item, seen));
 };
 
+const preserveAggregateFailure = (
+  error: unknown,
+  errors: readonly unknown[],
+  cause: unknown,
+): AggregateError => {
+  const aggregate = new AggregateError(errors, safeDiagnosticScalar(safeReadErrorField(error, "message")), { cause });
+  const name = safeDiagnosticScalar(safeReadErrorField(error, "name"));
+  const stack = safeDiagnosticScalar(safeReadErrorField(error, "stack"));
+  const code = safeDiagnosticScalar(safeReadErrorField(error, "code"));
+  const status = safeDiagnosticScalar(safeReadErrorField(error, "status"));
+  if (name !== undefined) aggregate.name = name;
+  if (stack !== undefined) aggregate.stack = stack;
+  if (code !== undefined) Object.defineProperty(aggregate, "code", { configurable: true, enumerable: true, value: code });
+  if (status !== undefined) Object.defineProperty(aggregate, "status", { configurable: true, enumerable: true, value: status });
+  return aggregate;
+};
+
 const mergeOperationFailures = (...errors: readonly unknown[]): unknown => {
   const seen = new Set<unknown>();
   const components = errors.flatMap((error) => failureComponents(error, seen));
@@ -1170,10 +1187,21 @@ export class OperationFeedback {
       const componentIdentity = errorIdentity(component);
       return componentIdentity === undefined || !alreadyReported.has(componentIdentity);
     });
-    if (components.length > 0 && unreportedComponents.length === 0) return;
+    const rawCause = safeReadErrorField(error, "cause");
+    const causeIdentity = errorIdentity(rawCause);
+    const causeWasReported = causeIdentity !== undefined && this.pendingBoundaryDuplicates.has(causeIdentity);
+    if (causeWasReported) this.pendingBoundaryDuplicates.delete(causeIdentity);
+    const unreportedCause = rawCause === undefined || causeWasReported ? undefined : rawCause;
+    const aggregateErrors = safeReadErrorArray(safeReadErrorField(error, "errors"));
+    const preserveAggregate = aggregateErrors !== undefined && unreportedComponents.length !== components.length;
+    if (components.length > 0 && unreportedComponents.length === 0 && unreportedCause === undefined && !preserveAggregate) return;
     const reportableError = unreportedComponents.length === components.length
       ? error
-      : mergeOperationFailures(...unreportedComponents);
+      : preserveAggregate
+        ? preserveAggregateFailure(error, unreportedComponents, unreportedCause)
+        : unreportedComponents.length > 0
+          ? mergeOperationFailures(...unreportedComponents)
+          : error;
     const active = context?.owner === this
       ? this.active.find((candidate) => candidate.id === context.id)
       : undefined;

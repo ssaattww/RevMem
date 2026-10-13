@@ -365,13 +365,25 @@ test("PR Progress reporter failure keeps both diagnostics and filters an already
     assert.ok(secondRejected.error instanceof AggregateError);
     assert.deepEqual(secondRejected.error.errors, [previouslyRecordedProgressError, secondReporterError]);
 
-    await reportDocumentEditFailure("Document edit projection refresh", secondRejected.error, async () => undefined);
+    const independentCause = new Error("independent wrapper cause");
+    const originalStack = "AggregateError: projection failure envelope\n    at original wrapper stack";
+    const projectionFailure = new AggregateError(
+      secondRejected.error.errors,
+      "projection failure envelope",
+      { cause: independentCause },
+    );
+    Object.defineProperty(projectionFailure, "stack", { configurable: true, value: originalStack });
+    await reportDocumentEditFailure("Document edit projection refresh", projectionFailure, async () => undefined);
     const failures = logs.filter((entry) => entry.event === "failed");
     assert.equal(failures.filter((entry) => entry.errorDetails?.message === "already-recorded progress failure").length, 1);
-    assert.equal(failures.filter((entry) => entry.errorDetails?.message === "second reporter failure").length, 1);
-    assert.equal(failures.at(-1)?.errorDetails?.message, "second reporter failure");
-    assert.equal(failures.at(-1)?.errorDetails?.causes, undefined,
-      "a child already recorded by the lower-level operation is not aggregated into a duplicate log");
+    assert.equal(failures.at(-1)?.errorDetails?.message, "projection failure envelope");
+    assert.equal(failures.at(-1)?.errorDetails?.stack, originalStack,
+      "filtering a duplicate child keeps the original AggregateError stack");
+    assert.equal(failures.at(-1)?.errorDetails?.cause?.message, "independent wrapper cause",
+      "an independent AggregateError cause remains in the diagnostic");
+    assert.deepEqual(failures.at(-1)?.errorDetails?.causes?.map((cause) => cause.message), [
+      "second reporter failure",
+    ], "the already-recorded child is omitted while the new reporter failure remains");
   } finally {
     setActiveOperationFeedback(undefined);
   }
