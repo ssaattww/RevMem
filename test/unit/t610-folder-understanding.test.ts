@@ -1825,8 +1825,8 @@ test("T610-R15 routes the actual production document-open lifecycle through shar
     const source = createT305GlobalUnderstandingSource({
       globalStoragePath: path.join(root, "storage"),
       storageUris: { globalStorageUri: { fsPath: path.join(root, "storage") }, storageUri: { fsPath: root } },
-      exclusionPolicy: new ReviewFileExclusionPolicyService(), readAutoStartDescendants: () => true,
-      yieldControl: () => { throw Object.assign(new Error("C:\\private\\secret.ts EACCES"), { code: "EACCES" }); }
+      exclusionPolicy: new ReviewFileExclusionPolicyService(),
+      readAutoStartDescendants: () => { throw Object.assign(new Error("C:\\private\\secret.ts EACCES token=fixture-open-secret"), { code: "EACCES" }); },
     });
     source.setContext({ context: { kind: "branch", label: "main", detail: root, headRevision: "r11", selection: { kind: "branch", repositoryId: "repo", repositoryRoot: root, branchRef: "refs/heads/main" } }, progress: undefined });
     const messages: string[] = [];
@@ -1838,8 +1838,11 @@ test("T610-R15 routes the actual production document-open lifecycle through shar
     });
     assert.equal(outcome, "error");
     assert.deepEqual(messages, ["Global Understanding folderを開始できませんでした。詳細は Review Range Output を確認してください。"]);
-    assert.ok(output.some((line) => line.includes("details were redacted")), "the shared Output records a redacted terminal");
-    assert.equal(output.join("\n").includes("secret.ts"), false);
+    const failedOutput = output.find((line) => line.startsWith("failed:")) ?? "";
+    assert.match(failedOutput, /C:\\private\\secret\.ts EACCES/u, "local Output retains the useful filesystem cause");
+    assert.match(failedOutput, /token=\[REDACTED\]/u, "local Output masks secret values");
+    assert.doesNotMatch(failedOutput, /fixture-open-secret/u);
+    assert.doesNotMatch(messages.join("\n"), /C:\\private\\secret\.ts|fixture-open-secret/u, "the user-facing error remains generic");
     const extension = await readFile(path.join(path.resolve(__dirname, "../../.."), "src", "composition/extension.ts"), "utf8");
     assert.match(extension, /const observeRegisteredGlobalUnderstandingDocument =/u);
     assert.match(extension, /onDidOpenTextDocument\(\(document\) => \{\s*void observeRegisteredGlobalUnderstandingDocument\(document, true\);/u, "the actual registered listener uses the shared activated failure handler");
