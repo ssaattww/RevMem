@@ -2187,7 +2187,7 @@ test("T610-R15 publishes Test APIs without waiting for persistence migration whi
   const activation = await readFile(path.join(root, "src", "composition/extension.ts"), "utf8");
   const suite = await readFile(path.join(root, "test", "vscode", "t610-suite", "index.ts"), "utf8");
   assert.match(activation, /const persistenceStartup = composeStartupFeedback/u);
-  assert.match(activation, /extensionMode === vscode\.ExtensionMode\.Test[\s\S]*?void persistenceStartup\.catch[\s\S]*?else \{\s*await persistenceStartup;/u);
+  assert.match(activation, /extensionMode === vscode\.ExtensionMode\.Test[\s\S]*?void persistenceStartup\.catch[\s\S]*?reportActiveOperationFailure[\s\S]*?else \{\s*await awaitStartupWithFailureFeedback\(persistenceStartup,/u);
   const activationCall = suite.indexOf("const api = await extension.activate()");
   const activationMarker = suite.indexOf('recordT610HostSubphaseForTest("activation-returned")');
   const currentContextDrain = suite.indexOf("await api.drainCurrentContextStartupForTest();");

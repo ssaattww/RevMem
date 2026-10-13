@@ -7,6 +7,7 @@ import { createNodeLocalGitAdapter } from "../adapters/local-git/index";
 import { runPersistenceStartupMigration } from "../adapters/persistence-startup-migration";
 import {
   composeStartupFeedback,
+  awaitStartupWithFailureFeedback,
   queueOperationStartDetails,
   reportActiveOperationFailure,
   reportActiveStorageLockDiagnostic,
@@ -173,7 +174,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       reportActiveOperationFailure("Review Range persistence startup", error);
     });
   } else {
-    await persistenceStartup;
+    await awaitStartupWithFailureFeedback(persistenceStartup, "Review Range persistence startup");
   }
   const baseApi = activateBaseExtension(context);
   const runtimePort: ReviewRangeRuntimePort = baseApi;

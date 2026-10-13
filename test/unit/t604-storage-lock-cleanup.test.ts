@@ -29,7 +29,7 @@ import { NonGitSnapshotTracker } from "../../src/application/non-git-snapshots/i
 import type { GitHubPullRequestCacheEntry } from "../../src/application/github-pr-cache/index";
 import type { PullRequestDiffAcquisitionRequest } from "../../src/application/github-pr-diff/index";
 import { OperationFeedback, reportActiveStorageLockDiagnostic, setActiveOperationFeedback, type OperationLogEntry } from "../../src/application/operation-feedback/index";
-import { composeStartupFeedback } from "../../src/application/operation-feedback/startup-feedback-composition";
+import { awaitStartupWithFailureFeedback, composeStartupFeedback } from "../../src/application/operation-feedback/startup-feedback-composition";
 import { runPersistenceStartupMigration } from "../../src/adapters/persistence-startup-migration";
 
 const target = (contextId: string): ReviewStateRepositoryTarget => ({
@@ -734,5 +734,44 @@ test("T604 flushes a terminal startup lock failure through the production feedba
   assert.equal(entries.length, 2);
   assert.equal(reveals, 1);
   assert.doesNotMatch(JSON.stringify(entries), /startup-terminal|repository|path/u);
+  setActiveOperationFeedback(undefined);
+});
+
+test("T604 production startup failure is reported once with its original cause and rethrown unchanged", async () => {
+  const entries: OperationLogEntry[] = [];
+  let reveals = 0;
+  await composeStartupFeedback({
+    showBusy: () => undefined, clearBusy: () => undefined,
+    appendLog: (entry) => { entries.push(entry); }, revealLog: () => { reveals += 1; }
+  }, async () => undefined);
+  await awaitStartupWithFailureFeedback(Promise.resolve(), "Review Range persistence startup");
+  assert.equal(entries.length, 0, "normal startup does not add a failure diagnostic");
+
+  const cause = Object.assign(new Error("migration file read denied"), { code: "EACCES" });
+  const original = Object.assign(new Error("persistence migration failed", { cause }), { code: "EIO" });
+  let rejected: unknown;
+  try {
+    await awaitStartupWithFailureFeedback(Promise.reject(original), "Review Range persistence startup");
+  } catch (error) {
+    rejected = error;
+  }
+  assert.equal(rejected, original, "startup rethrows the identical failure object");
+  assert.deepEqual(entries.map((entry) => entry.event), ["started", "failed"],
+    "the common failure boundary records exactly one startup operation");
+  const diagnostic = entries[1]?.errorDetails;
+  assert.deepEqual({
+    code: diagnostic?.code,
+    message: diagnostic?.message,
+    causeCode: diagnostic?.cause?.code,
+    causeMessage: diagnostic?.cause?.message,
+  }, {
+    code: "EIO",
+    message: "persistence migration failed",
+    causeCode: "EACCES",
+    causeMessage: "migration file read denied",
+  });
+  assert.match(diagnostic?.stack ?? "", /persistence migration failed/u);
+  assert.match(diagnostic?.cause?.stack ?? "", /migration file read denied/u);
+  assert.equal(reveals, 1);
   setActiveOperationFeedback(undefined);
 });
