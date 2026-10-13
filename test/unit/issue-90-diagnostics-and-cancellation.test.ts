@@ -153,7 +153,7 @@ test("formatted diagnostics keep every sampled AggregateError cause summary befo
   const host = new DiagnosticHost(true);
   const feedback = new OperationFeedback(host, () => 4_526);
   const causes = Array.from({ length: 21 }, (_, index) => {
-    const cause = new Error(`aggregate cause ${index + 1}`);
+    const cause = new Error(`aggregate cause ${index + 1} ${"m".repeat(3_000)}`);
     Object.defineProperty(cause, "stack", {
       configurable: true,
       value: `Error: aggregate cause ${index + 1}\n${Array.from({ length: 24 }, (_, frame) =>

@@ -1318,22 +1318,33 @@ export class OperationFeedback {
   }
 }
 
-const appendErrorEvidence = (
-  details: OperationErrorDiagnostic,
-  prefix: string,
-  summaryLines: string[],
-  stackLines: string[],
-): void => {
-  const identity = details.name ?? details.kind;
-  const code = details.code === undefined ? "" : ` code=${details.code}`;
-  const status = details.status === undefined ? "" : ` status=${details.status}`;
-  summaryLines.push(`${prefix}${identity}${code}${status}: ${details.message}`);
-  if (details.stack !== undefined) {
-    stackLines.push(`${prefix}stack:`);
-    for (const stackLine of details.stack.split("\n")) stackLines.push(`${prefix}  ${stackLine}`);
+const MAX_FORMATTED_ERROR_SUMMARIES = 64;
+const collectErrorEvidence = (
+  roots: readonly { readonly details: OperationErrorDiagnostic; readonly prefix: string }[],
+): { readonly summaryLines: readonly string[]; readonly stackLines: readonly string[] } => {
+  const pending = [...roots];
+  const summaryLines: string[] = [];
+  const stackLines: string[] = [];
+  while (pending.length > 0 && summaryLines.length < MAX_FORMATTED_ERROR_SUMMARIES) {
+    const current = pending.shift()!;
+    const identity = normalizedDiagnosticText(current.details.name ?? current.details.kind, 64);
+    const code = current.details.code === undefined ? "" : ` code=${normalizedDiagnosticText(current.details.code, 32)}`;
+    const status = current.details.status === undefined ? "" : ` status=${normalizedDiagnosticText(current.details.status, 16)}`;
+    const message = normalizedDiagnosticText(current.details.message, 80);
+    summaryLines.push(`${current.prefix}${identity}${code}${status}: ${message}`);
+    if (current.details.stack !== undefined) {
+      stackLines.push(`${current.prefix}stack:`);
+      for (const stackLine of current.details.stack.split("\n")) stackLines.push(`${current.prefix}  ${stackLine}`);
+    }
+    if (current.details.cause !== undefined) {
+      pending.push({ details: current.details.cause, prefix: `${current.prefix}caused by ` });
+    }
+    for (const cause of current.details.causes ?? []) {
+      pending.push({ details: cause, prefix: `${current.prefix}also caused by ` });
+    }
   }
-  if (details.cause !== undefined) appendErrorEvidence(details.cause, `${prefix}caused by `, summaryLines, stackLines);
-  for (const cause of details.causes ?? []) appendErrorEvidence(cause, `${prefix}also caused by `, summaryLines, stackLines);
+  if (pending.length > 0) summaryLines.push("Further nested error summaries omitted at formatter limit.");
+  return { summaryLines, stackLines };
 };
 
 /** Formats local Output diagnostics, preserving error evidence after masking secret values. */
@@ -1396,13 +1407,13 @@ export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
     `[${entry.timestamp}] ${stage}${operation} ${boundedSingleLine(entry.label, MAX_OPERATION_LABEL_LENGTH)}` +
     `${progress}${retry}${acquisition}${duration}${refreshDetails}${operationDetails}${error}${failureCategory}${outcomeReason}`,
   ];
-  const errorSummaryLines: string[] = [];
-  const errorStackLines: string[] = [];
-  if (entry.errorDetails !== undefined) appendErrorEvidence(entry.errorDetails, "  ", errorSummaryLines, errorStackLines);
-  if (entry.operationDiagnostic?.error !== undefined) appendErrorEvidence(entry.operationDiagnostic.error, "  ", errorSummaryLines, errorStackLines);
-  if (entry.acquisitionAttempt?.error !== undefined) appendErrorEvidence(entry.acquisitionAttempt.error, "  ", errorSummaryLines, errorStackLines);
-  if (entry.retryAttempt?.error !== undefined) appendErrorEvidence(entry.retryAttempt.error, "  ", errorSummaryLines, errorStackLines);
-  lines.push(...errorSummaryLines, ...errorStackLines);
+  const errorEvidence = collectErrorEvidence([
+    ...(entry.errorDetails === undefined ? [] : [{ details: entry.errorDetails, prefix: "  " }]),
+    ...(entry.operationDiagnostic?.error === undefined ? [] : [{ details: entry.operationDiagnostic.error, prefix: "  " }]),
+    ...(entry.acquisitionAttempt?.error === undefined ? [] : [{ details: entry.acquisitionAttempt.error, prefix: "  " }]),
+    ...(entry.retryAttempt?.error === undefined ? [] : [{ details: entry.retryAttempt.error, prefix: "  " }]),
+  ]);
+  lines.push(...errorEvidence.summaryLines, ...errorEvidence.stackLines);
   const formatted = lines.join("\n");
   const truncationMarker = "\n… [diagnostic output truncated after 24,000 chars]";
   return formatted.length <= 24_000
