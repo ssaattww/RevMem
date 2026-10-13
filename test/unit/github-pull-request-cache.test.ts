@@ -22,7 +22,7 @@ import {
   type OperationLogEntry,
 } from "../../src/application/operation-feedback/index";
 import { NodeGitHubPullRequestCacheStorage } from "../../src/adapters/github/index";
-import { NodeAtomicTextFileStore } from "../../src/adapters/state-repository/index";
+import { NodeAtomicTextFileStore, type AtomicTextFileStore } from "../../src/adapters/state-repository/index";
 import type { PullRequestDiffSnapshot } from "../../src/core/pr-progress/index";
 
 const BASE_SHA = "1111111111111111111111111111111111111111";
@@ -368,6 +368,33 @@ test("cache fallback logs missing, unreadable, invalid, and usable cache outcome
   assert.equal(cachedResult.kind, "acquired");
   assert.equal(cachedResult.source, "offline-cache");
   assert.deepEqual(logs.filter((entry) => entry.operationDiagnostic?.stage === "cache-read").map((entry) => entry.operationDiagnostic?.status), ["started", "succeeded"]);
+});
+
+test("malformed persisted cache JSON is diagnosed separately from a missing cache file", async () => {
+  const run = async (readText: AtomicTextFileStore["readText"]) => {
+    const logs: OperationLogEntry[] = [];
+    const feedback = new OperationFeedback({
+      showBusy() {}, clearBusy() {}, appendLog(entry) { logs.push(entry); }, revealLog() {},
+    } satisfies OperationFeedbackHost, () => 2_650);
+    const storage = new NodeGitHubPullRequestCacheStorage({
+      cacheDirectory: "C:\\private\\review-cache",
+      atomicFileStore: { readText, writeTextAtomically: async () => undefined },
+    });
+    const result = await feedback.run("PR cache read", (context) => storage.read(request, context));
+    return { result, logs, output: logs.map(formatOperationLogEntry).join("\n") };
+  };
+
+  const malformed = await run(async () => "{ malformed cache json");
+  assert.equal(malformed.result, undefined, "corrupt cache still falls back as a cache miss");
+  const parseFailure = malformed.logs.find((entry) => entry.operationDiagnostic?.stage === "cache-read" && entry.operationDiagnostic.status === "failed");
+  assert.equal(parseFailure?.operationDiagnostic?.error?.name, "SyntaxError");
+  assert.match(malformed.output, /cache-read status=failed/u);
+  assert.match(malformed.output, /SyntaxError/u);
+  assert.ok(malformed.logs.some((entry) => entry.event === "succeeded"), "cache corruption does not fail the owning operation");
+
+  const missing = await run(async () => undefined);
+  assert.equal(missing.result, undefined);
+  assert.equal(missing.logs.some((entry) => entry.operationDiagnostic?.stage === "cache-read"), false, "a missing cache file remains an ordinary miss");
 });
 
 test("cache write cancellation is not converted into a successful uncached result", async () => {
