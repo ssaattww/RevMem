@@ -183,6 +183,52 @@ test("T606 backoff cancellation retains the retry cause and both stacks on one c
   assert.doesNotMatch(output, /fixture-(?:cause|retry|abort)-secret/u);
 });
 
+test("T606 stale final attempt retains the earlier retry and terminal cause diagnostics", async () => {
+  const host = new FakeHost();
+  const feedback = new OperationFeedback(host, () => 13);
+  const retryCause = new Error("socket reset layer");
+  const retryFailure = Object.assign(new Error("request reset token=fixture-retry-history", { cause: retryCause }), { code: "ECONNRESET" });
+  const staleCause = new Error("refresh generation was replaced");
+  const staleFailure = Object.assign(new Error("superseded after retry token=fixture-stale-history", { cause: staleCause }), { name: "AbortError" });
+  let calls = 0;
+  let waits = 0;
+
+  await assert.rejects(
+    feedback.run("retry then stale", (context) => runWithBoundedRetry(async () => {
+      calls += 1;
+      throw calls === 1 ? retryFailure : staleFailure;
+    }, {
+      feedbackContext: context,
+      sleep: async (delayMs) => {
+        waits += 1;
+        assert.equal(delayMs, 25);
+      },
+    })),
+    (error: unknown) => error === staleFailure,
+  );
+
+  assert.equal(calls, 2, "the retry is attempted once, then stale terminates without another retry");
+  assert.equal(waits, 1);
+  assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "retry", "cancelled"]);
+  assert.ok(host.logs.every((entry) => entry.operationId === 1));
+  const retry = host.logs[1]!;
+  assert.equal(retry.retryAttempt?.error?.code, "ECONNRESET");
+  assert.match(retry.retryAttempt?.error?.stack ?? "", /request reset token=\[REDACTED\]/u);
+  assert.equal(retry.retryAttempt?.error?.cause?.message, "socket reset layer");
+  assert.match(retry.retryAttempt?.error?.cause?.stack ?? "", /socket reset layer/u);
+
+  const cancelled = host.logs[2]!;
+  assert.equal(cancelled.failureCategory, "stale");
+  assert.match(cancelled.message ?? "", /retries=ECONNRESET; final=stale/u);
+  assert.equal(cancelled.errorDetails?.message, "superseded after retry token=[REDACTED]");
+  assert.match(cancelled.errorDetails?.stack ?? "", /superseded after retry token=\[REDACTED\]/u);
+  assert.equal(cancelled.errorDetails?.cause?.message, "refresh generation was replaced");
+  assert.match(cancelled.errorDetails?.cause?.stack ?? "", /refresh generation was replaced/u);
+  const output = host.logs.map(formatOperationLogEntry).join("\n");
+  assert.match(output, /attempt=1 category=retryable code=ECONNRESET backoff=25ms/u);
+  assert.doesNotMatch(output, /fixture-(?:retry|stale)-history/u);
+});
+
 test("T606 never retries authentication, validation, stale, or partial-side-effect failures", async () => {
   const nonRetryable = [
     Object.assign(new Error("auth"), { status: 401 }),
