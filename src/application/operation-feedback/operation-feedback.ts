@@ -1157,20 +1157,37 @@ export class OperationFeedback {
       this.pendingBoundaryDuplicates.delete(identity);
       return;
     }
+    const components = failureComponents(error);
+    const alreadyReported = new Set<object>();
+    for (const component of components) {
+      const componentIdentity = errorIdentity(component);
+      if (componentIdentity !== undefined && this.pendingBoundaryDuplicates.has(componentIdentity)) {
+        this.pendingBoundaryDuplicates.delete(componentIdentity);
+        alreadyReported.add(componentIdentity);
+      }
+    }
+    const unreportedComponents = components.filter((component) => {
+      const componentIdentity = errorIdentity(component);
+      return componentIdentity === undefined || !alreadyReported.has(componentIdentity);
+    });
+    if (components.length > 0 && unreportedComponents.length === 0) return;
+    const reportableError = unreportedComponents.length === components.length
+      ? error
+      : mergeOperationFailures(...unreportedComponents);
     const active = context?.owner === this
       ? this.active.find((candidate) => candidate.id === context.id)
       : undefined;
     if (active !== undefined) {
       active.boundaryFailure = active.boundaryFailure === undefined
-        ? error
-        : mergeOperationFailures(active.boundaryFailure, error);
+        ? reportableError
+        : mergeOperationFailures(active.boundaryFailure, reportableError);
       return;
     }
     const timestamp = this.now();
     const normalizedLabel = requireLabel(label);
     const id = ++this.nextId;
     this.appendHostLog({ timestamp: new Date(timestamp).toISOString(), label: normalizedLabel, event: "started", operationId: id });
-    this.appendFailure(normalizedLabel, error, timestamp, undefined, id);
+    this.appendFailure(normalizedLabel, reportableError, timestamp, undefined, id);
   }
 
   /** Records an optional cache persistence failure without failing the owning operation. */

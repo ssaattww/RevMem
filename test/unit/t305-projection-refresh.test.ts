@@ -313,6 +313,146 @@ test("document edit refresh reports progress and returns every independent proje
   ]);
 });
 
+test("PR Progress reporter failure keeps both diagnostics and filters an already-recorded cause", async () => {
+  const logs: OperationLogEntry[] = [];
+  const feedback = new OperationFeedback({
+    showBusy() {}, clearBusy() {}, appendLog(entry) { logs.push(entry); }, revealLog() {},
+  }, () => 8);
+  setActiveOperationFeedback(feedback);
+  try {
+    const progressError = new Error("unrecorded progress failure");
+    const reporterError = new Error("progress reporter failure");
+    const rejected = await refreshAfterDocumentEdit({
+      refreshPullRequestProgress: async () => { throw progressError; },
+      refreshDecorations: async () => undefined,
+      refreshGlobal: async () => undefined,
+      reportPullRequestProgressError: async () => { throw reporterError; },
+    }).then(
+      () => ({ ok: true as const }),
+      (error: unknown) => ({ ok: false as const, error }),
+    );
+    assert.equal(rejected.ok, false);
+    if (rejected.ok) assert.fail("reporter rejection must remain a failure");
+    assert.ok(rejected.error instanceof AggregateError);
+    assert.deepEqual(rejected.error.errors, [progressError, reporterError]);
+
+    await reportDocumentEditFailure("Document edit projection refresh", rejected.error, async () => undefined);
+    const combinedDiagnostic = logs.at(-1)?.errorDetails;
+    assert.deepEqual(combinedDiagnostic?.causes?.map((cause) => cause.message), [
+      "unrecorded progress failure",
+      "progress reporter failure",
+    ]);
+    assert.match(combinedDiagnostic?.causes?.[0]?.stack ?? "", /unrecorded progress failure/u);
+    assert.match(combinedDiagnostic?.causes?.[1]?.stack ?? "", /progress reporter failure/u);
+
+    const previouslyRecordedProgressError = new Error("already-recorded progress failure");
+    await assert.rejects(
+      feedback.run("PR Progress projection", async () => { throw previouslyRecordedProgressError; }),
+      (error: unknown) => error === previouslyRecordedProgressError,
+    );
+    const secondReporterError = new Error("second reporter failure");
+    const secondRejected = await refreshAfterDocumentEdit({
+      refreshPullRequestProgress: async () => { throw previouslyRecordedProgressError; },
+      refreshDecorations: async () => undefined,
+      refreshGlobal: async () => undefined,
+      reportPullRequestProgressError: async () => { throw secondReporterError; },
+    }).then(
+      () => ({ ok: true as const }),
+      (error: unknown) => ({ ok: false as const, error }),
+    );
+    assert.equal(secondRejected.ok, false);
+    if (secondRejected.ok) assert.fail("reporter rejection must remain a failure");
+    assert.ok(secondRejected.error instanceof AggregateError);
+    assert.deepEqual(secondRejected.error.errors, [previouslyRecordedProgressError, secondReporterError]);
+
+    await reportDocumentEditFailure("Document edit projection refresh", secondRejected.error, async () => undefined);
+    const failures = logs.filter((entry) => entry.event === "failed");
+    assert.equal(failures.filter((entry) => entry.errorDetails?.message === "already-recorded progress failure").length, 1);
+    assert.equal(failures.filter((entry) => entry.errorDetails?.message === "second reporter failure").length, 1);
+    assert.equal(failures.at(-1)?.errorDetails?.message, "second reporter failure");
+    assert.equal(failures.at(-1)?.errorDetails?.causes, undefined,
+      "a child already recorded by the lower-level operation is not aggregated into a duplicate log");
+  } finally {
+    setActiveOperationFeedback(undefined);
+  }
+});
+
+test("undefined projection rejections remain failures without fabricated stacks", async () => {
+  const logs: OperationLogEntry[] = [];
+  const feedback = new OperationFeedback({
+    showBusy() {}, clearBusy() {}, appendLog(entry) { logs.push(entry); }, revealLog() {},
+  }, () => 9);
+  setActiveOperationFeedback(feedback);
+  try {
+    const events: string[] = [];
+    const decorationRejected = await refreshAfterDocumentEdit({
+      refreshPullRequestProgress: async () => undefined,
+      refreshDecorations: () => {
+        events.push("decorations");
+        return Promise.reject(undefined);
+      },
+      refreshGlobal: async () => { events.push("global"); },
+      reportPullRequestProgressError: async () => assert.fail("Progress should succeed"),
+    }).then(
+      () => ({ ok: true as const }),
+      (error: unknown) => ({ ok: false as const, error }),
+    );
+    assert.deepEqual(decorationRejected, { ok: false, error: undefined });
+    assert.deepEqual(events, ["decorations", "global"]);
+    await reportDocumentEditFailure("Document edit projection refresh", decorationRejected.error, async () => undefined);
+
+    const globalRejected = await refreshAfterDocumentEdit({
+      refreshPullRequestProgress: async () => undefined,
+      refreshDecorations: async () => undefined,
+      refreshGlobal: () => { throw undefined; },
+      reportPullRequestProgressError: async () => assert.fail("Progress should succeed"),
+    }).then(
+      () => ({ ok: true as const }),
+      (error: unknown) => ({ ok: false as const, error }),
+    );
+    assert.deepEqual(globalRejected, { ok: false, error: undefined });
+    await reportDocumentEditFailure("Document edit projection refresh", globalRejected.error, async () => undefined);
+
+    const undefinedFailureLogs = logs.filter((entry) => entry.event === "failed"
+      && entry.errorDetails?.kind === "non-error"
+      && entry.errorDetails.message === "undefined");
+    assert.equal(undefinedFailureLogs.length, 2);
+    assert.ok(undefinedFailureLogs.every((entry) => entry.errorDetails?.stack === undefined),
+      "a thrown undefined has no stack to fabricate");
+  } finally {
+    setActiveOperationFeedback(undefined);
+  }
+});
+
+test("undefined Progress rejection is retained by selected and Current Context settlement callers", async () => {
+  const setupError = new Error("source setup failed");
+  const selectedRejected = await refreshSelectedPullRequestProgress({
+    contextId: "selected-pr",
+    source: { id: "selected-pr" },
+    activateProgress: async () => { throw undefined; },
+    clearProgress() {},
+    setSource() { throw setupError; },
+    refreshTree() {},
+  }).then(
+    () => ({ ok: true as const }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
+  assert.equal(selectedRejected.ok, false);
+  if (selectedRejected.ok) assert.fail("selected progress setup must remain a failure");
+  assert.ok(selectedRejected.error instanceof AggregateError);
+  assert.deepEqual(selectedRejected.error.errors, [setupError, undefined]);
+
+  const reported: unknown[] = [];
+  await refreshCurrentContextDependents({
+    refreshPullRequestProgress: () => Promise.reject(undefined),
+    refreshDecorations: async () => undefined,
+    refreshGlobal: async () => undefined,
+    refreshReviewContexts: async () => undefined,
+    reportPullRequestProgressError: async (error) => { reported.push(error); },
+  });
+  assert.deepEqual(reported, [undefined], "the failed settlement still invokes the Progress reporter");
+});
+
 test("T610-NR-006 decoration failure cannot block open-document Global reconciliation", async () => {
   const events: string[] = [];
   const decorationError = new Error("decoration failed");

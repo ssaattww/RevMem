@@ -42,18 +42,18 @@ export interface DocumentEditDependentRefreshDependencies {
   readonly reportPullRequestProgressError: (error: unknown) => void | Promise<void>;
 }
 
-interface SettledProjectionRefresh {
-  readonly error?: unknown;
-}
+type SettledProjectionRefresh =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly error: unknown };
 
 const settleProjectionRefresh = async (
   operation: () => Promise<void>
 ): Promise<SettledProjectionRefresh> => {
   try {
     await operation();
-    return {};
+    return { ok: true };
   } catch (error) {
-    return { error };
+    return { ok: false, error };
   }
 };
 
@@ -67,6 +67,7 @@ export const refreshSelectedPullRequestProgress = async <Source>(
   dependencies: SelectedPullRequestProgressRefreshDependencies<Source>
 ): Promise<void> => {
   let primaryFailure: unknown;
+  let hasPrimaryFailure = false;
   let activation: Promise<void> | undefined;
   let activationSettled = false;
   try {
@@ -87,26 +88,28 @@ export const refreshSelectedPullRequestProgress = async <Source>(
     let failure = error;
     if (activation !== undefined && !activationSettled) {
       const activationOutcome = await settleProjectionRefresh(() => activation!);
-      if (activationOutcome.error !== undefined && activationOutcome.error !== error) {
+      if (!activationOutcome.ok && activationOutcome.error !== error) {
         failure = new AggregateError([error, activationOutcome.error], "PR Progress setup and activation failed.");
       }
     }
     primaryFailure = failure;
+    hasPrimaryFailure = true;
     dependencies.feedbackContext?.owner.reportFailure("PR Progress projection", failure, dependencies.feedbackContext);
   } finally {
     if (dependencies.contextId !== undefined && dependencies.shouldContinue?.() !== false) {
       try {
         dependencies.refreshTree();
       } catch (treeError) {
-        const failure = primaryFailure === undefined
+        const failure = !hasPrimaryFailure
           ? treeError
           : new AggregateError([primaryFailure, treeError], "PR Progress activation and final tree publication failed.");
         primaryFailure = failure;
+        hasPrimaryFailure = true;
         dependencies.feedbackContext?.owner.reportFailure("PR Progress tree publication", failure, dependencies.feedbackContext);
       }
     }
   }
-  if (primaryFailure !== undefined) throw primaryFailure;
+  if (hasPrimaryFailure) throw primaryFailure;
 };
 
 /**
@@ -150,7 +153,7 @@ export const refreshCurrentContextDependents = async (
   if (progress !== undefined) {
     const outcome = await progress;
     if (dependencies.shouldContinue?.() === false) return;
-    if (outcome.error !== undefined) {
+    if (!outcome.ok) {
       try {
         await dependencies.reportPullRequestProgressError(outcome.error);
       } catch (reportError) {
@@ -177,9 +180,9 @@ export const refreshAfterDocumentEdit = async (
   const global = await settleProjectionRefresh(dependencies.refreshGlobal);
   const outcome = await progress;
   const failures: unknown[] = [];
-  if (decorations.error !== undefined) failures.push(decorations.error);
-  if (global.error !== undefined) failures.push(global.error);
-  if (outcome.error !== undefined) {
+  if (!decorations.ok) failures.push(decorations.error);
+  if (!global.ok) failures.push(global.error);
+  if (!outcome.ok) {
     try {
       await dependencies.reportPullRequestProgressError(outcome.error);
     } catch (error) {
