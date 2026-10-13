@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -22,7 +22,7 @@ import {
   type OperationLogEntry,
 } from "../../src/application/operation-feedback/index";
 import { NodeGitHubPullRequestCacheStorage } from "../../src/adapters/github/index";
-import { NodeAtomicTextFileStore, type AtomicTextFileStore } from "../../src/adapters/state-repository/index";
+import { NodeAtomicTextFileStore } from "../../src/adapters/state-repository/index";
 import type { PullRequestDiffSnapshot } from "../../src/core/pr-progress/index";
 
 const BASE_SHA = "1111111111111111111111111111111111111111";
@@ -370,31 +370,68 @@ test("cache fallback logs missing, unreadable, invalid, and usable cache outcome
   assert.deepEqual(logs.filter((entry) => entry.operationDiagnostic?.stage === "cache-read").map((entry) => entry.operationDiagnostic?.status), ["started", "succeeded"]);
 });
 
-test("malformed persisted cache JSON is diagnosed separately from a missing cache file", async () => {
-  const run = async (readText: AtomicTextFileStore["readText"]) => {
-    const logs: OperationLogEntry[] = [];
-    const feedback = new OperationFeedback({
-      showBusy() {}, clearBusy() {}, appendLog(entry) { logs.push(entry); }, revealLog() {},
-    } satisfies OperationFeedbackHost, () => 2_650);
-    const storage = new NodeGitHubPullRequestCacheStorage({
-      cacheDirectory: "C:\\private\\review-cache",
-      atomicFileStore: { readText, writeTextAtomically: async () => undefined },
-    });
-    const result = await feedback.run("PR cache read", (context) => storage.read(request, context));
-    return { result, logs, output: logs.map(formatOperationLogEntry).join("\n") };
+test("malformed persisted cache JSON is diagnosed at each document boundary and remains a cache miss", async () => {
+  const run = async (corrupt: "pointer" | "metadata" | "diff" | "missing") => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "review-range-t403-malformed-cache-"));
+    try {
+      const storage = new NodeGitHubPullRequestCacheStorage({
+        cacheDirectory: root,
+        createGenerationId: () => "generation-1",
+      });
+      const seedStorage = new InMemoryGitHubPullRequestCacheStorage();
+      await new GitHubPullRequestCacheService({
+        acquisition: new MutableAcquisition(),
+        storage: seedStorage,
+        freshnessMs: 60_000,
+        now: fixedDate(1_000),
+      }).acquire(request);
+      const entry = await seedStorage.read(request);
+      assert.ok(entry, "seed data should produce a valid cache entry");
+      await storage.write(entry);
+
+      const persistedFiles = await collectJsonFiles(root);
+      const target = corrupt === "pointer" || corrupt === "missing"
+        ? persistedFiles.find((file) => path.basename(file) === "latest.json")
+        : corrupt === "metadata"
+          ? persistedFiles.find((file) => path.basename(file) === "metadata-generation-1.json")
+          : persistedFiles.find((file) => path.basename(file) === "diff-generation-1.json");
+      assert.ok(target, `expected persisted ${corrupt} file`);
+      if (corrupt === "missing") {
+        await rm(target, { force: true });
+      } else {
+        await writeFile(target, "{ malformed cache json", "utf8");
+      }
+
+      const logs: OperationLogEntry[] = [];
+      const feedback = new OperationFeedback({
+        showBusy() {}, clearBusy() {}, appendLog(entry) { logs.push(entry); }, revealLog() {},
+      } satisfies OperationFeedbackHost, () => 2_650);
+      const result = await feedback.run("PR cache read", (context) => storage.read(request, context));
+      return { result, logs, output: logs.map(formatOperationLogEntry).join("\n") };
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   };
 
-  const malformed = await run(async () => "{ malformed cache json");
-  assert.equal(malformed.result, undefined, "corrupt cache still falls back as a cache miss");
-  const parseFailure = malformed.logs.find((entry) => entry.operationDiagnostic?.stage === "cache-read" && entry.operationDiagnostic.status === "failed");
-  assert.equal(parseFailure?.operationDiagnostic?.error?.name, "SyntaxError");
-  assert.match(malformed.output, /cache-read status=failed/u);
-  assert.match(malformed.output, /SyntaxError/u);
-  assert.ok(malformed.logs.some((entry) => entry.event === "succeeded"), "cache corruption does not fail the owning operation");
+  const assertMalformedMiss = (outcome: Awaited<ReturnType<typeof run>>, document: string): void => {
+    assert.equal(outcome.result, undefined, `${document} corruption remains a cache miss`);
+    const parseFailure = outcome.logs.find((entry) => entry.operationDiagnostic?.stage === "cache-read" && entry.operationDiagnostic.status === "failed");
+    assert.equal(parseFailure?.operationDiagnostic?.error?.name, "SyntaxError");
+    assert.match(parseFailure?.operationDiagnostic?.error?.stack ?? "", /JSON\.parse/u, `${document} diagnostic retains the original parse stack`);
+    assert.match(outcome.output, /cache-read status=failed/u);
+    assert.match(outcome.output, /SyntaxError/u);
+    assert.ok(outcome.logs.some((entry) => entry.event === "succeeded"), `${document} corruption does not fail the owning operation`);
+    assert.equal(outcome.logs.some((entry) => entry.event === "failed"), false, `${document} corruption does not create a failed parent operation`);
+  };
 
-  const missing = await run(async () => undefined);
+  assertMalformedMiss(await run("pointer"), "pointer");
+  assertMalformedMiss(await run("metadata"), "metadata");
+  assertMalformedMiss(await run("diff"), "diff");
+
+  const missing = await run("missing");
   assert.equal(missing.result, undefined);
-  assert.equal(missing.logs.some((entry) => entry.operationDiagnostic?.stage === "cache-read"), false, "a missing cache file remains an ordinary miss");
+  assert.equal(missing.logs.some((entry) => entry.operationDiagnostic?.stage === "cache-read"), false, "a missing pointer remains an ordinary miss");
+  assert.ok(missing.logs.some((entry) => entry.event === "succeeded"), "a missing cache file does not fail the owning operation");
 });
 
 test("cache write cancellation is not converted into a successful uncached result", async () => {
