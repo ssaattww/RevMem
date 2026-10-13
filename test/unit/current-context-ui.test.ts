@@ -301,6 +301,21 @@ test("Current Context unresolved selection records the no-result stage and one o
     ["pr-acquisition", "no-result", "no-selected-pr"],
   ]);
   assert.ok(entries.every((entry) => entry.operationId === 1));
+  const lifecycle = entries.filter((entry) => entry.event === "refresh" && entry.pullRequestRefresh !== undefined)
+    .map((entry) => entry.pullRequestRefresh!);
+  const keyFor = (event: typeof lifecycle[number]): string => `${event.generation}:${event.trigger}:${event.stage}`;
+  const startedStages = lifecycle.filter((event) => event.status === "started");
+  const terminalStatuses = new Set(["succeeded", "failed", "cancelled", "no-result", "degraded", "superseded"]);
+  const terminalStages = lifecycle.filter((event) => terminalStatuses.has(event.status));
+  assert.ok(startedStages.length > 0, "the selected path emits explicit stage starts");
+  for (const started of startedStages) {
+    assert.equal(terminalStages.filter((terminal) => keyFor(terminal) === keyFor(started)).length, 1,
+      `stage ${keyFor(started)} has exactly one terminal record`);
+  }
+  for (const terminal of terminalStages) {
+    assert.equal(startedStages.filter((started) => keyFor(started) === keyFor(terminal)).length, 1,
+      `terminal stage ${keyFor(terminal)} has exactly one start record`);
+  }
   assert.deepEqual(entries.filter((entry) => ["succeeded", "failed", "cancelled", "no-result"].includes(entry.event)).map((entry) => entry.event), ["no-result"]);
 });
 

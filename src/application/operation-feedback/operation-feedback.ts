@@ -40,6 +40,7 @@ export interface OperationErrorDiagnostic {
   readonly stack?: string;
   readonly cause?: OperationErrorDiagnostic;
   readonly causes?: readonly OperationErrorDiagnostic[];
+  readonly omittedCauseCount?: number;
 }
 
 export interface OperationStageDiagnostic {
@@ -545,13 +546,13 @@ const isTimedOutGitCommand = (error: unknown): boolean => {
  */
 export const classifyOperationFailure = (error: unknown): OperationFailureClassification => {
   if (
-    error instanceof OperationCancelledError ||
+    safeInstanceOf(error, (candidate) => candidate instanceof OperationCancelledError) ||
     errorField(error, "name") === "AbortError" ||
     errorField(error, "name") === "StaleReviewStateError"
   ) {
     return { kind: "stale" };
   }
-  if (error instanceof OperationDiagnosticError) {
+  if (isOperationDiagnosticError(error)) {
 
     if (error.diagnostic.code === "GITHUB_PR_DETECTION_UNAVAILABLE") {
       switch (error.diagnostic.reason) {
@@ -571,7 +572,7 @@ export const classifyOperationFailure = (error: unknown): OperationFailureClassi
   const status = errorField(error, "status");
   if (status === 401 || status === 403) return { kind: "authentication" };
   if (status === 429) return { kind: "retryable" };
-  if (error instanceof TypeError || errorField(error, "name") === "ValidationError") {
+  if (safeInstanceOf(error, (candidate) => candidate instanceof TypeError) || errorField(error, "name") === "ValidationError") {
     return { kind: "validation" };
   }
   const code = safeErrorCode(error);
@@ -701,7 +702,7 @@ const redactDiagnosticSecrets = (value: string): string => value
   .replace(/\b(authorization|proxy-authorization)\s*[:=]\s*(?:bearer|basic)\s+[^\s,;]+/giu, "$1: [REDACTED]")
   .replace(/\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}/giu, "$1 [REDACTED]")
   .replace(/\b(cookie|set-cookie)\s*[:=]\s*[^\r\n]+/giu, "$1: [REDACTED]")
-  .replace(/\b(access[_-]?token|refresh[_-]?token|token|password|passwd|pwd|passphrase|client[_-]?secret|api[_-]?key|secret)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/giu, "$1=[REDACTED]")
+  .replace(/\b(access[_-]?token|refresh[_-]?token|token|password|passwd|pwd|passphrase|client[_-]?secret|api[_-]?key|secret)["']?\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/giu, "$1=[REDACTED]")
   .replace(/(https?:\/\/)[^/@\s]+:[^/@\s]+@/giu, "$1[REDACTED]@");
 
 const normalizedDiagnosticText = (value: string, maximum: number): string => {
@@ -713,6 +714,69 @@ const safeReadErrorField = (error: unknown, field: string): unknown => {
   try {
     if ((typeof error !== "object" || error === null) && typeof error !== "function") return undefined;
     return (error as Record<string, unknown>)[field];
+  } catch {
+    return undefined;
+  }
+};
+
+const safeInstanceOf = (value: unknown, check: (value: unknown) => boolean): boolean => {
+  try {
+    return check(value);
+  } catch {
+    return false;
+  }
+};
+
+const isOperationDiagnosticError = (value: unknown): value is OperationDiagnosticError =>
+  safeInstanceOf(value, (candidate) => candidate instanceof OperationDiagnosticError);
+
+const MAX_DIAGNOSTIC_CAUSES = 16;
+const unreadableErrorCause = Object.freeze({
+  name: "UnreadableErrorCause",
+  message: "An error cause could not be read safely.",
+});
+
+interface SafeErrorArrayRead {
+  readonly values: readonly unknown[];
+  readonly omittedCount: number;
+}
+
+const safeReadErrorArray = (value: unknown): SafeErrorArrayRead | undefined => {
+  try {
+    if (!Array.isArray(value)) return undefined;
+    const length = value.length;
+    if (!Number.isSafeInteger(length) || length < 0) return undefined;
+    if (length <= MAX_DIAGNOSTIC_CAUSES) {
+      const values: unknown[] = [];
+      for (let index = 0; index < length; index += 1) {
+        try {
+          values.push(value[index]);
+        } catch {
+          values.push(unreadableErrorCause);
+        }
+      }
+      return { values, omittedCount: 0 };
+    }
+
+    const values: unknown[] = [];
+    for (let index = 0; index < MAX_DIAGNOSTIC_CAUSES - 1; index += 1) {
+      try {
+        values.push(value[index]);
+      } catch {
+        values.push(unreadableErrorCause);
+      }
+    }
+    const omittedCount = length - MAX_DIAGNOSTIC_CAUSES;
+    values.push({
+      name: "OmittedErrorCauses",
+      message: `${omittedCount} additional error cause${omittedCount === 1 ? "" : "s"} omitted from the diagnostic sample.`,
+    });
+    try {
+      values.push(value[length - 1]);
+    } catch {
+      values.push(unreadableErrorCause);
+    }
+    return { values, omittedCount };
   } catch {
     return undefined;
   }
@@ -734,13 +798,13 @@ const createErrorDiagnostic = (
     return { kind: "non-error", message: "Circular error cause omitted." };
   }
   if (identity !== undefined) seen.add(identity);
-  const isError = error instanceof Error;
+  const isError = safeInstanceOf(error, (candidate) => candidate instanceof Error);
   const rawName = safeDiagnosticScalar(safeReadErrorField(error, "name"));
   const rawMessage = safeDiagnosticScalar(safeReadErrorField(error, "message"));
   const globalDiagnostic = identity === undefined ? undefined : globalUnderstandingFailureDiagnostics.get(identity);
   const structuredMessage = globalDiagnostic !== undefined
     ? formatGlobalUnderstandingFailureDiagnostic(globalDiagnostic)
-    : error instanceof OperationDiagnosticError
+    : isOperationDiagnosticError(error)
       ? formatOperationDiagnostic(error.diagnostic)
       : undefined;
   const primitiveMessage = typeof error === "string" ? error :
@@ -756,9 +820,11 @@ const createErrorDiagnostic = (
   const rawStack = safeDiagnosticScalar(safeReadErrorField(error, "stack"));
   let stack: string | undefined;
   if (rawStack !== undefined) {
-    const lines = rawStack.split(/\r?\n/u).slice(0, MAX_ERROR_STACK_LINES)
+    const redactedStack = redactDiagnosticSecrets(rawStack.replace(/\0/gu, "\\0"));
+    const stackLines = redactedStack.split(/\r?\n/u);
+    const lines = stackLines.slice(0, MAX_ERROR_STACK_LINES)
       .map((line) => normalizedDiagnosticText(line, 1_000));
-    if (rawStack.split(/\r?\n/u).length > MAX_ERROR_STACK_LINES) lines.push("… [stack lines truncated]");
+    if (stackLines.length > MAX_ERROR_STACK_LINES) lines.push("… [stack lines truncated]");
     stack = normalizedDiagnosticText(lines.join("\n"), MAX_ERROR_STACK_LENGTH);
   }
   let cause: OperationErrorDiagnostic | undefined;
@@ -768,12 +834,11 @@ const createErrorDiagnostic = (
       ? { kind: "non-error", message: "Further error causes omitted after depth limit." }
       : createErrorDiagnostic(rawCause, seen, depth + 1);
   }
-  const rawCauses = safeReadErrorField(error, "errors");
-  const causes = Array.isArray(rawCauses)
-    ? rawCauses.filter((causeValue) => causeValue !== rawCause).slice(0, 4).map((causeValue) => depth >= MAX_ERROR_CAUSE_DEPTH
+  const rawCauses = safeReadErrorArray(safeReadErrorField(error, "errors"));
+  const causeValues = rawCauses?.values.filter((causeValue) => causeValue !== rawCause);
+  const causes = causeValues?.map((causeValue) => depth >= MAX_ERROR_CAUSE_DEPTH
       ? { kind: "non-error" as const, message: "Further error causes omitted after depth limit." }
-      : createErrorDiagnostic(causeValue, seen, depth + 1))
-    : undefined;
+      : createErrorDiagnostic(causeValue, seen, depth + 1));
   if (identity !== undefined) seen.delete(identity);
   return {
     kind: isError ? "error" : "non-error",
@@ -784,6 +849,7 @@ const createErrorDiagnostic = (
     ...(stack === undefined ? {} : { stack }),
     ...(cause === undefined ? {} : { cause }),
     ...(causes === undefined || causes.length === 0 ? {} : { causes }),
+    ...(rawCauses === undefined || rawCauses.omittedCount === 0 ? {} : { omittedCauseCount: rawCauses.omittedCount }),
   };
 };
 
@@ -791,7 +857,7 @@ const sanitizedFailureMessage = (error: unknown): string => {
   const identity = errorIdentity(error);
   const globalDiagnostic = identity === undefined ? undefined : globalUnderstandingFailureDiagnostics.get(identity);
   if (globalDiagnostic !== undefined) return formatGlobalUnderstandingFailureDiagnostic(globalDiagnostic);
-  if (error instanceof OperationDiagnosticError) {
+  if (isOperationDiagnosticError(error)) {
     return formatOperationDiagnostic(error.diagnostic);
   }
   const details = createErrorDiagnostic(error);
@@ -830,8 +896,8 @@ const errorIdentity = (error: unknown): object | undefined =>
 const failureComponents = (error: unknown, seen = new Set<unknown>()): unknown[] => {
   if (seen.has(error)) return [];
   seen.add(error);
-  const errors = safeReadErrorField(error, "errors");
-  return Array.isArray(errors) ? errors.slice(0, 8).flatMap((item) => failureComponents(item, seen)) : [error];
+  const errors = safeReadErrorArray(safeReadErrorField(error, "errors"));
+  return errors === undefined ? [error] : errors.values.flatMap((item) => failureComponents(item, seen));
 };
 
 const mergeOperationFailures = (...errors: readonly unknown[]): unknown => {
@@ -845,8 +911,8 @@ const containsOperationFailure = (outer: unknown, sought: unknown, seen = new Se
   if (outer === sought) return true;
   if (seen.has(outer)) return false;
   seen.add(outer);
-  const errors = safeReadErrorField(outer, "errors");
-  if (Array.isArray(errors) && errors.some((item) => containsOperationFailure(item, sought, seen))) return true;
+  const errors = safeReadErrorArray(safeReadErrorField(outer, "errors"));
+  if (errors?.values.some((item) => containsOperationFailure(item, sought, seen)) === true) return true;
   return containsOperationFailure(safeReadErrorField(outer, "cause"), sought, seen);
 };
 

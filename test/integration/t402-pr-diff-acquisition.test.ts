@@ -344,6 +344,35 @@ test("successful patch fallback retains local Git cause, route order, and shared
   assert.deepEqual(logs.filter((entry) => ["succeeded", "failed", "degraded", "cancelled"].includes(entry.event)).map((entry) => entry.event), ["succeeded"]);
 });
 
+test("remote patch acquisition cause is retained on its failed route diagnostic", async () => {
+  const rootCause = Object.assign(new Error("filesystem read failed token=fixture-acquisition-secret"), { code: "EACCES" });
+  const acquisitionError = Object.assign(new Error("GitHub patch materialization failed", { cause: rootCause }), { code: "EIO" });
+  const logs: OperationLogEntry[] = [];
+  const feedback = new OperationFeedback({
+    showBusy() {}, clearBusy() {}, appendLog(entry) { logs.push(entry); }, revealLog() {},
+  }, () => 12_050);
+  const service = new PullRequestDiffAcquisitionService({
+    local: unavailableLocal("missing-revision"),
+    remote: {
+      fetch: async () => { throw acquisitionError; },
+      readFile: async () => ({ kind: "unavailable", reason: "api" }),
+    },
+  });
+
+  const result = await feedback.run("PR diff acquisition", (context) => service.acquire(request, context));
+  assert.equal(result.kind, "unavailable");
+  const patchFailure = logs.find((entry) => entry.event === "acquisition"
+    && entry.acquisitionAttempt?.source === "github-patch"
+    && entry.acquisitionAttempt.status === "failed");
+  assert.equal(patchFailure?.acquisitionAttempt?.error?.code, "EIO");
+  assert.equal(patchFailure?.acquisitionAttempt?.error?.cause?.message, "filesystem read failed token=[REDACTED]");
+  assert.equal(patchFailure?.acquisitionAttempt?.error?.cause?.code, "EACCES");
+  assert.equal(logs.at(-1)?.event, "succeeded", "unavailable routes are reported as a completed acquisition result");
+  assert.equal(logs.filter((entry) => ["succeeded", "failed", "cancelled", "no-result"].includes(entry.event)).length, 1);
+  assert.ok(logs.every((entry) => entry.operationId === 1));
+  assert.doesNotMatch(logs.map(formatOperationLogEntry).join("\n"), /fixture-acquisition-secret/u);
+});
+
 test("incomplete patch to content fallback keeps both route outcomes in order", async () => {
   const logs: OperationLogEntry[] = [];
   const feedback = new OperationFeedback({ showBusy() {}, clearBusy() {}, appendLog(entry) { logs.push(entry); }, revealLog() {} }, () => 13_000);

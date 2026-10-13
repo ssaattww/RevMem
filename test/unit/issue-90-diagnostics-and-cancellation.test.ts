@@ -113,6 +113,116 @@ test("non-Error and circular causes are bounded and safely diagnosed", async () 
   assert.equal(host.logs.at(-1)?.event, "failed");
 });
 
+test("throwing error getters do not mask outcomes and long stacks stay bounded", async () => {
+  const host = new DiagnosticHost(true);
+  const feedback = new OperationFeedback(host, () => 4_525);
+  const hostile = new Error("readable failure message");
+  Object.defineProperty(hostile, "stack", { configurable: true, get: () => { throw new Error("stack getter failed"); } });
+  await assert.rejects(feedback.run("throwing stack getter", async () => { throw hostile; }), (error) => error === hostile);
+  const hostileDetails = host.logs.at(-1)?.errorDetails;
+  assert.equal(hostileDetails?.message, "readable failure message");
+  assert.equal(hostileDetails?.stack, undefined);
+
+  const longStackError = new Error("long stack failure");
+  const longStack = ["Error: long stack failure", ...Array.from({ length: 80 }, (_, index) =>
+    `    at generated frame ${index} ${"x".repeat(1_000)}`)].join("\n");
+  Object.defineProperty(longStackError, "stack", { configurable: true, value: longStack });
+  await assert.rejects(feedback.run("long stack", async () => { throw longStackError; }), (error) => error === longStackError);
+  const recordedStack = host.logs.at(-1)?.errorDetails?.stack ?? "";
+  assert.ok(recordedStack.length <= 12_000, "diagnostic stacks respect the hard character limit");
+  assert.match(recordedStack, /truncated \d+ chars/u);
+  assert.doesNotMatch(recordedStack, /generated frame 79/u, "later frames are omitted after the line limit");
+});
+
+test("diagnostics preserve the last AggregateError cause and report omitted causes", async () => {
+  const host = new DiagnosticHost(true);
+  const feedback = new OperationFeedback(host, () => 4_526);
+  const causes = Array.from({ length: 21 }, (_, index) => new Error(`aggregate cause ${index + 1}`));
+  const aggregate = new AggregateError(causes, "aggregate diagnostic failure");
+
+  await assert.rejects(feedback.run("aggregate error", async () => { throw aggregate; }), (error) => error === aggregate);
+
+  const details = host.logs.at(-1)?.errorDetails;
+  assert.equal(details?.causes?.[0]?.message, "aggregate cause 1");
+  assert.equal(details?.causes?.at(-1)?.message, "aggregate cause 21", "the final cause remains directly traceable");
+  assert.equal(details?.omittedCauseCount, 5, "omission is counted when the bounded sample skips middle causes");
+  assert.match(details?.causes?.[15]?.message ?? "", /5 additional error causes omitted/u);
+});
+
+test("stack secrets are redacted as a whole before line and character limits", async () => {
+  const host = new DiagnosticHost(true);
+  const feedback = new OperationFeedback(host, () => 4_527);
+  const failure = new Error("private key stack fixture");
+  const privateKey = [
+    "-----BEGIN RSA PRIVATE KEY-----",
+    ...Array.from({ length: 40 }, (_, index) => `fixture-private-key-line-${index}-${"x".repeat(400)}`),
+    "-----END RSA PRIVATE KEY-----",
+  ].join("\n");
+  Object.defineProperty(failure, "stack", {
+    configurable: true,
+    value: `Error: private key stack fixture\n    at useful/local/operation.ts:17\n${privateKey}\n    at later/frame.ts:99`,
+  });
+
+  await assert.rejects(feedback.run("multiline private key", async () => { throw failure; }), (error) => error === failure);
+
+  const stack = host.logs.at(-1)?.errorDetails?.stack ?? "";
+  assert.match(stack, /\[REDACTED PRIVATE KEY\]/u);
+  assert.match(stack, /useful\/local\/operation\.ts:17/u, "useful stack location remains available");
+  assert.doesNotMatch(stack, /fixture-private-key-line/u);
+  assert.ok(stack.length <= 12_000);
+});
+
+test("quoted JSON secrets, authorization headers, cookies, and URL credentials are masked", async () => {
+  const host = new DiagnosticHost(true);
+  const feedback = new OperationFeedback(host, () => 4_528);
+  const cause = new Error("nested cause client_secret=fixture-child-secret");
+  const failure = new Error([
+    'metadata={"password":"fixture-json-password","client_secret":"fixture-json-client-secret"}',
+    "Authorization: Bearer fixture-authorization-secret",
+    "Cookie: session=fixture-cookie-secret",
+    "request https://fixture-user:fixture-url-password@private.example/repository failed",
+    "useful error context remains available",
+  ].join("\n"), { cause });
+
+  await assert.rejects(feedback.run("quoted secret fixture", async () => { throw failure; }), (error) => error === failure);
+
+  const terminal = host.logs.at(-1);
+  const output = host.logs.map(formatOperationLogEntry).join("\n");
+  assert.equal(terminal?.errorDetails?.cause?.message, "nested cause client_secret=[REDACTED]");
+  assert.match(output, /useful error context remains available/u);
+  assert.match(output, /private\.example\/repository/u, "non-secret host and path context remains available");
+  for (const secret of [
+    "fixture-json-password", "fixture-json-client-secret", "fixture-authorization-secret",
+    "fixture-cookie-secret", "fixture-user", "fixture-url-password", "fixture-child-secret",
+  ]) assert.doesNotMatch(output, new RegExp(secret, "u"));
+});
+
+test("hostile error proxies and cause-array getters never replace the original failure", async () => {
+  const host = new DiagnosticHost(true);
+  const feedback = new OperationFeedback(host, () => 4_529);
+  const causes = new Proxy([new Error("first readable cause"), new Error("unreadable cause"), new Error("last readable cause")], {
+    get(target, property, receiver) {
+      if (property === "filter" || property === "map") throw new Error("array helper getter failed");
+      if (property === "1") throw new Error("cause index getter failed");
+      return Reflect.get(target, property, receiver);
+    },
+  });
+  const target = new Error("hostile proxy failure");
+  Object.defineProperty(target, "errors", { configurable: true, value: causes });
+  const hostile = new Proxy(target, {
+    getPrototypeOf() { throw new Error("proxy prototype trap failed"); },
+  });
+
+  await assert.rejects(feedback.run("hostile error proxy", async () => { throw hostile; }), (error) => error === hostile);
+
+  const terminal = host.logs.at(-1);
+  assert.equal(terminal?.event, "failed");
+  assert.equal(terminal?.errorDetails?.message, "hostile proxy failure");
+  assert.equal(terminal?.errorDetails?.causes?.[0]?.message, "first readable cause");
+  assert.equal(terminal?.errorDetails?.causes?.[1]?.message, "An error cause could not be read safely.");
+  assert.equal(terminal?.errorDetails?.causes?.[2]?.message, "last readable cause");
+});
+
 test("logger and status sink exceptions never replace outcomes or leak active operations", async () => {
   class ThrowingHost extends DiagnosticHost {
     public readonly attemptedEvents: string[] = [];
@@ -398,6 +508,28 @@ test("reported PR refresh cancellation does not hide an ordinary operation error
   }), (error: unknown) => error === failure);
   assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "refresh", "failed"]);
   assert.equal(host.reveals, 1);
+});
+
+test("reported cancellation does not replace a delayed ordinary operation error", async () => {
+  const host = new DiagnosticHost(true);
+  const feedback = new OperationFeedback(host, () => 4_150);
+  const read = deferred<void>();
+  const failure = new Error("content read failed after abort notification");
+  const operation = feedback.run("PR refresh", async (context) => {
+    feedback.reportPullRequestRefresh(context, {
+      generation: 1, trigger: "review-contexts-refresh", stage: "refresh-request", status: "cancelled",
+      reasonCode: "superseded-by-newer-generation",
+    });
+    await read.promise;
+    throw failure;
+  });
+
+  assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "refresh"]);
+  read.resolve();
+  await assert.rejects(operation, (error: unknown) => error === failure);
+  assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "refresh", "failed"]);
+  assert.equal(host.logs.at(-1)?.errorDetails?.message, failure.message);
+  assert.equal(host.logs.filter((entry) => ["succeeded", "failed", "cancelled", "no-result"].includes(entry.event)).length, 1);
 });
 
 test("a reported boundary failure takes priority over a later AbortError", async () => {
