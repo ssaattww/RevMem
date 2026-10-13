@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { OperationFeedback, setActiveOperationFeedback, type OperationLogEntry } from "../../src/application/operation-feedback/index.js";
+import { OperationCancelledError, OperationFeedback, setActiveOperationFeedback, type OperationLogEntry } from "../../src/application/operation-feedback/index.js";
 
 import {
   reportDocumentEditFailure,
@@ -32,26 +32,48 @@ test("document edit failure reporting preserves original diagnostics when notifi
   try {
     const cause = Object.assign(new Error("underlying edit persistence failure"), { code: "EACCES" });
     const applyError = Object.assign(new Error("document review state apply failed", { cause }), { code: "EIO" });
+    const notificationCause = Object.assign(new Error("notification transport unavailable"), { code: "ECONNRESET" });
+    const notificationError = Object.assign(new Error("notification surface unavailable", { cause: notificationCause }), { code: "EHOSTUNREACH" });
     let notifications = 0;
     await reportDocumentEditFailure("Document edit state apply", applyError, async () => {
       notifications += 1;
-      throw new Error("notification surface unavailable");
+      throw notificationError;
     });
     assert.equal(notifications, 1, "the original error notification is still attempted");
-    assert.deepEqual(logs.map((entry) => entry.event), ["started", "failed"]);
+    assert.deepEqual(logs.map((entry) => [entry.event, entry.label]), [
+      ["started", "Document edit state apply"],
+      ["failed", "Document edit state apply"],
+      ["started", "Document edit state apply notification"],
+      ["failed", "Document edit state apply notification"],
+    ], "notification failure gets its own diagnostic after the original failure");
+    const originalDiagnostic = logs[1]?.errorDetails;
     assert.deepEqual({
-      code: logs[1]?.errorDetails?.code,
-      message: logs[1]?.errorDetails?.message,
-      causeCode: logs[1]?.errorDetails?.cause?.code,
-      causeMessage: logs[1]?.errorDetails?.cause?.message,
+      code: originalDiagnostic?.code,
+      message: originalDiagnostic?.message,
+      causeCode: originalDiagnostic?.cause?.code,
+      causeMessage: originalDiagnostic?.cause?.message,
     }, {
       code: "EIO",
       message: "document review state apply failed",
       causeCode: "EACCES",
       causeMessage: "underlying edit persistence failure",
     });
-    assert.match(logs[1]?.errorDetails?.stack ?? "", /document review state apply failed/u);
-    assert.match(logs[1]?.errorDetails?.cause?.stack ?? "", /underlying edit persistence failure/u);
+    assert.match(originalDiagnostic?.stack ?? "", /document review state apply failed/u);
+    assert.match(originalDiagnostic?.cause?.stack ?? "", /underlying edit persistence failure/u);
+    const notificationDiagnostic = logs[3]?.errorDetails;
+    assert.deepEqual({
+      code: notificationDiagnostic?.code,
+      message: notificationDiagnostic?.message,
+      causeCode: notificationDiagnostic?.cause?.code,
+      causeMessage: notificationDiagnostic?.cause?.message,
+    }, {
+      code: "EHOSTUNREACH",
+      message: "notification surface unavailable",
+      causeCode: "ECONNRESET",
+      causeMessage: "notification transport unavailable",
+    });
+    assert.match(notificationDiagnostic?.stack ?? "", /notification surface unavailable/u);
+    assert.match(notificationDiagnostic?.cause?.stack ?? "", /notification transport unavailable/u);
 
     const projectionError = new Error("projection calculation failed");
     await assert.rejects(feedback.run("PR Progress projection", async () => { throw projectionError; }),
@@ -59,10 +81,21 @@ test("document edit failure reporting preserves original diagnostics when notifi
     const loggedCount = logs.length;
     await reportDocumentEditFailure("Document edit PR Progress refresh", projectionError, async () => {
       notifications += 1;
-      throw new Error("notification surface unavailable");
+      return undefined;
     });
     assert.equal(notifications, 2);
     assert.equal(logs.length, loggedCount, "a failure already recorded by the lower-level operation is not duplicated");
+
+    const cancelled = new OperationCancelledError();
+    await assert.rejects(feedback.run("PR Progress generation", async () => { throw cancelled; }),
+      (error: unknown) => error === cancelled);
+    assert.equal(logs.at(-1)?.event, "cancelled", "the lower-level stale result retains its cancelled terminal");
+    const cancelledLogCount = logs.length;
+    await reportDocumentEditFailure("Document edit PR Progress refresh", cancelled, async () => {
+      notifications += 1;
+    });
+    assert.equal(logs.length, cancelledLogCount, "cancellation is not turned into a second failed terminal");
+    assert.equal(notifications, 2, "stale cancellation does not show an ordinary failure notification");
   } finally {
     setActiveOperationFeedback(undefined);
   }

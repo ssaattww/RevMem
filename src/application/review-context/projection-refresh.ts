@@ -1,15 +1,16 @@
-import { reportActiveOperationFailure, type OperationFeedbackContext } from "../operation-feedback/index";
+import { classifyOperationFailure, reportActiveOperationFailure, type OperationFeedbackContext } from "../operation-feedback/index";
 
 export const reportDocumentEditFailure = async (
   label: string,
   error: unknown,
   notify: () => void | Promise<void>,
 ): Promise<void> => {
+  if (classifyOperationFailure(error).kind === "stale") return;
   reportActiveOperationFailure(label, error);
   try {
     await notify();
-  } catch {
-    // Keep a failed UI notification from replacing the original operation failure.
+  } catch (notificationError) {
+    reportActiveOperationFailure(`${label} notification`, notificationError);
   }
 };
 
