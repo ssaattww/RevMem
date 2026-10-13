@@ -1318,17 +1318,22 @@ export class OperationFeedback {
   }
 }
 
-const appendErrorEvidence = (details: OperationErrorDiagnostic, prefix: string, lines: string[]): void => {
+const appendErrorEvidence = (
+  details: OperationErrorDiagnostic,
+  prefix: string,
+  summaryLines: string[],
+  stackLines: string[],
+): void => {
   const identity = details.name ?? details.kind;
   const code = details.code === undefined ? "" : ` code=${details.code}`;
   const status = details.status === undefined ? "" : ` status=${details.status}`;
-  lines.push(`${prefix}${identity}${code}${status}: ${details.message}`);
+  summaryLines.push(`${prefix}${identity}${code}${status}: ${details.message}`);
   if (details.stack !== undefined) {
-    lines.push(`${prefix}stack:`);
-    for (const stackLine of details.stack.split("\n")) lines.push(`${prefix}  ${stackLine}`);
+    stackLines.push(`${prefix}stack:`);
+    for (const stackLine of details.stack.split("\n")) stackLines.push(`${prefix}  ${stackLine}`);
   }
-  if (details.cause !== undefined) appendErrorEvidence(details.cause, `${prefix}caused by `, lines);
-  for (const cause of details.causes ?? []) appendErrorEvidence(cause, `${prefix}also caused by `, lines);
+  if (details.cause !== undefined) appendErrorEvidence(details.cause, `${prefix}caused by `, summaryLines, stackLines);
+  for (const cause of details.causes ?? []) appendErrorEvidence(cause, `${prefix}also caused by `, summaryLines, stackLines);
 };
 
 /** Formats local Output diagnostics, preserving error evidence after masking secret values. */
@@ -1391,14 +1396,18 @@ export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
     `[${entry.timestamp}] ${stage}${operation} ${boundedSingleLine(entry.label, MAX_OPERATION_LABEL_LENGTH)}` +
     `${progress}${retry}${acquisition}${duration}${refreshDetails}${operationDetails}${error}${failureCategory}${outcomeReason}`,
   ];
-  if (entry.errorDetails !== undefined) appendErrorEvidence(entry.errorDetails, "  ", lines);
-  if (entry.operationDiagnostic?.error !== undefined) appendErrorEvidence(entry.operationDiagnostic.error, "  ", lines);
-  if (entry.acquisitionAttempt?.error !== undefined) appendErrorEvidence(entry.acquisitionAttempt.error, "  ", lines);
-  if (entry.retryAttempt?.error !== undefined) appendErrorEvidence(entry.retryAttempt.error, "  ", lines);
+  const errorSummaryLines: string[] = [];
+  const errorStackLines: string[] = [];
+  if (entry.errorDetails !== undefined) appendErrorEvidence(entry.errorDetails, "  ", errorSummaryLines, errorStackLines);
+  if (entry.operationDiagnostic?.error !== undefined) appendErrorEvidence(entry.operationDiagnostic.error, "  ", errorSummaryLines, errorStackLines);
+  if (entry.acquisitionAttempt?.error !== undefined) appendErrorEvidence(entry.acquisitionAttempt.error, "  ", errorSummaryLines, errorStackLines);
+  if (entry.retryAttempt?.error !== undefined) appendErrorEvidence(entry.retryAttempt.error, "  ", errorSummaryLines, errorStackLines);
+  lines.push(...errorSummaryLines, ...errorStackLines);
   const formatted = lines.join("\n");
+  const truncationMarker = "\n… [diagnostic output truncated after 24,000 chars]";
   return formatted.length <= 24_000
     ? formatted
-    : `${formatted.slice(0, 23_960)}\n… [diagnostic output truncated after 24,000 chars]`;
+    : `${formatted.slice(0, 24_000 - truncationMarker.length)}${truncationMarker}`;
 };
 
 let activeOperationFeedback: OperationFeedback | undefined;

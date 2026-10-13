@@ -149,6 +149,31 @@ test("diagnostics preserve the last AggregateError cause and report omitted caus
   assert.match(details?.causes?.[15]?.message ?? "", /5 additional error causes omitted/u);
 });
 
+test("formatted diagnostics keep every sampled AggregateError cause summary before truncating verbose stacks", async () => {
+  const host = new DiagnosticHost(true);
+  const feedback = new OperationFeedback(host, () => 4_526);
+  const causes = Array.from({ length: 21 }, (_, index) => {
+    const cause = new Error(`aggregate cause ${index + 1}`);
+    Object.defineProperty(cause, "stack", {
+      configurable: true,
+      value: `Error: aggregate cause ${index + 1}\n${Array.from({ length: 24 }, (_, frame) =>
+        `    at aggregate frame ${index + 1}-${frame} ${"x".repeat(1_000)}`).join("\n")}`,
+    });
+    return cause;
+  });
+  const aggregate = new AggregateError(causes, "aggregate diagnostic failure");
+
+  await assert.rejects(feedback.run("aggregate error", async () => { throw aggregate; }), (error) => error === aggregate);
+
+  const output = formatOperationLogEntry(host.logs.at(-1)!);
+  assert.ok(output.length <= 24_000, "the complete formatted entry respects its output budget");
+  for (const index of [...Array.from({ length: 15 }, (_, offset) => offset + 1), 21]) {
+    assert.ok(output.includes(`also caused by Error: aggregate cause ${index}`), `cause ${index} remains identifiable`);
+  }
+  assert.match(output, /5 additional error causes omitted from the diagnostic sample/u);
+  assert.match(output, /diagnostic output truncated after 24,000 chars/u);
+});
+
 test("stack secrets are redacted as a whole before line and character limits", async () => {
   const host = new DiagnosticHost(true);
   const feedback = new OperationFeedback(host, () => 4_527);
