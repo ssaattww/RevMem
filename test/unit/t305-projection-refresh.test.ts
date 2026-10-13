@@ -13,14 +13,17 @@ import {
 interface Deferred<T> {
   readonly promise: Promise<T>;
   resolve(value: T): void;
+  reject(reason?: unknown): void;
 }
 
 const deferred = <T>(): Deferred<T> => {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 };
 
 test("document edit failure reporting preserves original diagnostics when notification fails and avoids lower-level duplicates", async () => {
@@ -231,6 +234,81 @@ test("PR68-R004 successful edit-state mutation keeps its success when only PR pr
     "progress:start",
     "decorations",
     "global",
+    "progress:reported",
+  ]);
+});
+
+test("document edit refresh preserves stale PR Progress cancellation as a successful edit", async () => {
+  const events: string[] = [];
+  const cancelled = new OperationCancelledError();
+  let notifications = 0;
+
+  await refreshAfterDocumentEdit({
+    refreshPullRequestProgress: async () => {
+      events.push("progress:start");
+      throw cancelled;
+    },
+    refreshDecorations: async () => { events.push("decorations"); },
+    refreshGlobal: async () => { events.push("global"); },
+    reportPullRequestProgressError: async (error) => {
+      assert.equal(error, cancelled);
+      events.push("progress:reported");
+      await reportDocumentEditFailure("Document edit PR Progress refresh", error, async () => {
+        notifications += 1;
+      });
+    },
+  });
+
+  assert.deepEqual(events, ["progress:start", "decorations", "global", "progress:reported"]);
+  assert.equal(notifications, 0, "stale cancellation does not become a user-facing failure");
+});
+
+test("document edit refresh reports progress and returns every independent projection failure", async () => {
+  const events: string[] = [];
+  const progress = deferred<void>();
+  const global = deferred<void>();
+  const globalStarted = deferred<void>();
+  const progressError = new Error("progress projection failed");
+  const decorationError = new Error("decoration projection failed");
+  const globalError = new Error("Global projection failed");
+  const reported: unknown[] = [];
+
+  const refreshing = refreshAfterDocumentEdit({
+    refreshPullRequestProgress: () => {
+      events.push("progress:start");
+      return progress.promise;
+    },
+    refreshDecorations: async () => {
+      events.push("decorations:start");
+      throw decorationError;
+    },
+    refreshGlobal: () => {
+      events.push("global:start");
+      globalStarted.resolve();
+      return global.promise;
+    },
+    reportPullRequestProgressError: async (error) => {
+      reported.push(error);
+      events.push("progress:reported");
+    },
+  });
+
+  assert.deepEqual(events, ["progress:start", "decorations:start"]);
+  await globalStarted.promise;
+  assert.deepEqual(events, ["progress:start", "decorations:start", "global:start"]);
+  progress.reject(progressError);
+  global.reject(globalError);
+
+  await assert.rejects(refreshing, (error: unknown) => {
+    assert.ok(error instanceof AggregateError);
+    assert.deepEqual(error.errors, [decorationError, globalError]);
+    return true;
+  });
+  assert.deepEqual(reported, [progressError], "the independently started Progress failure is still reported");
+  assert.deepEqual(events, [
+    "progress:start",
+    "decorations:start",
+    "global:start",
     "progress:reported",
   ]);
 });

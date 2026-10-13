@@ -173,10 +173,24 @@ export const refreshAfterDocumentEdit = async (
   const progress = settleProjectionRefresh(
     dependencies.refreshPullRequestProgress
   );
-  await dependencies.refreshDecorations();
-  await dependencies.refreshGlobal();
+  const decorations = await settleProjectionRefresh(dependencies.refreshDecorations);
+  const global = await settleProjectionRefresh(dependencies.refreshGlobal);
   const outcome = await progress;
+  const failures: unknown[] = [];
+  if (decorations.error !== undefined) failures.push(decorations.error);
+  if (global.error !== undefined) failures.push(global.error);
   if (outcome.error !== undefined) {
-    await dependencies.reportPullRequestProgressError(outcome.error);
+    try {
+      await dependencies.reportPullRequestProgressError(outcome.error);
+    } catch (error) {
+      failures.push(new AggregateError(
+        [outcome.error, error],
+        "PR Progress calculation and error reporting failed.",
+      ));
+    }
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) {
+    throw new AggregateError(failures, "Multiple document edit projection refreshes failed.");
   }
 };
