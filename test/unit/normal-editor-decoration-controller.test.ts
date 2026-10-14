@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import {
+  formatOperationLogEntry,
+  OperationFeedback,
+  setActiveOperationFeedback,
+  type OperationLogEntry
+} from "../../src/application/operation-feedback/index";
 import type {
   NormalEditorReviewedDecoration
 } from "../../src/application/editor-decoration/index";
@@ -412,6 +418,88 @@ test("controller clears uncertain output and reports decoration load errors", as
     }
   ]);
   assert.deepEqual(host.errors, [failure]);
+});
+
+test("normal-editor refresh events log the original decoration failure and cause once", async () => {
+  const editor: FakeEditor = { id: "event-error" };
+  const host = new FakeHost();
+  host.visibleEditors = [editor];
+  host.models.set(editor, [decoration(0, 1)]);
+  const controller = new NormalEditorDecorationController(host);
+  await controller.start();
+
+  const entries: OperationLogEntry[] = [];
+  const feedback = new OperationFeedback({
+    showBusy() {}, clearBusy() {}, revealLog() {},
+    appendLog(entry: OperationLogEntry) { entries.push(entry); }
+  });
+  setActiveOperationFeedback(feedback);
+  const failure = new Error("decoration update failed", {
+    cause: new Error("review state read failed ghp_fixturesecret012345678901234567890")
+  });
+  try {
+    await host.fireVisibleEditorsChanged();
+    assert.deepEqual(entries.filter((entry) => entry.event === "failed"), [], "normal event refreshes remain successful");
+
+    host.models.set(editor, Promise.reject(failure));
+    await host.fireActiveEditorChanged();
+
+    assert.deepEqual(host.errors, [failure], "the original error is still shown once to the user");
+    const failures = entries.filter((entry) => entry.event === "failed");
+    assert.equal(failures.length, 1, "the absorbed event failure is logged exactly once");
+    const details = failures[0]?.errorDetails;
+    assert.equal(details?.message, "decoration update failed");
+    assert.ok(details?.cause?.message.startsWith("review state read failed"));
+    assert.ok(details?.stack?.includes("normal-editor-decoration-controller.test.js"), "the original stack is preserved");
+    assert.ok(details?.cause?.stack?.includes("normal-editor-decoration-controller.test.js"), "the cause stack is preserved");
+    const output = entries.map(formatOperationLogEntry).join("\n");
+    assert.ok(output.includes("review state read failed"));
+    assert.equal(output.includes("ghp_fixturesecret012345678901234567890"), false, "existing secret redaction covers nested causes and stacks");
+  } finally {
+    setActiveOperationFeedback(undefined);
+    controller.dispose();
+  }
+});
+
+test("normal-editor decoration notification rejection keeps one redacted operation failure", async () => {
+  const editor: FakeEditor = { id: "notification-error" };
+  const host = new FakeHost();
+  host.visibleEditors = [editor];
+  host.models.set(editor, [decoration(0, 1)]);
+  const controller = new NormalEditorDecorationController(host);
+  await controller.start();
+
+  const entries: OperationLogEntry[] = [];
+  const feedback = new OperationFeedback({
+    showBusy() {}, clearBusy() {}, revealLog() {},
+    appendLog(entry: OperationLogEntry) { entries.push(entry); }
+  });
+  const failure = new Error("decoration update failed", { cause: new Error("storage read failed") });
+  const notificationFailure = new Error("notification host failed");
+  host.showDecorationError = (error: unknown) => {
+    host.errors.push(error);
+    return Promise.reject(notificationFailure);
+  };
+  const consoleErrors: string[] = [];
+  const originalConsoleError = console.error;
+  console.error = (...values: unknown[]) => { consoleErrors.push(values.map(String).join(" ")); };
+  setActiveOperationFeedback(feedback);
+  try {
+    host.models.set(editor, Promise.reject(failure));
+    await host.fireActiveEditorChanged();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(host.errors, [failure], "notification is attempted once with the original error");
+    assert.equal(entries.filter((entry) => entry.event === "failed").length, 1,
+      "notification failure does not duplicate the original operation failure");
+    assert.ok(consoleErrors.some((message) => message.includes("could not present a decoration error (Error)")));
+    assert.equal(entries.map(formatOperationLogEntry).join("\n").includes("notification host failed"), false,
+      "the secondary notification failure is not substituted for the source error");
+  } finally {
+    setActiveOperationFeedback(undefined);
+    console.error = originalConsoleError;
+    controller.dispose();
+  }
 });
 
 test("T609 Current Context dependents finish while a decoration error notification remains open", async () => {
