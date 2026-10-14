@@ -12,7 +12,7 @@ export type GitHubPullRequestLifecycleUnavailableReason = "rate-limit" | "networ
 
 export type GitHubPullRequestLifecycleResult =
   | { readonly kind: "available"; readonly metadata: PullRequestRemoteMetadata }
-  | { readonly kind: "unavailable"; readonly reason: GitHubPullRequestLifecycleUnavailableReason };
+  | { readonly kind: "unavailable"; readonly reason: GitHubPullRequestLifecycleUnavailableReason; readonly cause?: unknown };
 
 export type GitHubRevisionComparisonResult =
   | { readonly kind: "available"; readonly diff: string }
@@ -95,9 +95,9 @@ export class FetchGitHubPullRequestLifecycleAdapter {
     let response: Response;
     try {
       response = await this.fetchImplementation(url, { headers: this.headers(), signal });
-    } catch {
+    } catch (cause) {
       if (signal?.aborted) throw new DOMException("GitHub lifecycle fetch was superseded.", "AbortError");
-      return { kind: "unavailable", reason: "network" };
+      return { kind: "unavailable", reason: "network", cause };
     }
     if (signal?.aborted) throw new DOMException("GitHub lifecycle fetch was superseded.", "AbortError");
     const failure = classify(response);
@@ -105,8 +105,8 @@ export class FetchGitHubPullRequestLifecycleAdapter {
     let value: unknown;
     try {
       value = await response.json();
-    } catch {
-      return { kind: "unavailable", reason: "api" };
+    } catch (cause) {
+      return { kind: "unavailable", reason: "api", cause };
     }
     if (signal?.aborted) throw new DOMException("GitHub lifecycle fetch was superseded.", "AbortError");
     if (!isObject(value)) return { kind: "unavailable", reason: "api" };

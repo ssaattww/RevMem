@@ -123,6 +123,15 @@ export interface PullRequestRefreshDiagnostic {
   readonly status: PullRequestRefreshStatus;
   readonly durationMs?: number;
   readonly counts?: PullRequestRefreshCounts;
+  /** Boolean/count-only result of an explicit owner sync; never contains identities or revisions. */
+  readonly repositorySync?: Readonly<{
+    readonly completed: boolean;
+    readonly committed: boolean;
+    readonly unavailableContexts: number;
+    readonly selectedContextUnavailable: boolean;
+    readonly selectedBaseMatches?: boolean;
+    readonly selectedHeadMatches?: boolean;
+  }>;
   readonly aliases?: PullRequestRefreshAliases;
   readonly reasonCode?: PullRequestRefreshReasonCode;
   /** Numeric-only causal links between refresh owners; never an identity value. */
@@ -457,6 +466,20 @@ const validatePullRequestRefreshDiagnostic = (
     if (!SAFE_PULL_REQUEST_REFRESH_COUNT_KEYS.has(key)) throw new TypeError("PR Progress refresh count is not allowlisted");
     counts[key] = validateOperationProgressCount(rawValue, `PR Progress refresh ${key}`);
   }
+  const repositorySync = value.repositorySync;
+  if (repositorySync !== undefined) {
+    if (typeof repositorySync.completed !== "boolean" || typeof repositorySync.committed !== "boolean" ||
+      typeof repositorySync.selectedContextUnavailable !== "boolean") {
+      throw new TypeError("PR Progress repository-sync flags must be boolean");
+    }
+    validateOperationProgressCount(repositorySync.unavailableContexts, "PR Progress repository-sync unavailable contexts");
+    for (const [name, flag] of [
+      ["selectedBaseMatches", repositorySync.selectedBaseMatches],
+      ["selectedHeadMatches", repositorySync.selectedHeadMatches],
+    ] as const) {
+      if (flag !== undefined && typeof flag !== "boolean") throw new TypeError(`PR Progress repository-sync ${name} must be boolean`);
+    }
+  }
   return Object.freeze({
     generation: value.generation,
     trigger: value.trigger,
@@ -464,6 +487,7 @@ const validatePullRequestRefreshDiagnostic = (
     status: value.status,
     ...(value.durationMs === undefined ? {} : { durationMs: value.durationMs }),
     ...(Object.keys(counts).length === 0 ? {} : { counts: Object.freeze(counts) }),
+    ...(repositorySync === undefined ? {} : { repositorySync: Object.freeze({ ...repositorySync }) }),
     ...(aliases === undefined ? {} : { aliases }),
     ...(value.reasonCode === undefined ? {} : { reasonCode: value.reasonCode }),
     ...(value.relatedOperationId === undefined ? {} : { relatedOperationId: value.relatedOperationId }),
@@ -1442,6 +1466,12 @@ export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
       (refresh.causedByOperationId === undefined ? "" : ` causedByOp=${refresh.causedByOperationId}`) +
       (refresh.durationMs === undefined ? "" : ` duration=${refresh.durationMs}ms`) +
       Object.entries(refresh.counts ?? {}).map(([key, value]) => ` ${key}=${value}`).join("") +
+      (refresh.repositorySync === undefined ? "" :
+        ` syncCompleted=${refresh.repositorySync.completed} syncCommitted=${refresh.repositorySync.committed}` +
+        ` unavailableContexts=${refresh.repositorySync.unavailableContexts}` +
+        ` selectedContextUnavailable=${refresh.repositorySync.selectedContextUnavailable}` +
+        (refresh.repositorySync.selectedBaseMatches === undefined ? "" : ` selectedBaseMatches=${refresh.repositorySync.selectedBaseMatches}`) +
+        (refresh.repositorySync.selectedHeadMatches === undefined ? "" : ` selectedHeadMatches=${refresh.repositorySync.selectedHeadMatches}`)) +
       (refresh.reasonCode === undefined ? "" : ` reason=${refresh.reasonCode}`);
   const operationDetails = entry.operationDiagnostic === undefined
     ? ""
