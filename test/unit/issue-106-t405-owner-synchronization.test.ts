@@ -22,6 +22,11 @@ import {
   type RepositoryGlobalState,
   type ReviewContextState,
 } from "../../src/core/contracts/index.js";
+import {
+  OperationFeedback,
+  formatOperationLogEntry,
+  type OperationLogEntry,
+} from "../../src/application/operation-feedback/index.js";
 import { synchronizePullRequestOwner } from "../../src/composition/pull-request/owner-pull-request-synchronization.js";
 
 const REPOSITORY_ID = "github.com/ssaattww/revmem";
@@ -448,6 +453,57 @@ test("Issue #106 one unavailable lifecycle read aborts the whole owner synchroni
     assert.equal(state52?.contextState.pullRequest?.headSha, SHA_B);
     assert.equal(state53?.contextState.pullRequest?.headSha, SHA_B);
     assert.equal(state52?.globalState.currentRevisionId, SHA_B);
+  } finally {
+    await harness.repository.dispose();
+    await rm(harness.root, { recursive: true, force: true });
+  }
+});
+
+test("Issue #142 owner synchronization retains and safely diagnoses every rejected lifecycle read", async () => {
+  const harness = await createHarness();
+  try {
+    const firstFailure = new Error("PR 52 lifecycle read failed: ghp_abcdefghijklmnopqrstuvwxyz1234567890");
+    const secondFailure = new Error("PR 53 lifecycle read failed: github_pat_abcdefghijklmnopqrstuvwxyz1234567890");
+    let aggregate: AggregateError | undefined;
+
+    await assert.rejects(
+      () => synchronizePullRequestOwner(
+        { repositoryId: REPOSITORY_ID, headRevision: SHA_C },
+        {
+          repository: harness.repository,
+          resolveUpdate: async (context) => {
+            throw context.pullRequest?.number === 52 ? firstFailure : secondFailure;
+          },
+          prepareUpdate: (input, current) => harness.service.prepareUpdate(input, current),
+          recordPreparedUpdateHistory: (prepared) => harness.service.recordPreparedUpdateHistory(prepared),
+        },
+      ),
+      (error: unknown) => {
+        if (!(error instanceof AggregateError)) return false;
+        aggregate = error;
+        return true;
+      },
+    );
+
+    assert.deepEqual(aggregate?.errors, [firstFailure, secondFailure]);
+    assert.equal(harness.ownerCommits(), 0);
+    assert.deepEqual(harness.histories, []);
+
+    const logs: OperationLogEntry[] = [];
+    const feedback = new OperationFeedback({
+      showBusy() {},
+      clearBusy() {},
+      appendLog(entry) { logs.push(entry); },
+      revealLog() {},
+    });
+    feedback.reportFailure("Owner synchronization", aggregate);
+
+    const output = logs.map(formatOperationLogEntry).join("\n");
+    assert.match(output, /PR 52 lifecycle read failed/u);
+    assert.match(output, /PR 53 lifecycle read failed/u);
+    assert.match(output, /\[REDACTED TOKEN\]/u);
+    assert.doesNotMatch(output, /ghp_abcdefghijklmnopqrstuvwxyz1234567890/u);
+    assert.doesNotMatch(output, /github_pat_abcdefghijklmnopqrstuvwxyz1234567890/u);
   } finally {
     await harness.repository.dispose();
     await rm(harness.root, { recursive: true, force: true });
