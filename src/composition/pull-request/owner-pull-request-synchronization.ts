@@ -159,8 +159,14 @@ export const synchronizePullRequestOwner = async (
       return { context, input };
     }));
     assertCurrent(signal);
-    const failure = settled.find((result): result is PromiseRejectedResult => result.status === "rejected");
-    if (failure !== undefined) throw failure.reason;
+    const failures = settled.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+    if (failures.length === 1) throw failures[0]!.reason;
+    if (failures.length > 1) {
+      throw new AggregateError(
+        failures.map((failure) => failure.reason),
+        "Multiple pull-request lifecycle reads failed during repository-owner synchronization.",
+      );
+    }
     for (const result of settled) {
       if (result.status !== "fulfilled") continue;
       const { context, input } = result.value;

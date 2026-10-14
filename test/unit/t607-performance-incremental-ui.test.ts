@@ -22,7 +22,7 @@ import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index";
 import { NormalEditorReviewCommandService } from "../../src/application/review-commands/index";
 import { calculatePullRequestDiffProgress, calculatePullRequestDiffProgressCooperatively, type PullRequestDiffSnapshot } from "../../src/core/pr-progress/index";
 import { calculateGlobalUnderstandingFileProgressCooperatively } from "../../src/application/global-understanding/cooperative-global-understanding-calculation";
-import { OperationFeedback, setActiveOperationFeedback } from "../../src/application/operation-feedback/index";
+import { OperationFeedback, setActiveOperationFeedback, type OperationFeedbackContext } from "../../src/application/operation-feedback/index";
 import {
   PullRequestProgressTreeDataProvider,
   type PullRequestProgressTreeSnapshot
@@ -408,7 +408,8 @@ test("T607 production VS Code Global runtime fences partial publication on inval
       openFile: async (target) => { opened.push(target); },
       reportError: async (error) => { reported.push(error); }
     });
-    await registered.refresh();
+    await assert.rejects(registered.refresh(), /cancelled|superseded/i,
+      "direct refresh preserves cancellation as its terminal result after invalidation and disposal");
     assert.equal(interrupted, true, "the VS Code Tree runtime observed one actual partial publication before invalidation");
     assert.equal(signals[0]?.aborted, true, "invalidation and disposal abort the registered refresh owner");
     assert.equal(statusShows, 0, "a generation invalidated during Tree publication cannot emit a stale terminal presentation");
@@ -454,31 +455,43 @@ test("T607 production Global runtime supersedes old/new refreshes and gives each
       openFile: async (target) => { opened.push(target); }, reportError: async (error) => { reported.push(error); }
     });
     const oldRefresh = registered.refresh();
+    const oldSettlement = oldRefresh.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
     await new Promise((resolve) => setImmediate(resolve));
     const newRefresh = registered.refresh();
     await newRefresh;
     assert.equal(signals[0]?.aborted, true, "the new production refresh aborts the old owner before old publication");
     old.resolve(withTargets(current));
-    await oldRefresh;
+    const oldError = await oldSettlement;
+    assert.ok(oldError instanceof Error && /cancelled|superseded/i.test(oldError.message),
+      "a superseded direct refresh rejects with its cancellation result");
     const group = provider!.getChildren().find((node) => node.kind === "files-group");
     const staleNode = provider!.getChildren(group).find((node) => node.kind === "file");
     const invalidateRefresh = registered.refresh();
+    const invalidateSettlement = invalidateRefresh.then(() => undefined, (error: unknown) => error);
     await new Promise((resolve) => setImmediate(resolve));
     registered.invalidate();
     assert.equal(signals[2]?.aborted, true, "invalidate-only aborts its distinct in-flight refresh");
     invalidated.resolve(withTargets(current));
-    await invalidateRefresh;
+    const invalidationError = await invalidateSettlement;
+    assert.ok(invalidationError instanceof Error && /cancelled|superseded/i.test(invalidationError.message),
+      "invalidate-only preserves cancellation as the direct refresh result");
     await commands.get(runtime.OPEN_GLOBAL_UNDERSTANDING_FILE_COMMAND_ID)!(staleNode);
     assert.equal(opened.length, 0, "an old node cannot open after invalidate-only clears the production model");
     assert.equal(reported.length, 1);
     const disposeRefresh = registered.refresh();
+    const disposeSettlement = disposeRefresh.then(() => undefined, (error: unknown) => error);
     await new Promise((resolve) => setImmediate(resolve));
     registered.dispose();
     assert.equal(signals[3]?.aborted, true, "dispose aborts a distinct in-flight refresh");
     disposed.resolve(withTargets(current));
-    await disposeRefresh;
+    const disposeError = await disposeSettlement;
+    assert.ok(disposeError instanceof Error && /cancelled|superseded/i.test(disposeError.message),
+      "dispose preserves cancellation as the direct refresh result");
     const starts = logs.filter((entry) => entry.event === "started").length;
-    const terminals = logs.filter((entry) => entry.event === "succeeded" || entry.event === "failed").length;
+    const terminals = logs.filter((entry) => entry.event === "succeeded" || entry.event === "failed" || entry.event === "cancelled").length;
     assert.equal(starts, 5, "four refreshes plus the stale-node command each enter the shared production feedback boundary");
     assert.equal(terminals, starts, "every relevant production operation has exactly one feedback terminal");
   } finally { setActiveOperationFeedback(undefined); }
@@ -847,7 +860,7 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
   const contextBatches: Array<{ readonly kind: string; readonly count: number }> = [];
   const feedbackLogs: Array<{ readonly event: string }> = [];
   let disposeDuringLateProjection = false;
-  let registeredRef: { refresh(): Promise<void>; dispose(): void } | undefined;
+  let registeredRef: { refresh(): Promise<void>; refreshListOnly?(feedbackContext?: OperationFeedbackContext): Promise<void>; dispose(): void } | undefined;
   const vscode = {
     EventEmitter: class { public readonly event = () => undefined; public fire(): void {} public dispose(): void {} }, TreeItem: class {}, ThemeIcon: class {}, TreeItemCollapsibleState: { None: 0, Expanded: 1 },
     commands: { registerCommand: (id: string, handler: (...args: unknown[]) => Promise<void>) => { commands.set(id, handler); return { dispose(): void {} }; } },
@@ -867,6 +880,7 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
   globalThis.fetch = async (input) => {
     const url = String(input);
     if (url.includes("/files")) return new Response(JSON.stringify([{ filename: "f-0.ts", status: "modified", additions: 1, deletions: 0, patch: "@@ -0,0 +1 @@\n+opened" }]), { status: 200 });
+    if (url.includes("/compare/")) return new Response(JSON.stringify({ merge_base_commit: { sha: "a".repeat(40) } }), { status: 200 });
     return new Response(JSON.stringify({ number: 79, title: "T607", html_url: "https://example.invalid/79", state: "open", merged_at: null, changed_files: 1, base: { sha: "a".repeat(40) }, head: { sha: revision } }), { status: 200 });
   };
   const t405 = loadWithVscode<typeof import("../../src/composition/review-contexts/review-contexts-runtime.js")>("../../src/composition/review-contexts/review-contexts-runtime.js", vscode);
@@ -893,8 +907,11 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
     registeredRef = registered;
     await new Promise<void>((resolve) => setImmediate(resolve));
     enabled = true;
-    refreshCurrent = () => registered.refresh();
-    await registered.refresh();
+    refreshCurrent = async () => { await registeredRef?.refreshListOnly?.(); };
+    await assert.rejects(feedback.run("Review Contexts refresh", async (feedbackContext) => {
+      await registered.refreshListOnly?.(feedbackContext);
+    }), /AbortError|superseded/i,
+    "a cache publication superseded during a later Review Contexts refresh remains a cancellation result");
     assert.ok(writeSignals.length > 0, `the actual T405 source reaches PR-HEAD cache mutation: ${errors.map(String).join(" | ")}`);
     assert.equal(writeSignals[0]?.aborted, true, "the actual T405 source aborts PR-HEAD cache mutation before publication");
     assert.equal(cachePublishes, 1, "only the accepted generation owns the PR cache publish");
@@ -904,10 +921,12 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
     assert.ok(contextBatches.some((entry) => entry.kind === "sorted-context"));
     assert.ok(contextBatches.every((entry) => entry.count <= 128), "saved-context collection, projection, and merge sort share the <=128 scheduler");
     const cacheBeforeDispose = cachePublishes;
+    const childrenBeforeDispose = provider?.getChildren().length;
     disposeDuringLateProjection = true;
-    await registered.refresh();
+    await assert.rejects(registered.refreshListOnly!(), /AbortError|superseded/i,
+      "disposal during late projection terminates the direct list refresh with cancellation");
     assert.equal(cachePublishes, cacheBeforeDispose, "dispose during late projection cannot transfer deferred cache ownership");
-    assert.equal(provider?.getChildren().length, 0, "disposed late projection publishes no stale Tree rows");
+    assert.equal(provider?.getChildren().length, childrenBeforeDispose, "disposed late projection preserves the last complete Tree instead of publishing a new partial projection");
     const starts = feedbackLogs.filter((entry) => entry.event === "started").length;
     const terminals = feedbackLogs.filter((entry) => entry.event === "succeeded" || entry.event === "failed" || entry.event === "cancelled").length;
     assert.equal(terminals, starts, "every actual Review Contexts feedback operation emits exactly one terminal");

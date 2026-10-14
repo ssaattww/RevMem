@@ -4,6 +4,7 @@ import test from "node:test";
 import { FetchGitHubPullRequestAdapter } from "../../src/adapters/github/index.js";
 import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index.js";
 import type { GitHubPullRequestSearchResult } from "../../src/application/github-pr-context/index.js";
+import { OperationFeedback, setActiveOperationFeedback, type OperationLogEntry } from "../../src/application/operation-feedback/index.js";
 import { createTemporaryGitRepository } from "../support/temporary-git-repository.js";
 import { createOwnerProductFixture, ownerContextId, OWNER_ID, OWNER_FILE } from "../support/t405-owner-product-fixture.js";
 
@@ -127,6 +128,82 @@ test("Issue139 production: 複数状態を選択UIに表示し別PRのreview sta
     assert.equal(await fixture.load(54), undefined, "未選択PRのContextは作成しない");
     assert.ok(!fixture.history.some(event => event.contextId === ownerContextId(53)), "別PRへreview historyを記録しない");
   } finally { await fixture.dispose(); }
+});
+
+test("Issue142 selected PR lifecycle failure is logged as incomplete sync with safe revision diagnostics", async () => {
+  const fixture = await createOwnerProductFixture([52]);
+  try {
+    fixture.remote.set(52, { base: fixture.A, head: fixture.C, state: "open" });
+    fixture.networkFailures.set(52, new Error("socket reset"));
+    await fixture.git("checkout", "-B", "main", fixture.B);
+    await fixture.workspaceState.update("reviewRange.currentPullRequestSelections.v1", {
+      [`${OWNER_ID}\0${fixture.B}`]: ownerContextId(53),
+    });
+    const entries: OperationLogEntry[] = [];
+    const feedback = new OperationFeedback({
+      showBusy() {}, clearBusy() {}, revealLog() {},
+      appendLog(entry: OperationLogEntry) { entries.push(entry); },
+    });
+    const ownerCommitsBefore = fixture.publications.owner;
+
+    await assert.rejects(feedback.run("select pull request", (owner) =>
+      fixture.runtime.preparePullRequestCandidateForExplicitContextSelection!(undefined, owner)), (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.ok(error.cause instanceof AggregateError);
+      assert.ok(error.cause.errors.some((cause) => cause instanceof Error && cause.message === "socket reset"));
+      return /Selected pull-request revision was not published/u.test(error.message);
+    });
+
+    const syncFailures = entries.filter((entry) => entry.pullRequestRefresh?.stage === "repository-sync" &&
+      entry.pullRequestRefresh.status === "failed");
+    assert.ok(syncFailures.length > 0, "unavailable owner sync must not be reported as succeeded");
+    const diagnostics = syncFailures.map((entry) => entry.pullRequestRefresh?.repositorySync).filter(Boolean);
+    assert.ok(diagnostics.some((outcome) => outcome?.completed === false && outcome.committed === false &&
+      outcome.unavailableContexts === 1 && outcome.selectedContextUnavailable === true));
+    assert.ok(diagnostics.some((outcome) =>
+      typeof outcome?.selectedBaseMatches === "boolean" && typeof outcome.selectedHeadMatches === "boolean" &&
+      (!outcome.selectedBaseMatches || !outcome.selectedHeadMatches)),
+    "reloaded base/head comparisons are reported without raw revisions");
+    assert.equal((await fixture.load(52))?.contextState.pullRequest?.headSha, fixture.B,
+      "unavailable metadata does not publish the selected remote revision");
+    assert.equal(fixture.publications.owner, ownerCommitsBefore, "incomplete lifecycle reads do not commit the repository owner");
+    const diagnosticText = JSON.stringify(entries);
+    assert.equal(diagnosticText.includes(fixture.A), false);
+    assert.equal(diagnosticText.includes(fixture.C), false);
+  } finally { await fixture.dispose(); }
+});
+
+test("Issue142 pre-search lifecycle failure keeps redacted cause when rediscovery selects the branch", async () => {
+  const fixture = await createOwnerProductFixture([52]);
+  try {
+    fixture.remote.clear();
+    fixture.networkFailures.set(52, new Error("socket reset ghp_fixturesecret012345678901234567890"));
+    await fixture.git("checkout", "-B", "main", fixture.B);
+    const entries: OperationLogEntry[] = [];
+    const feedback = new OperationFeedback({
+      showBusy() {}, clearBusy() {}, revealLog() {},
+      appendLog(entry: OperationLogEntry) { entries.push(entry); },
+    });
+    setActiveOperationFeedback(feedback);
+    try {
+      await fixture.invoke();
+    } finally {
+      setActiveOperationFeedback(undefined);
+    }
+
+    assert.deepEqual(fixture.errors, [], "unavailable lifecycle metadata does not interrupt the normal branch selection");
+    const syncDiagnostic = entries.find((entry) => entry.operationDiagnostic?.stage === "repository-sync" &&
+      entry.operationDiagnostic.status === "failed");
+    assert.ok(syncDiagnostic, "pre-search synchronization records a diagnostic failure");
+    const output = JSON.stringify(entries);
+    assert.ok(output.includes("socket reset"), "the original network exception is retained");
+    assert.ok(output.includes("issue-139-pr-rediscovery.test.js"), "the original exception stack is retained");
+    assert.equal(output.includes("ghp_fixturesecret012345678901234567890"), false, "the token is redacted");
+    for (const revision of [fixture.A, fixture.B, fixture.C, fixture.D]) {
+      assert.equal(output.includes(revision), false, "the diagnostic does not expose a revision SHA");
+    }
+    assert.ok(entries.some((entry) => entry.event === "succeeded"), "the redetection operation still completes successfully");
+  } finally { setActiveOperationFeedback(undefined); await fixture.dispose(); }
 });
 
 for (const state of ["closed", "merged"]) {

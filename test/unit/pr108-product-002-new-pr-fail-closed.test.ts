@@ -5,7 +5,7 @@ import test from "node:test";
 
 test("PR108-PRODUCT-002 new PR creation fails closed when owner synchronization is incomplete", async () => {
   const runtimeSource = await readFile(
-    path.resolve(__dirname, "../../../src/composition/review-contexts/review-contexts-runtime.ts"),
+    path.resolve(process.cwd(), "src/composition/review-contexts/review-contexts-runtime.ts"),
     "utf8",
   );
   const detectStart = runtimeSource.indexOf("const detectPullRequest = async");
@@ -16,7 +16,7 @@ test("PR108-PRODUCT-002 new PR creation fails closed when owner synchronization 
   );
   assert.ok(detectStart >= 0 && newContextStart > detectStart && createStart > newContextStart);
   const newContextBranch = runtimeSource.slice(newContextStart, createStart);
-  assert.match(newContextBranch, /if \(!synchronizationCompleted\)/u);
+  assert.match(newContextBranch, /if \(synchronizationOutcome\?\.completed !== true\)/u);
   assert.match(
     newContextBranch,
     /Repository-owner synchronization must complete before creating a new pull-request context\./u,

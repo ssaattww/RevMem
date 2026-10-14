@@ -351,20 +351,20 @@ export class FetchGitHubPullRequestDiffAdapter implements PullRequestRemoteDataP
 
   private async fetchJson(url: URL, signal?: AbortSignal): Promise<
     | { readonly kind: "available"; readonly payload: unknown; readonly response: Response }
-    | { readonly kind: "unavailable"; readonly reason: PullRequestDiffUnavailableReason }
+    | { readonly kind: "unavailable"; readonly reason: PullRequestDiffUnavailableReason; readonly error?: unknown }
   > {
     let response: Response;
     try {
       response = await this.fetchImplementation(url, { headers: this.headers(), signal });
-    } catch {
-      return { kind: "unavailable", reason: "network" };
+    } catch (error) {
+      return { kind: "unavailable", reason: "network", error };
     }
     const failure = classifyResponse(response);
     if (failure !== undefined) return { kind: "unavailable", reason: failure };
     try {
       return { kind: "available", payload: await response.json(), response };
-    } catch {
-      return { kind: "unavailable", reason: "api" };
+    } catch (error) {
+      return { kind: "unavailable", reason: "api", error };
     }
   }
 }

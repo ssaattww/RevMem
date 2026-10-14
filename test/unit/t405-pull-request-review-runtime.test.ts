@@ -154,6 +154,21 @@ test("PR Progress batches immutable content reads and reuses the results during 
   });
 });
 
+test("PR Progress unregistered context still gets one start and failure terminal with cause", async () => {
+  const logs: OperationLogEntry[] = [];
+  const feedback = new OperationFeedback({ showBusy() {}, clearBusy() {}, appendLog(entry) { logs.push(entry); }, revealLog() {} });
+  const runtime = new PullRequestReviewRuntime<string>({
+    repository: new MemoryRepository(),
+    requestHistory: async () => undefined,
+    diffHost: { parseUri: (value) => value, openDiff: async () => undefined },
+    getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+  });
+  await assert.rejects(feedback.run("PR Progress activation", (context) => runtime.activateProgress("missing-context", context)), /not registered/u);
+  assert.deepEqual(logs.map((entry) => entry.event), ["started", "failed"]);
+  assert.equal(logs.at(-1)?.operationId, 1);
+  assert.match(logs.at(-1)?.errorDetails?.message ?? "", /not registered/u);
+});
+
 test("PR remote content fallbacks run sequentially and preserve local and remote result order", async () => {
   const descriptors = ["cached.ts", "first.ts", "second.ts", "invalid.ts"].map((filePath) => ({
     contextId: CONTEXT_ID,

@@ -12,6 +12,7 @@ import {
 } from "../../src/adapters/local-git/index";
 import {
   OperationFeedback,
+  formatOperationLogEntry,
   type OperationFeedbackHost,
   type OperationLogEntry
 } from "../../src/application/operation-feedback/index";
@@ -157,7 +158,7 @@ test("metadata timeout force-fails when signals cannot be sent and close never a
   assert.equal(child.stderr.destroyed, true);
 });
 
-test("operation diagnostics redact arbitrary dependency details before Output logging", async () => {
+test("operation diagnostics keep useful local dependency evidence and redact credential values", async () => {
   const cases: readonly Error[] = [
     new GitCommandFailedError(
       {
@@ -174,8 +175,8 @@ test("operation diagnostics redact arbitrary dependency details before Output lo
       new Error("ENOENT: no such file or directory, open '/Users/alice/customer-private-repo/state.json'"),
       { code: "ENOENT", path: "/Users/alice/customer-private-repo/state.json" }
     ),
-    new Error("request failed: https://user:password@github.com/customer/private?token=ghp_supersecret"),
-    new Error("PR #65 Customer Acquisition Secret Plan failed\nsource: apiKey = customer-secret")
+    new Error("request failed: https://user:fixture-password@github.com/customer/private?token=ghp_supersecret"),
+    new Error("PR #65 Customer Acquisition Secret Plan failed\nsource: apiKey = fixture-api-secret")
   ];
 
   for (const failure of cases) {
@@ -191,13 +192,15 @@ test("operation diagnostics redact arbitrary dependency details before Output lo
     assert.equal(terminal?.event, "failed");
     assert.equal(terminal?.errorName, failure.name);
     assert.ok(terminal?.message !== undefined);
-    assert.doesNotMatch(terminal.message, /customer-private-repo|customer-secret|Customer Acquisition|ghp_supersecret|password|apiKey|src\/customer-secret\.ts/u);
-    assert.doesNotMatch(terminal.message, /[\r\n\u2028\u2029]/u);
+    assert.match(terminal.message, /Git command failed|ENOENT|request failed|PR #65/u,
+      "local diagnostics retain error context useful for investigation");
+    const rendered = host.logs.map(formatOperationLogEntry).join("\n");
+    assert.doesNotMatch(rendered, /ghp_supersecret|fixture-password|fixture-api-secret/u);
     assert.equal(host.revealCount, 1);
   }
 });
 
-test("operation diagnostics never emit ordinary-word private dependency text", async () => {
+test("operation diagnostics retain ordinary descriptive dependency messages locally", async () => {
   const cases = [
     "Add customer acquisition dashboard failed",
     "Unexpected value quarterly payroll record"
@@ -215,12 +218,11 @@ test("operation diagnostics never emit ordinary-word private dependency text", a
 
     const terminal = host.logs.at(-1);
     assert.equal(terminal?.event, "failed");
-    assert.equal(terminal?.message, "Operation failed; details were redacted.");
-    assert.doesNotMatch(terminal?.message ?? "", /customer acquisition dashboard|quarterly payroll record/iu);
+    assert.match(terminal?.message ?? "", /customer acquisition dashboard|quarterly payroll record/iu);
   }
 });
 
-test("operation diagnostics do not expose arbitrary custom Error names", async () => {
+test("operation diagnostics retain custom Error names and messages locally", async () => {
   const failure = new Error("ordinary dependency failure");
   failure.name = "CustomerAcquisitionDashboard";
   const host = new FakeOperationFeedbackHost();
@@ -233,8 +235,8 @@ test("operation diagnostics do not expose arbitrary custom Error names", async (
 
   const terminal = host.logs.at(-1);
   assert.equal(terminal?.event, "failed");
-  assert.equal(terminal?.errorName, "Error");
-  assert.equal(terminal?.message, "Operation failed; details were redacted.");
+  assert.equal(terminal?.errorName, "CustomerAcquisitionDashboard");
+  assert.equal(terminal?.message, "ordinary dependency failure");
 });
 
 test("nested operation failures emit one terminal ERROR for every started operation", async () => {

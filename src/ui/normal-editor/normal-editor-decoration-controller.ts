@@ -1,6 +1,7 @@
 import type {
   NormalEditorReviewedDecoration
 } from "../../application/editor-decoration/index";
+import { reportActiveOperationFailure } from "../../application/operation-feedback/index";
 
 /** Minimal disposable contract shared with VS Code event and decoration handles. */
 export interface DecorationDisposable {
@@ -201,6 +202,7 @@ export class NormalEditorDecorationController<
       if (!this.canApply(editor, generation, decorationType, cancellation)) {
         return;
       }
+      reportActiveOperationFailure("Normal editor decoration refresh", error);
       await this.host.setDecorations(editor, decorationType, [], {
         signal: cancellation.signal,
         isCurrent: () => this.canApply(editor, generation, decorationType, cancellation)

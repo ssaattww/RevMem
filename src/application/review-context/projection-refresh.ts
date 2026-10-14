@@ -1,4 +1,18 @@
-import type { OperationFeedbackContext } from "../operation-feedback/index";
+import { classifyOperationFailure, reportActiveOperationFailure, type OperationFeedbackContext } from "../operation-feedback/index";
+
+export const reportDocumentEditFailure = async (
+  label: string,
+  error: unknown,
+  notify: () => void | Promise<void>,
+): Promise<void> => {
+  if (classifyOperationFailure(error).kind === "stale") return;
+  reportActiveOperationFailure(label, error);
+  try {
+    await notify();
+  } catch (notificationError) {
+    reportActiveOperationFailure(`${label} notification`, notificationError);
+  }
+};
 
 export interface SelectedPullRequestProgressRefreshDependencies<Source> {
   readonly shouldContinue?: () => boolean;
@@ -28,18 +42,18 @@ export interface DocumentEditDependentRefreshDependencies {
   readonly reportPullRequestProgressError: (error: unknown) => void | Promise<void>;
 }
 
-interface SettledProjectionRefresh {
-  readonly error?: unknown;
-}
+type SettledProjectionRefresh =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly error: unknown };
 
 const settleProjectionRefresh = async (
   operation: () => Promise<void>
 ): Promise<SettledProjectionRefresh> => {
   try {
     await operation();
-    return {};
+    return { ok: true };
   } catch (error) {
-    return { error };
+    return { ok: false, error };
   }
 };
 
@@ -52,22 +66,50 @@ const settleProjectionRefresh = async (
 export const refreshSelectedPullRequestProgress = async <Source>(
   dependencies: SelectedPullRequestProgressRefreshDependencies<Source>
 ): Promise<void> => {
-  if (dependencies.shouldContinue?.() === false) return;
-  if (dependencies.contextId === undefined) {
-    dependencies.clearProgress();
-    dependencies.setSource(undefined);
-    dependencies.refreshTree();
-    return;
-  }
-
-  const activation = dependencies.activateProgress(dependencies.contextId, dependencies.feedbackContext);
-  dependencies.setSource(dependencies.source);
-  dependencies.refreshTree();
+  let primaryFailure: unknown;
+  let hasPrimaryFailure = false;
+  let activation: Promise<void> | undefined;
+  let activationSettled = false;
   try {
-    await activation;
+    if (dependencies.shouldContinue?.() === false) return;
+    if (dependencies.contextId === undefined) {
+      dependencies.clearProgress();
+      dependencies.setSource(undefined);
+      dependencies.refreshTree();
+      return;
+    }
+
+    activation = dependencies.activateProgress(dependencies.contextId, dependencies.feedbackContext);
+    dependencies.setSource(dependencies.source);
+    dependencies.refreshTree();
+    try { await activation; }
+    finally { activationSettled = true; }
+  } catch (error) {
+    let failure = error;
+    if (activation !== undefined && !activationSettled) {
+      const activationOutcome = await settleProjectionRefresh(() => activation!);
+      if (!activationOutcome.ok && activationOutcome.error !== error) {
+        failure = new AggregateError([error, activationOutcome.error], "PR Progress setup and activation failed.");
+      }
+    }
+    primaryFailure = failure;
+    hasPrimaryFailure = true;
+    dependencies.feedbackContext?.owner.reportFailure("PR Progress projection", failure, dependencies.feedbackContext);
   } finally {
-    if (dependencies.shouldContinue?.() !== false) dependencies.refreshTree();
+    if (dependencies.contextId !== undefined && dependencies.shouldContinue?.() !== false) {
+      try {
+        dependencies.refreshTree();
+      } catch (treeError) {
+        const failure = !hasPrimaryFailure
+          ? treeError
+          : new AggregateError([primaryFailure, treeError], "PR Progress activation and final tree publication failed.");
+        primaryFailure = failure;
+        hasPrimaryFailure = true;
+        dependencies.feedbackContext?.owner.reportFailure("PR Progress tree publication", failure, dependencies.feedbackContext);
+      }
+    }
   }
+  if (hasPrimaryFailure) throw primaryFailure;
 };
 
 /**
@@ -80,12 +122,12 @@ export const refreshSelectedPullRequestProgress = async <Source>(
 export const refreshCurrentContextDependents = async (
   dependencies: CurrentContextDependentRefreshDependencies
 ): Promise<void> => {
-  let dependentError: unknown;
+  const dependentErrors: unknown[] = [];
   let reviewContextsReady = true;
   try {
     await dependencies.refreshReviewContexts();
   } catch (error) {
-    dependentError = error;
+    dependentErrors.push(error);
     reviewContextsReady = false;
   }
 
@@ -105,17 +147,22 @@ export const refreshCurrentContextDependents = async (
     try {
       await refresh();
     } catch (error) {
-      dependentError ??= error;
+      dependentErrors.push(error);
     }
   }
   if (progress !== undefined) {
     const outcome = await progress;
     if (dependencies.shouldContinue?.() === false) return;
-    if (outcome.error !== undefined) {
-      await dependencies.reportPullRequestProgressError(outcome.error);
+    if (!outcome.ok) {
+      try {
+        await dependencies.reportPullRequestProgressError(outcome.error);
+      } catch (reportError) {
+        dependentErrors.push(new AggregateError([outcome.error, reportError], "PR Progress calculation and error reporting failed."));
+      }
     }
   }
-  if (dependentError !== undefined) throw dependentError;
+  if (dependentErrors.length === 1) throw dependentErrors[0];
+  if (dependentErrors.length > 1) throw new AggregateError(dependentErrors, "Multiple Current Context dependent refreshes failed.");
 };
 
 /**
@@ -129,10 +176,24 @@ export const refreshAfterDocumentEdit = async (
   const progress = settleProjectionRefresh(
     dependencies.refreshPullRequestProgress
   );
-  await dependencies.refreshDecorations();
-  await dependencies.refreshGlobal();
+  const decorations = await settleProjectionRefresh(dependencies.refreshDecorations);
+  const global = await settleProjectionRefresh(dependencies.refreshGlobal);
   const outcome = await progress;
-  if (outcome.error !== undefined) {
-    await dependencies.reportPullRequestProgressError(outcome.error);
+  const failures: unknown[] = [];
+  if (!decorations.ok) failures.push(decorations.error);
+  if (!global.ok) failures.push(global.error);
+  if (!outcome.ok) {
+    try {
+      await dependencies.reportPullRequestProgressError(outcome.error);
+    } catch (error) {
+      failures.push(new AggregateError(
+        [outcome.error, error],
+        "PR Progress calculation and error reporting failed.",
+      ));
+    }
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) {
+    throw new AggregateError(failures, "Multiple document edit projection refreshes failed.");
   }
 };
