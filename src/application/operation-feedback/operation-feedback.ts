@@ -44,7 +44,7 @@ export interface OperationErrorDiagnostic {
 }
 
 export interface OperationStageDiagnostic {
-  readonly stage: "cache-read" | "cache-persistence" | "repository-context-catalog" | "repository-root-resolution";
+  readonly stage: "cache-read" | "cache-persistence" | "repository-context-catalog" | "repository-root-resolution" | "repository-sync";
   readonly status: OperationStageDiagnosticStatus;
   readonly category?: OperationFailureCategory;
   readonly code?: string;

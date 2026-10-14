@@ -1560,6 +1560,23 @@ export function registerT405ReviewContextsRuntime(
       status,
       ...details,
     });
+    const repositorySyncStageResult = (outcome: RepositorySynchronizationOutcome) => {
+      if (!outcome.completed) {
+        const cause = repositorySyncFailureCause(outcome);
+        const error = new Error(
+          "Repository-owner synchronization did not complete.",
+          cause === undefined ? undefined : { cause },
+        );
+        // This records redacted cause/stack evidence without failing the enclosing
+        // redetection: an unavailable PR lifecycle read may still select the branch.
+        reportActiveOperationStageDiagnostic("repository-sync", error, feedbackContext, "failed");
+      }
+      return {
+        status: outcome.completed ? "succeeded" as const : "failed" as const,
+        ...(outcome.reasonCode === undefined ? {} : { reasonCode: outcome.reasonCode }),
+        repositorySync: repositorySyncDiagnostic(outcome),
+      };
+    };
     const timed = async <T>(
       stage: PullRequestRefreshStage,
       action: () => Promise<T>,
@@ -1624,11 +1641,7 @@ export function registerT405ReviewContextsRuntime(
           context: { kind: "branch", label: "active", headRevision: localHead },
           progress: undefined,
         },
-      }, persistedBefore, signal, feedbackContext, lifecycleCache), (outcome) => ({
-        status: outcome.completed ? "succeeded" : "failed",
-        ...(outcome.reasonCode === undefined ? {} : { reasonCode: outcome.reasonCode }),
-        repositorySync: repositorySyncDiagnostic(outcome),
-      }));
+      }, persistedBefore, signal, feedbackContext, lifecycleCache), repositorySyncStageResult);
       assertDetectionCurrent();
     }
 
@@ -1725,11 +1738,7 @@ export function registerT405ReviewContextsRuntime(
             },
           }, persistedBefore, signal, feedbackContext, lifecycleCache,
           detectedPullRequest.headSha === localHead ? undefined : state.contextId,
-          state.contextId), (outcome) => ({
-            status: outcome.completed ? "succeeded" : "failed",
-            ...(outcome.reasonCode === undefined ? {} : { reasonCode: outcome.reasonCode }),
-            repositorySync: repositorySyncDiagnostic(outcome),
-          }));
+          state.contextId), repositorySyncStageResult);
           assertDetectionCurrent();
           existing = await timed("context-save", () => contextStateService.load(local.repositoryId, pullRequestIdentity(state)));
           assertDetectionCurrent();
@@ -1772,11 +1781,7 @@ export function registerT405ReviewContextsRuntime(
               context: { kind: "branch", label: "active", headRevision: localHead },
               progress: undefined,
             },
-          }, persistedBefore, signal, feedbackContext, lifecycleCache), (outcome) => ({
-            status: outcome.completed ? "succeeded" : "failed",
-            ...(outcome.reasonCode === undefined ? {} : { reasonCode: outcome.reasonCode }),
-            repositorySync: repositorySyncDiagnostic(outcome),
-          }));
+          }, persistedBefore, signal, feedbackContext, lifecycleCache), repositorySyncStageResult);
           assertDetectionCurrent();
         }
         if (synchronizationOutcome?.completed !== true) {

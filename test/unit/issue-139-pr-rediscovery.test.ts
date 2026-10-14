@@ -4,7 +4,7 @@ import test from "node:test";
 import { FetchGitHubPullRequestAdapter } from "../../src/adapters/github/index.js";
 import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index.js";
 import type { GitHubPullRequestSearchResult } from "../../src/application/github-pr-context/index.js";
-import { OperationFeedback, type OperationLogEntry } from "../../src/application/operation-feedback/index.js";
+import { OperationFeedback, setActiveOperationFeedback, type OperationLogEntry } from "../../src/application/operation-feedback/index.js";
 import { createTemporaryGitRepository } from "../support/temporary-git-repository.js";
 import { createOwnerProductFixture, ownerContextId, OWNER_ID, OWNER_FILE } from "../support/t405-owner-product-fixture.js";
 
@@ -171,6 +171,39 @@ test("Issue142 selected PR lifecycle failure is logged as incomplete sync with s
     assert.equal(diagnosticText.includes(fixture.A), false);
     assert.equal(diagnosticText.includes(fixture.C), false);
   } finally { await fixture.dispose(); }
+});
+
+test("Issue142 pre-search lifecycle failure keeps redacted cause when rediscovery selects the branch", async () => {
+  const fixture = await createOwnerProductFixture([52]);
+  try {
+    fixture.remote.clear();
+    fixture.networkFailures.set(52, new Error("socket reset ghp_fixturesecret012345678901234567890"));
+    await fixture.git("checkout", "-B", "main", fixture.B);
+    const entries: OperationLogEntry[] = [];
+    const feedback = new OperationFeedback({
+      showBusy() {}, clearBusy() {}, revealLog() {},
+      appendLog(entry: OperationLogEntry) { entries.push(entry); },
+    });
+    setActiveOperationFeedback(feedback);
+    try {
+      await fixture.invoke();
+    } finally {
+      setActiveOperationFeedback(undefined);
+    }
+
+    assert.deepEqual(fixture.errors, [], "unavailable lifecycle metadata does not interrupt the normal branch selection");
+    const syncDiagnostic = entries.find((entry) => entry.operationDiagnostic?.stage === "repository-sync" &&
+      entry.operationDiagnostic.status === "failed");
+    assert.ok(syncDiagnostic, "pre-search synchronization records a diagnostic failure");
+    const output = JSON.stringify(entries);
+    assert.ok(output.includes("socket reset"), "the original network exception is retained");
+    assert.ok(output.includes("issue-139-pr-rediscovery.test.js"), "the original exception stack is retained");
+    assert.equal(output.includes("ghp_fixturesecret012345678901234567890"), false, "the token is redacted");
+    for (const revision of [fixture.A, fixture.B, fixture.C, fixture.D]) {
+      assert.equal(output.includes(revision), false, "the diagnostic does not expose a revision SHA");
+    }
+    assert.ok(entries.some((entry) => entry.event === "succeeded"), "the redetection operation still completes successfully");
+  } finally { setActiveOperationFeedback(undefined); await fixture.dispose(); }
 });
 
 for (const state of ["closed", "merged"]) {
