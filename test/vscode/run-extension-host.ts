@@ -394,9 +394,21 @@ async function main(): Promise<void> {
         process.execPath,
         [
           "--test",
+          "--test-isolation=none",
           join(__dirname, "../integration/t506-live-edit-concurrency.integration.test.js")
         ],
-        { cwd: projectRoot, windowsHide: true }
+        {
+          cwd: projectRoot,
+          windowsHide: true,
+          timeout: DEFAULT_LAUNCH_TIMEOUT_MS,
+          killSignal: "SIGKILL",
+          env: {
+            ...process.env,
+            TMPDIR: temporaryDirectory.path,
+            TEMP: temporaryDirectory.path,
+            TMP: temporaryDirectory.path
+          }
+        }
       );
       return;
     }

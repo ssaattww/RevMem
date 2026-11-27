@@ -160,20 +160,7 @@ class ControlledSharedRepository {
   }
 
   public async waitForFirstLoad(): Promise<void> {
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    try {
-      await Promise.race([
-        this.firstLoad,
-        new Promise<void>((_, reject) => {
-          timeout = setTimeout(
-            () => reject(new Error("DocumentReviewEditRuntime did not use the injected shared repository.")),
-            500
-          );
-        })
-      ]);
-    } finally {
-      if (timeout !== undefined) clearTimeout(timeout);
-    }
+    await this.firstLoad;
   }
 
   public snapshot(): ReviewStateCommit {
