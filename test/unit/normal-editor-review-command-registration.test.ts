@@ -288,3 +288,48 @@ test("Test-mode public command settles after state application without an automa
   assert.equal(applied, 1, "the public command must keep its production state-application path");
   assert.equal(refreshCount, 0, "Test mode must defer automatic decoration refresh");
 });
+
+test("all public normal review commands publish one applied event after the mutation guard releases", async () => {
+  const host = new FakeHost();
+  host.activeEditor = { id: "editor-1" };
+  let busy = false;
+  const invoked: string[] = [];
+  let notifications = 0;
+  let outcome: "applied" | "no-op" | "failure" = "applied";
+  const operation = (name: string) => async () => {
+    assert.equal(busy, true);
+    invoked.push(name);
+    if (outcome === "failure") throw new Error("save failed");
+    return outcome;
+  };
+  const handlers = createRefreshingNormalEditorReviewCommandHandlers({
+    markSelectionReviewed: operation("markSelectionReviewed"),
+    unmarkSelectionReviewed: operation("unmarkSelectionReviewed"),
+    markFileReviewed: operation("markFileReviewed"),
+    unmarkFileReviewed: operation("unmarkFileReviewed"),
+  }, { refreshVisibleEditors: () => undefined }, {
+    deferAppliedDecorationRefresh: true,
+    beginReviewMutation: () => {
+      assert.equal(busy, false);
+      busy = true;
+      return () => { busy = false; };
+    },
+    onReviewMutationApplied: () => {
+      assert.equal(busy, false);
+      notifications += 1;
+    },
+  });
+  registerNormalEditorReviewCommands(host, handlers);
+  const cases = ["markSelectionReviewed", "unmarkSelectionReviewed", "markFileReviewed", "unmarkFileReviewed"] as const;
+  for (const [i, name] of cases.entries()) {
+    await host.handlers.get(NORMAL_EDITOR_REVIEW_COMMAND_IDS[name])!();
+    assert.equal(notifications, i + 1);
+  }
+  assert.deepEqual(invoked, [...cases]);
+  outcome = "no-op";
+  await host.handlers.get(NORMAL_EDITOR_REVIEW_COMMAND_IDS.markFileReviewed)!();
+  outcome = "failure";
+  await host.handlers.get(NORMAL_EDITOR_REVIEW_COMMAND_IDS.unmarkFileReviewed)!();
+  assert.equal(notifications, cases.length);
+  assert.equal(busy, false);
+});

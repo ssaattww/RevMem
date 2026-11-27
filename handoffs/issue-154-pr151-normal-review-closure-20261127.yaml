@@ -1,0 +1,646 @@
+{
+  "schema_version": 3,
+  "producer": {
+    "skill": "chat-review-worker",
+    "mode": "fix_verification",
+    "generated_at": "2026-11-27T22:32:50.416Z"
+  },
+  "repository": "ssaattww/RevMem",
+  "issue_or_pr": "Issue #154 / Draft PR #151",
+  "task_id": "I154-PRE-FREEZE",
+  "branch": "task/issue-93-github-viewed-sync-design",
+  "base_ref": "main",
+  "target": {
+    "current_head": "4f0726181e540da33b69131bbe700ebbafeb4eba",
+    "reviewed_head": "4f0726181e540da33b69131bbe700ebbafeb4eba",
+    "commit_range": "1a25b982ae42490e9cb609108ac0372dad82d333...4f0726181e540da33b69131bbe700ebbafeb4eba"
+  },
+  "execution_environment": {
+    "kind": "runtime_local",
+    "tool": "Codex Work",
+    "machine_id": null,
+    "connection": "available",
+    "os": "Linux",
+    "shell": null,
+    "working_directory": null,
+    "repository": "ssaattww/RevMem",
+    "branch": "task/issue-93-github-viewed-sync-design",
+    "head_sha": "4f0726181e540da33b69131bbe700ebbafeb4eba",
+    "source_state": "snapshot",
+    "source_fingerprint": "28/28 reviewed blobs match GitHub",
+    "ownership": "current_task",
+    "writable_paths": [],
+    "dependencies": [],
+    "evidence": [
+      "正本の対象版と対象の Git blob を確認。マシン名・環境固有パス・権限を引き継がない。"
+    ]
+  },
+  "verification": {
+    "capability": "local_execution_available",
+    "capability_evidence": [
+      "技術版4f07261の自動 CI run 46075453598 success、管理版は未公開。"
+    ],
+    "technical_head": "4f0726181e540da33b69131bbe700ebbafeb4eba",
+    "administrative_parent": "4f0726181e540da33b69131bbe700ebbafeb4eba",
+    "commit": {
+      "state": "commit_pending",
+      "review_target_sha": "4f0726181e540da33b69131bbe700ebbafeb4eba"
+    },
+    "push": {
+      "state": "push_pending",
+      "head_sha": "unknown"
+    },
+    "ci_wait": {
+      "state": "ci_wait_pending",
+      "required_for": "route_verification"
+    },
+    "final_publication": {
+      "sequence": "not_applicable",
+      "pr_action": "update"
+    }
+  },
+  "authoritative_requirements": [
+    {
+      "source": "issue",
+      "reference": "https://github.com/ssaattww/RevMem/issues/154",
+      "summary": "GitHub.com の本人のファイル確認状態を読み取り、ローカル確認状態と区別して表示する。"
+    },
+    {
+      "source": "repository_instruction",
+      "reference": "tasks/phases-status.md",
+      "summary": "挙動実装は失敗するテストを先に追加し、実装後に検証する。今回は管理差分のため既存証拠を再利用する。"
+    }
+  ],
+  "development_policy": {
+    "method": "挙動実装は失敗するテストを先に追加する。",
+    "testing_order": "実装後に検証する。今回は管理差分のため既存証拠を再利用する。",
+    "governing_source": "tasks/phases-status.md（計画の前提：実装方法）"
+  },
+  "validation_plan": {
+    "commands": [
+      "npm run test:unit",
+      "npm run compile:test"
+    ],
+    "required_failure_diagnostics": [
+      "対象版、実行番号、失敗ジョブ・ステップ、取得可能なログを保存する。"
+    ]
+  },
+  "blocked": [],
+  "authorized_actions": [
+    "read_repository"
+  ],
+  "write_boundary": {
+    "allowed": [
+      {
+        "path_or_operation": "正本と候補の読み取り",
+        "reason": "通常レビューの範囲"
+      }
+    ],
+    "forbidden": [
+      {
+        "path_or_operation": "次担当への権限引継ぎ、実環境変更、独立報告、マージ",
+        "reason": "この引継ぎの対象外"
+      }
+    ]
+  },
+  "scope": [
+    "GitHub.com の本人のファイル確認状態を読み取り、ローカル確認状態と区別して表示する。"
+  ],
+  "non_goals": [
+    "親 #93 の書き込み段階",
+    "実アカウント・実機操作",
+    "独立最終レビュー、マージ"
+  ],
+  "files": {
+    "changed": [
+      {
+        "path": "doc/design/issue-93-github-viewed-sync.md",
+        "purpose": "設計"
+      },
+      {
+        "path": "package.json",
+        "purpose": "検証の登録"
+      },
+      {
+        "path": "src/adapters/github/fetch-github-pull-request-viewed-adapter.ts",
+        "purpose": "読み取り専用表示の実装"
+      },
+      {
+        "path": "src/adapters/github/fetch-github-pull-request-viewed-identity-adapter.ts",
+        "purpose": "読み取り専用表示の実装"
+      },
+      {
+        "path": "src/adapters/github/github-viewed-allowlist.ts",
+        "purpose": "読み取り専用表示の実装"
+      },
+      {
+        "path": "src/adapters/github/vscode-github-authentication-provider.ts",
+        "purpose": "読み取り専用表示の実装"
+      },
+      {
+        "path": "src/application/github-pr-context/github-viewed-contracts.ts",
+        "purpose": "読み取り専用表示の実装"
+      },
+      {
+        "path": "src/composition/extension.ts",
+        "purpose": "読み取り専用表示の実装"
+      },
+      {
+        "path": "src/composition/pull-request/github-viewed-display-controller.ts",
+        "purpose": "読み取り専用表示の実装"
+      },
+      {
+        "path": "src/composition/pull-request/pull-request-review-runtime.ts",
+        "purpose": "読み取り専用表示の実装"
+      },
+      {
+        "path": "src/composition/review-contexts/review-contexts-runtime.ts",
+        "purpose": "読み取り専用表示の実装"
+      },
+      {
+        "path": "src/document-review-edit-runtime.ts",
+        "purpose": "読み取り専用表示の実装"
+      },
+      {
+        "path": "src/extension.ts",
+        "purpose": "読み取り専用表示の実装"
+      },
+      {
+        "path": "src/ui/normal-editor/review-command-registration.ts",
+        "purpose": "読み取り専用表示の実装"
+      },
+      {
+        "path": "src/ui/pr-progress/github-viewed-candidate-projection.ts",
+        "purpose": "読み取り専用表示の実装"
+      },
+      {
+        "path": "src/ui/pr-progress/pull-request-progress-tree-data-provider.ts",
+        "purpose": "読み取り専用表示の実装"
+      },
+      {
+        "path": "src/ui/pr-progress/vscode-pull-request-progress-tree.ts",
+        "purpose": "読み取り専用表示の実装"
+      },
+      {
+        "path": "test/integration/mock-github.test.ts",
+        "purpose": "検証と回帰"
+      },
+      {
+        "path": "test/integration/t506-selected-pr-live-edit.integration.test.ts",
+        "purpose": "検証と回帰"
+      },
+      {
+        "path": "test/unit/fetch-github-pull-request-viewed-adapter.test.ts",
+        "purpose": "検証と回帰"
+      },
+      {
+        "path": "test/unit/fetch-github-pull-request-viewed-identity-adapter.test.ts",
+        "purpose": "検証と回帰"
+      },
+      {
+        "path": "test/unit/github-viewed-allowlist.test.ts",
+        "purpose": "検証と回帰"
+      },
+      {
+        "path": "test/unit/github-viewed-candidate-projection.test.ts",
+        "purpose": "検証と回帰"
+      },
+      {
+        "path": "test/unit/github-viewed-display-controller.test.ts",
+        "purpose": "検証と回帰"
+      },
+      {
+        "path": "test/unit/normal-editor-review-command-registration.test.ts",
+        "purpose": "検証と回帰"
+      },
+      {
+        "path": "test/unit/pull-request-progress-tree.test.ts",
+        "purpose": "検証と回帰"
+      },
+      {
+        "path": "test/unit/t609-gate-wiring.test.ts",
+        "purpose": "検証と回帰"
+      },
+      {
+        "path": "test/unit/vscode-github-authentication-provider.test.ts",
+        "purpose": "検証と回帰"
+      }
+    ],
+    "inspected": [
+      {
+        "path": "AGENTS.md",
+        "purpose": "検証方針"
+      },
+      {
+        "path": "tasks/phases-status.md",
+        "purpose": "テスト先行の開発方針"
+      }
+    ],
+    "intentionally_untouched": [
+      {
+        "path_or_area": "無関係な既存成果物、検証設定",
+        "reason": "対象外"
+      }
+    ]
+  },
+  "commands": [
+    {
+      "command": "npm run test:unit",
+      "purpose": "リポジトリ既定の検証",
+      "exit_code": "unknown",
+      "result": "passed",
+      "head_sha": "unknown",
+      "evidence": "公開前の隔離候補で実行。公開版の直接実行とは分ける。正本28/28 blob一致は通常担当が確認。",
+      "execution_environment": null,
+      "source_fingerprint": "28/28 reviewed blobs match GitHub"
+    },
+    {
+      "command": "npm run compile:test",
+      "purpose": "リポジトリ既定の検証",
+      "exit_code": "unknown",
+      "result": "passed",
+      "head_sha": "unknown",
+      "evidence": "公開前の隔離候補で実行。公開版の直接実行とは分ける。正本28/28 blob一致は通常担当が確認。",
+      "execution_environment": null,
+      "source_fingerprint": "28/28 reviewed blobs match GitHub"
+    }
+  ],
+  "tests": [
+    {
+      "name": "焦点試験",
+      "phase": "verification",
+      "result": "passed",
+      "head_sha": "unknown",
+      "evidence": "公開前の候補の証拠。同一通常担当65/65、実装側101/101。"
+    },
+    {
+      "name": "後続CI差分",
+      "phase": "verification",
+      "result": "passed",
+      "head_sha": "unknown",
+      "evidence": "公開前の候補の証拠。対象1/1、全unit1068/1068。"
+    }
+  ],
+  "ci": {
+    "required": true,
+    "workflow": "CI",
+    "run_id": 46075453598,
+    "head_sha": "4f0726181e540da33b69131bbe700ebbafeb4eba",
+    "conclusion": "success",
+    "artifacts": [
+      {
+        "id": 15234813361,
+        "name": "review-range-user-validation-0.1.65-pre+4f07261",
+        "purpose": "Extension Host検証に伴う配布物"
+      }
+    ]
+  },
+  "implementation": {
+    "outcome": "completed",
+    "final_head": "4f0726181e540da33b69131bbe700ebbafeb4eba",
+    "commits": [
+      {
+        "sha": "4f0726181e540da33b69131bbe700ebbafeb4eba",
+        "purpose": "通常レビューの対象技術版"
+      }
+    ],
+    "addressed_findings": [
+      {
+        "id": "I93-NR-001",
+        "reviewed_head": "4f0726181e540da33b69131bbe700ebbafeb4eba",
+        "disposition": "addressed",
+        "evidence": "本人ID・loginを照合し、未紐付けは表示専用。"
+      },
+      {
+        "id": "I93-NR-002",
+        "reviewed_head": "4f0726181e540da33b69131bbe700ebbafeb4eba",
+        "disposition": "addressed",
+        "evidence": "GitHub.com以外は認証取得前に拒否。"
+      },
+      {
+        "id": "I93-NR-003",
+        "reviewed_head": "4f0726181e540da33b69131bbe700ebbafeb4eba",
+        "disposition": "addressed",
+        "evidence": "対象の認証・通信・取得失敗は取得不可。"
+      },
+      {
+        "id": "I93-NR-004",
+        "reviewed_head": "4f0726181e540da33b69131bbe700ebbafeb4eba",
+        "disposition": "addressed",
+        "evidence": "状態変更と非同期保存を同じ失効ガードで処理。"
+      },
+      {
+        "id": "I93-NR-005",
+        "reviewed_head": "4f0726181e540da33b69131bbe700ebbafeb4eba",
+        "disposition": "addressed",
+        "evidence": "ローカルとGitHubの両ファイル一覧を全件照合。不一致なら表示しない。"
+      },
+      {
+        "id": "I93-NR-006",
+        "reviewed_head": "4f0726181e540da33b69131bbe700ebbafeb4eba",
+        "disposition": "addressed",
+        "evidence": "認証、コントローラ、通常コマンド、文書編集を通常テストに追加。"
+      }
+    ],
+    "failure_diagnostics": [],
+    "blocked_items": [],
+    "summary": [
+      "GitHub.com の本人のファイル確認状態を読み取り、ローカル確認状態と区別して表示する。"
+    ]
+  },
+  "review": {
+    "mode": "fix_verification",
+    "reviewed_head": "4f0726181e540da33b69131bbe700ebbafeb4eba",
+    "reviewer": {
+      "identity": "PR #151 通常レビュー担当（初回・修正確認同一）",
+      "role": "normal_reviewer",
+      "continuity": {
+        "previous_reviewer_identity": "PR #151 通常レビュー担当（初回・修正確認同一）",
+        "changed": false,
+        "reason": null
+      },
+      "independence": {
+        "implemented_change": false,
+        "implemented_review_fix": false,
+        "served_as_normal_reviewer": true,
+        "inherited_conversation": false,
+        "evidence": [
+          "同一通常担当が初回と修正確認を実施。"
+        ]
+      }
+    },
+    "verdict": "pass_with_held",
+    "required_coverage": [
+      {
+        "criterion": "requirement and design conformance",
+        "disposition": "checked_no_finding",
+        "evidence": "#154 の読み取りのみ。親#93の書き込みは設計の後続。"
+      },
+      {
+        "criterion": "correctness and edge cases",
+        "disposition": "checked_no_finding",
+        "evidence": "本人・差分の照合、選択の世代、取得失敗、一覧の不一致を通常レビューで確認。"
+      },
+      {
+        "criterion": "scope discipline and unrelated changes",
+        "disposition": "checked_no_finding",
+        "evidence": "通常25ファイルと CI 差分3ファイルの blob を照合。範囲外の追記なし。"
+      },
+      {
+        "criterion": "changed files and direct dependency impact",
+        "disposition": "checked_no_finding",
+        "evidence": "公開技術版の全28ファイル一致、認証・選択・保存の直接依存を通常確認。"
+      },
+      {
+        "criterion": "API, data, configuration, workflow, and compatibility effects",
+        "disposition": "checked_no_finding",
+        "evidence": "設定は既定無効。GitHub.com の既存認証を読み取りだけで利用。CI設定は未変更。"
+      },
+      {
+        "criterion": "error handling and failure diagnostics",
+        "disposition": "checked_no_finding",
+        "evidence": "対象条件に当てはまる取得失敗は取得不可。古い結果は失効。"
+      },
+      {
+        "criterion": "security and secret handling where applicable",
+        "disposition": "checked_no_finding",
+        "evidence": "認証取得前に対象外ホストを拒否。秘密の表示・転送とGitHub書き込みなし。"
+      },
+      {
+        "criterion": "tests and validation adequacy",
+        "disposition": "checked_no_finding",
+        "evidence": "焦点65/65、101/101、1068/1068と各対象根拠を通常報告に分けた。"
+      },
+      {
+        "criterion": "current-HEAD CI evidence",
+        "disposition": "checked_no_finding",
+        "evidence": "技術版の run 46075453598 success、管理版のCIは未実施。"
+      },
+      {
+        "criterion": "report, tracking, and documentation accuracy",
+        "disposition": "checked_no_finding",
+        "evidence": "同一版の通常報告・引継ぎと進捗。独立最終レビューや本人確認済みとは扱わない。"
+      },
+      {
+        "criterion": "regression and maintainability risks",
+        "disposition": "held",
+        "evidence": "模擬統合・拡張ホストは成功。本人の実アカウントと画面は未検証。"
+      }
+    ],
+    "independent_closure": {
+      "initial_independent_reviewed_head": null,
+      "closure_reviewed_heads": [],
+      "reviewer_continuity": null,
+      "closure_scope": [],
+      "completeness_matrix": []
+    },
+    "validation_assessment": [
+      {
+        "item": "焦点試験",
+        "result": "supported",
+        "evidence": "隔離候補での結果。同一通常担当65/65、実装側101/101。"
+      },
+      {
+        "item": "後続CI差分",
+        "result": "supported",
+        "evidence": "隔離候補での結果。対象1/1、全unit1068/1068。"
+      },
+      {
+        "item": "GitHub Actions 確定版",
+        "result": "supported",
+        "evidence": "正式技術版 4f0726181e540da33b69131bbe700ebbafeb4eba の run 46075453598 success。管理候補はまだ未検証。"
+      }
+    ],
+    "reserved_report_paths": [],
+    "report_attestation": {
+      "allowed": "not_applicable",
+      "reviewed_implementation_head": null,
+      "allowed_paths": [],
+      "required_first_parent": null,
+      "maximum_commits_after_reviewed_head": null,
+      "forbidden_path_classes": [],
+      "no_later_commits_required": "not_applicable",
+      "validation_status": "not_applicable",
+      "validation_evidence": []
+    },
+    "summary": [
+      "現在の必須指摘は0件。正式独立レビューは未実施。"
+    ]
+  },
+  "report": {
+    "report_type": "consolidated_report",
+    "outcome": "rendered",
+    "persistence_mode": "repository_file",
+    "paths": [
+      "reports/issue-154-pr151-normal-consolidated-20261127.md"
+    ],
+    "reviewed_head": "4f0726181e540da33b69131bbe700ebbafeb4eba",
+    "attestation_head": null,
+    "pr_comments": [],
+    "summary": [
+      "通常レビューと指摘解消の記録。"
+    ]
+  },
+  "findings": [],
+  "held": [
+    {
+      "item": "本人の実アカウント・画面",
+      "reason": "非公開の本人条件で未実施、正式CIの模擬試験と区別。",
+      "owner": "利用者環境の検証担当",
+      "remaining_risk": "実サービスおよび実利用端末の挙動は未確認。",
+      "verdict_impact": "通常レビューの範囲外。独立レビューに明示する。"
+    }
+  ],
+  "unexplored": [],
+  "unknown": [
+    {
+      "field_or_fact": "マシン名と環境固有の作業場所",
+      "reason": "次担当の環境と同一とみなさない。"
+    },
+    {
+      "field_or_fact": "work-context-manager の当時の完全な原文",
+      "reason": "独立した原文として保持されていない。正本確認済み項目を再照合として保存し、原文を捏造しない。"
+    }
+  ],
+  "not_applicable": [
+    {
+      "field_or_area": "正式独立レビューと報告確定",
+      "reason": "通常レビューの引継ぎ段階。"
+    }
+  ],
+  "remaining_risks": [
+    "管理差分確認と候補版の検証、正式独立レビューが残る。",
+    "実サービスおよび実利用端末の挙動は未確認。"
+  ],
+  "source_payloads": [
+    {
+      "source_skill": "review-worker",
+      "output_contract_version": "unknown",
+      "content_type": "text/markdown",
+      "payload": "# RevMem #93 — 最終修正確認\n\n**判定：`pass_with_held`（必須指摘なし・保留あり）**\n\n| 指摘ID | 判定 | 根拠 |\n|---|---|---|\n| I93-NR-004 | **解消** | 通常エディタの操作開始時の選択にかかわらず、保存完了・失敗まで失効ガードを維持 |\n| I93-NR-006 | **解消** | ワークスペースからPRへの非同期切替を模擬し、保存前の取得禁止と古い世代の結果破棄を検証 |\n\n### 検証結果\n\n- 指定SHA-256一覧および候補25ファイル：全件一致。\n- 前回候補からの変更：実装1ファイル、テスト1ファイルのみ。\n- 焦点10スイート再実行：**65/65成功**。\n- TypeScript `--noEmit`：成功。\n- 前回解消済み4件：解消状態を維持。\n\n### 結論\n\n**通常レビューの必須指摘残数：0件（全6件解消）。新規必須指摘：0件。**\n\nPhase 1の通常レビューは完了です。正式コミット後のCI、実アカウント・実画面検証は引き続き保留とします。\n\n今回はGitHub書き込み、実機操作、手動CI、公開を行っていません。親Issue #93は閉じず、Phase 2への拡張も不要です。"
+    },
+    {
+      "source_skill": "review-worker",
+      "output_contract_version": "unknown",
+      "content_type": "text/markdown",
+      "payload": "## 修正確認：`pass`\n\n**必須指摘：0件。**\n\n公開コミット `5087cd68ab2aa210e83d7a4bc20509a416c71bf0` と候補を照合し、変更が `test/integration/mock-github.test.ts` の467行目だけであることを確認しました。\n\n```diff\n- createIfNone: boolean\n+ createIfNone: boolean | undefined\n```\n\n- 候補のSHA-256は指定値と一致。\n- 認証インターフェースのオプショナル型と整合。\n- 既存の `createIfNone: false` のassertionは維持。\n- 本番実装、停止条件、テスト合否判定の弱体化なし。\n\n**修正は妥当です。** 正式コミット後の自動CI結果のみ未確認です。書き込み、手動CI、実機操作は行っていません。"
+    },
+    {
+      "source_skill": "review-worker",
+      "output_contract_version": "unknown",
+      "content_type": "text/markdown",
+      "payload": "## 通常レビュー：`pass`\n\n**必須指摘：0件。テスト条件の弱体化はありません。**\n\n正式ベース `9dc42619532f5dfa99bc5b430fe3cded4b12da88` と指定候補2ファイルを照合しました。\n\n| 確認項目 | 判定 |\n|---|---|\n| 2ファイルのSHA-256 | 一致 |\n| 公開4コマンドの個別登録 | 各1回を検証 |\n| 共通通知 | 適用時に1回、ガード終了後 |\n| no-op・保存失敗時 | 通知なし |\n| 装飾更新の遅延 | Testモード限定 |\n| 関連製品コード | 公開ベースと一致 |\n\n旧式の通知4箇所という構造条件を、現行の共通通知構造と実際の動作検証に置き換えており、妥当な修正です。\n\n焦点テストは指定どおり1件のみ再実行し、**1/1成功**しました。全1068件の成功は実装側の検証結果として受領しています。\n\n正式コミット後の自動CIを残すのみです。GitHub変更、手動CI、実機操作は行っていません。"
+    },
+    {
+      "source_skill": "report-writer",
+      "output_contract_version": "unknown",
+      "content_type": "text/markdown",
+      "payload": "# Issue #154 / PR #151 — 通常レビュー・検証統合記録\n\n### 対象\n\n- 子Issue：[ #154 — GitHub Viewedの読み取りとPR進捗表示](https://github.com/ssaattww/RevMem/issues/154)\n- 親Issue：#93（第2段階の書き込み対応は対象外、Openを維持）\n- [Draft PR #151](https://github.com/ssaattww/RevMem/pull/151)\n- Branch：`task/issue-93-github-viewed-sync-design`\n- Base：`main` / `1a25b982ae42490e9cb609108ac0372dad82d333`\n- `technical_head`: `4f0726181e540da33b69131bbe700ebbafeb4eba`\n- `administrative_parent`: `4f0726181e540da33b69131bbe700ebbafeb4eba`\n- 記録状態：`commit_pending`\n- 通常レビュー判定：`pass_with_held`\n\n### 実装範囲\n\nGitHub.com の本人Viewed状態を読み取り、ローカル確認状態と区別して表示する。既定OFF、本人・PR・差分・ファイル識別、完全取得および古い結果の失効を必須とする。GitHubへの更新、Approve、レビュー送信、コメント、Unview、マージは対象外。\n\n設計根拠：`doc/design/issue-93-github-viewed-sync.md`。設計レビューの必須6件は解消済み。\n\n### 通常レビューと指摘解消\n\nR01–R06は、既存の `I93-NR-001`〜`I93-NR-006` に対応する。重大度は変更しない。\n\n| ID | 重大度 | 指摘と解消根拠 |\n|---|---|---|\n| R01 | High | 固定viewer IDとloginの照合を追加。未紐付けのローカル状態は表示専用とし、同期適格性をfalseに固定。 |\n| R02 | High | GitHub.com以外を認証取得前に拒否。Enterpriseの発行元不確定リスクを対象範囲の限定によって解消。 |\n| R03 | Medium | 有効対象の認証・通信・取得失敗を「取得不可」と表示。既存の期限とAbortSignalを使用。 |\n| R04 | Medium | 選択、設定、認証、ローカル確認操作の変更時に同じ表示コントローラで失効。通常エディタの非同期保存先確定前の選択変更にも対応。 |\n| R05 | Medium | ローカルとGitHubの変更ファイル一覧全体を照合し、不一致・識別不能時の部分表示を禁止。 |\n| R06 | Medium | 認証、コントローラ、通常コマンド、文書編集の試験を通常テストへ登録。成功・保存失敗・非同期選択変更の回帰を確認。 |\n\n同一通常レビュアーにより全6件解消、新規必須0件を確認した。最終通常レビュー対象25ファイルのハッシュ照合に加え、CI対応3ファイルを含む公開HEADの28ファイルすべてでGit blobの一致を確認した。\n\n### 後続CI対応（R01–R06と区別）\n\n| 対象HEAD | 自動CI | 対応・結果 |\n|---|---|---|\n| `5087cd68ab2aa210e83d7a4bc20509a416c71bf0` | [46074215175](https://github.com/ssaattww/RevMem/actions/runs/46074215175) | `mock-github.test.ts` のオプショナル型不整合で失敗。 |\n| `9dc42619532f5dfa99bc5b430fe3cded4b12da88` | [46074895778](https://github.com/ssaattww/RevMem/actions/runs/46074895778) | 認証モックの型を修正。既存assertionを維持。次にT609の旧通知構造契約で失敗。 |\n| `4f0726181e540da33b69131bbe700ebbafeb4eba` | [46075453598](https://github.com/ssaattww/RevMem/actions/runs/46075453598) | T609構造契約と公開4コマンドの通知動作試験を修正。 |\n\nCI対応はテスト3ファイルのみ。製品コード・合否条件の弱体化はない。同一通常レビュアーによる両差分の必須指摘は0件。\n\n### 検証\n\n- 最終通常レビュー時の独立した焦点再実行：65/65成功、TypeScript `--noEmit` 成功。\n- 実装側の報告：焦点101/101、型・層・静的検査成功。後続CI修正後の`test:unit` 1068/1068成功。\n- CI差分の焦点再実行：1/1成功。\n- 挙動変更のRed→Greenは報告された個別回帰を確認済み。初回実装全体のRed時系列証拠は本記録では独立確認していない。\n- 正式HEADと一致するPR自動CI #5137（run `46075453598`）：**completed / success**。\n- [build-and-lint job](https://github.com/ssaattww/RevMem/actions/runs/46075453598/job/140762013222)：成功39ステップ、失敗時診断2ステップskip。build、typecheck、architecture正負、lint、unit、T609、GitHub模擬統合、Extension Host、VSIX生成・検証成功。\n- CI成果物：`review-range-user-validation-0.1.65-pre+4f07261`（artifact ID `15234813361`、同HEAD）。\n\n### 残件と境界\n\n実アカウントでの認証・取得、利用者実画面での操作は未検証。CIのExtension Host試験を実機検証とは扱わない。\n\n本記録は通常レビューの閉鎖記録であり、独立最終レビュー・凍結・attestationではない。子Issue #154、Draft PR #151を維持し、親Issue #93の書き込み段階には進まない。\n"
+    }
+  ],
+  "extensions": [
+    {
+      "namespace": "normal_review.closed_findings",
+      "payload": [
+        {
+          "id": "I93-NR-001",
+          "severity": "high",
+          "origin": "introduced_by_change",
+          "description": "本人とローカル状態の照合",
+          "location": "通常工程統合記録の対応行",
+          "impact": "本人とローカル状態の照合",
+          "required_action": "本人ID・loginを照合し、未紐付けは表示専用。",
+          "closure": "本人ID・loginを照合し、未紐付けは表示専用。"
+        },
+        {
+          "id": "I93-NR-002",
+          "severity": "high",
+          "origin": "introduced_by_change",
+          "description": "認証先の制限",
+          "location": "通常工程統合記録の対応行",
+          "impact": "認証先の制限",
+          "required_action": "GitHub.com以外は認証取得前に拒否。",
+          "closure": "GitHub.com以外は認証取得前に拒否。"
+        },
+        {
+          "id": "I93-NR-003",
+          "severity": "medium",
+          "origin": "introduced_by_change",
+          "description": "未取得の可視化",
+          "location": "通常工程統合記録の対応行",
+          "impact": "未取得の可視化",
+          "required_action": "対象の認証・通信・取得失敗は取得不可。",
+          "closure": "対象の認証・通信・取得失敗は取得不可。"
+        },
+        {
+          "id": "I93-NR-004",
+          "severity": "medium",
+          "origin": "introduced_by_change",
+          "description": "古い結果の失効",
+          "location": "通常工程統合記録の対応行",
+          "impact": "古い結果の失効",
+          "required_action": "状態変更と非同期保存を同じ失効ガードで処理。",
+          "closure": "状態変更と非同期保存を同じ失効ガードで処理。"
+        },
+        {
+          "id": "I93-NR-005",
+          "severity": "medium",
+          "origin": "introduced_by_change",
+          "description": "一覧の完全性",
+          "location": "通常工程統合記録の対応行",
+          "impact": "一覧の完全性",
+          "required_action": "ローカルとGitHubの両ファイル一覧を全件照合。不一致なら表示しない。",
+          "closure": "ローカルとGitHubの両ファイル一覧を全件照合。不一致なら表示しない。"
+        },
+        {
+          "id": "I93-NR-006",
+          "severity": "medium",
+          "origin": "introduced_by_change",
+          "description": "回帰の検証経路",
+          "location": "通常工程統合記録の対応行",
+          "impact": "回帰の検証経路",
+          "required_action": "認証、コントローラ、通常コマンド、文書編集を通常テストに追加。",
+          "closure": "認証、コントローラ、通常コマンド、文書編集を通常テストに追加。"
+        }
+      ]
+    },
+    {
+      "namespace": "work_context.evidence_snapshot",
+      "payload": {
+        "provenance": "同期時点の読み戻し。元の原文ではない。",
+        "issue": 154,
+        "parentIssue": 93,
+        "pr": 151,
+        "head": "4f0726181e540da33b69131bbe700ebbafeb4eba",
+        "closingIssues": [
+          154
+        ],
+        "tree": "14f593bfcb9a2fa952cbaa397e56c33487c9184a",
+        "changedBlobsMatched": 28
+      }
+    }
+  ],
+  "next_action": {
+    "type": "external_owner",
+    "target_skill": "development-orchestrator",
+    "mode": "pre_freeze_readiness",
+    "summary": "管理差分を確認し、正式な独立最終レビューに備える。",
+    "instructions": [
+      "通常の指摘解消と技術版の検証を再利用する。",
+      "管理記録の版に対する検証は技術版と区別する。",
+      "管理候補を確定して候補版の所定検証が終わってから、review-enforcer が独立報告を予約し、その版を凍結する。別担当が正式な独立レビューを行う。"
+    ],
+    "required_attachments_or_references": [
+      "reports/issue-154-pr151-normal-consolidated-20261127.md"
+    ],
+    "requested_authorized_actions": [
+      "read_repository"
+    ]
+  },
+  "transport": {
+    "method": "repository_file",
+    "packet_path": "handoffs/issue-154-pr151-normal-review-closure-20261127.yaml",
+    "packet_url": null,
+    "transport_note": "通常レビューの原文を保持。実行権限は引き継がない。"
+  }
+}

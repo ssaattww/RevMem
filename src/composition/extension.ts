@@ -1,3 +1,4 @@
+import { beginGitHubViewedCommand, GitHubViewedDisplayController, publishGitHubViewedSelection } from "./pull-request/github-viewed-display-controller";
 import path from "node:path";
 import * as vscode from "vscode";
 
@@ -188,7 +189,42 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     readonly followCurrentContextSelection?: boolean;
   } | undefined;
   const pullRequestReviewRuntimeRef: { current?: PullRequestReviewRuntime<vscode.Uri> } = {};
+  const viewedDisplay = new GitHubViewedDisplayController(() =>
+    pullRequestReviewRuntimeRef.current?.progress.clearGitHubViewedCandidates()
+  );
+  const readViewedGrants = (): readonly unknown[] => {
+    const stored = vscode.workspace.getConfiguration("reviewRange")
+      .inspect<readonly unknown[]>("githubViewed.allowlist")?.globalValue;
+    return Array.isArray(stored) ? stored : [];
+  };
+  const matchesViewedSelection = (selection: Extract<SelectedReviewContext, { kind: "pull-request" }>): boolean =>
+    selectedContext?.kind === "pull-request" &&
+    selectedContext.contextId === selection.contextId &&
+    selectedContext.repositoryId === selection.repositoryId &&
+    selectedContext.repositoryRoot === selection.repositoryRoot &&
+    selectedContext.pullRequestNumber === selection.pullRequestNumber &&
+    selectedContext.headRevision === selection.headRevision;
+  const invalidateGitHubViewed = (): number => viewedDisplay.invalidate();
+  const beginViewedMutation = (): (() => void) => {
+    const end = viewedDisplay.beginLocalChange();
+    if (readViewedGrants().length > 0) runtimePort.refreshPullRequestProgressTree();
+    return end;
+  };
+  const beginSelectedViewedMutation = (selection: SelectedReviewContext | undefined): (() => void) | undefined =>
+    selection?.kind === "pull-request" && matchesViewedSelection(selection) ? beginViewedMutation() : undefined;
+  // The normal editor resolves its persistence owner asynchronously. A PR can
+  // become selected after the command starts, so hold the guard across that gap.
+  const refreshViewedAfterSettledMutation = (): void => {
+    if (selectedContext?.kind === "pull-request" && readViewedGrants().length > 0) {
+      refreshPullRequestProgress();
+    }
+  };
+  runtimePort.setViewedReviewMutationGuard?.(beginViewedMutation, refreshViewedAfterSettledMutation);
   const acceptSelectedContext = (next: SelectedReviewContext | undefined): void => {
+    if (selectedContext !== next) {
+      invalidateGitHubViewed();
+      runtimePort.refreshPullRequestProgressTree();
+    }
     selectedContext = next;
     runtimePort.setSelectedContext(next);
     runtimePort.setCurrentPullRequestDiff(
@@ -207,7 +243,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       storageUri: context.storageUri
     },
     gitInspector: git,
-    stableHash
+    stableHash,
+    beginReviewMutation: beginSelectedViewedMutation,
+    onReviewMutationUnchanged: refreshViewedAfterSettledMutation,
   });
   activeDocumentReviewEditRuntime = documentEditRuntime;
   const toEditSnapshot = (document: vscode.TextDocument): DocumentReviewEditSnapshot => {
@@ -598,9 +636,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     getDiffSelectionMode: () => readPrDiffSelectionMode(
       vscode.workspace.getConfiguration("reviewRange")
     ),
-    reportDerivedProjectionError: reportPullRequestProgressError
+    reportDerivedProjectionError: reportPullRequestProgressError,
+    // The diff document owns the write even while a different context is selected.
+    beginGitHubViewedLocalChange: () => beginGitHubViewedCommand(beginViewedMutation, refreshViewedAfterSettledMutation),
   } as PullRequestReviewRuntimeOptions<vscode.Uri> & {
     readonly reportDerivedProjectionError: (error: unknown) => void | Promise<void>;
+    readonly beginGitHubViewedLocalChange: () => (outcome: "settled" | "failed") => void;
   });
   const refreshPullRequestProgressForSelection = async (feedbackContext?: OperationFeedbackContext, owner?: CurrentContextRefreshContext, selection: SelectedReviewContext | undefined = selectedContext): Promise<void> => {
     // Existing immutable-PR fixtures stay pinned. Checkout fixtures explicitly
@@ -613,6 +654,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       pullRequestReviewRuntime.hasContext(selection.contextId)
       ? selection.contextId
       : undefined);
+    const generation = invalidateGitHubViewed();
     await refreshSelectedPullRequestProgress({
       contextId,
       shouldContinue: () => owner?.isCurrent() ?? true,
@@ -624,6 +666,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       setSource: (source) => runtimePort.setPullRequestProgressSource(source),
       refreshTree: () => runtimePort.refreshPullRequestProgressTree()
     });
+    const grants = readViewedGrants();
+    if (selection?.kind !== "pull-request" || contextId !== selection.contextId ||
+        testContextId !== undefined || owner?.isCurrent() === false ||
+        !matchesViewedSelection(selection)) return;
+    const snapshot = pullRequestReviewRuntime.snapshotForContext(contextId);
+    const contexts = reviewContextsRuntimeRef.current;
+    if (!snapshot || !contexts?.readGitHubViewedForSelection || snapshot.headSha !== selection.headRevision) return;
+    const read = contexts.readGitHubViewedForSelection;
+    const grantKey = JSON.stringify(grants);
+    const isSourceCurrent = (): boolean => matchesViewedSelection(selection) &&
+      owner?.isCurrent() !== false && JSON.stringify(readViewedGrants()) === grantKey &&
+      pullRequestReviewRuntime.snapshotForContext(contextId) === snapshot;
+    void viewedDisplay.read({
+      epoch: generation,
+      enabled: grants.length > 0,
+      isSourceCurrent,
+      run: ({ isCurrent, signal }) => read({
+        repositoryId: selection.repositoryId, contextId, number: selection.pullRequestNumber,
+        headSha: snapshot.headSha, baseSha: snapshot.baseSha, originalDiffId: snapshot.originalDiffId,
+        configured: grants, generation, isCurrent, signal,
+      }),
+      publish: (result, current) => {
+        if (publishGitHubViewedSelection({
+          result, current, progress: pullRequestReviewRuntime.progress, contextId, number: selection.pullRequestNumber,
+          headSha: snapshot.headSha, baseSha: snapshot.baseSha, originalDiffId: snapshot.originalDiffId,
+          generation, fileCount: snapshot.files.length,
+        })) runtimePort.refreshPullRequestProgressTree();
+      },
+    }).catch(() => { /* The optional read never changes existing local review state. */ });
   };
   const initializePullRequestReviewRuntimeForTest = async (
     input: PullRequestReviewRuntimeTestFixture
@@ -886,6 +957,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   const refreshPullRequestProgress = (): void => {
     void refreshPullRequestProgressForSelection().catch(reportPullRequestProgressError);
   };
+  const resetViewedProjection = (): void => {
+    invalidateGitHubViewed();
+    runtimePort.refreshPullRequestProgressTree();
+    if (readViewedGrants().length > 0) refreshPullRequestProgress();
+  };
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("reviewRange.githubViewed.allowlist")) resetViewedProjection();
+    }),
+    vscode.authentication.onDidChangeSessions(({ provider }) => {
+      if (provider.id === "github" || provider.id === "github-enterprise") resetViewedProjection();
+    }),
+    { dispose: invalidateGitHubViewed },
+  );
   const documentChangeRefresh = new GlobalUnderstandingRefreshCoalescer({
     invalidate: () => globalRuntime.invalidate(),
     schedule: (callback, delayMs) => setTimeout(callback, delayMs),

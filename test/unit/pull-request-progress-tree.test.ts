@@ -1,3 +1,7 @@
+import { createGitHubViewedSelectionReader } from "../../src/composition/review-contexts/github-viewed-selection-reader";
+import { GitHubViewedDisplayController, publishGitHubViewedSelection } from "../../src/composition/pull-request/github-viewed-display-controller";
+import { VsCodeGitHubAuthenticationProvider } from "../../src/adapters/github/vscode-github-authentication-provider";
+import type { ReviewStateCommit } from "../../src/adapters/state-repository/index";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -570,3 +574,152 @@ test("rejects inconsistent snapshot and progress records before rendering", () =
     /originalDiffId|snapshot/i
   );
 });
+
+test("keeps GitHub Viewed separate and hides candidates when the captured selection is stale", () => {
+  const provider = new PullRequestProgressTreeDataProvider({
+    openDiff: async () => undefined,
+    openFile: async () => undefined
+  });
+  const completed = progressFile("done", "src/done.ts", {
+    reviewedLineCount: 3,
+    totalLineCount: 3,
+    progress: 1
+  });
+  provider.replaceSnapshot(snapshot([completed]));
+  const completedCategory = categories(provider).find(({ category }) => category === "completed")!;
+  const node = files(provider, completedCategory)[0]!;
+
+  assert.equal(provider.getGitHubViewedState(node), undefined);
+  assert.equal(provider.replaceGitHubViewedCandidates([{
+    fileId: "done",
+    path: "src/done.ts",
+    localCategory: "completed",
+    viewedState: "UNVIEWED", synchronizationEligible: false
+  }], () => true), true);
+  assert.equal(provider.getGitHubViewedState(node), "UNVIEWED");
+  assert.equal(provider.getEffectiveProgress().files[0]?.category, "completed");
+  assert.equal(provider.getEffectiveProgress().files[0]?.reviewedLineCount, 3);
+
+  assert.equal(provider.getGitHubViewedState(node), "UNVIEWED");
+  assert.equal(provider.replaceGitHubViewedCandidates([{
+    fileId: "done",
+    path: "src/done.ts",
+    localCategory: "completed",
+    viewedState: "VIEWED", synchronizationEligible: false
+  }], () => false), false);
+  assert.equal(provider.getGitHubViewedState(node), "UNVIEWED");
+  provider.replaceSnapshot(snapshot([completed]));
+  assert.equal(provider.getGitHubViewedState(node), undefined);
+
+  provider.clear();
+  assert.equal(provider.getGitHubViewedState(node), undefined);
+});
+
+test("current Viewed failure is labeled unavailable without altering local progress", () => {
+  const provider = new PullRequestProgressTreeDataProvider({
+    openDiff: async () => undefined, openFile: async () => undefined
+  });
+  provider.replaceSnapshot(snapshot([progressFile("file", "src/file.ts", {
+    reviewedLineCount: 3, totalLineCount: 3, progress: 1
+  })]));
+  const node = files(provider, categories(provider).find(({ category }) => category === "completed")!)[0]!;
+  let current = true;
+  assert.equal(provider.showGitHubViewedUnavailable(() => current), true);
+  assert.equal(provider.getGitHubViewedState(node), "unavailable");
+  assert.equal(provider.getEffectiveProgress().files[0]?.reviewedLineCount, 3);
+  current = false;
+  assert.equal(provider.getGitHubViewedState(node), undefined);
+  assert.equal(provider.showGitHubViewedUnavailable(() => false), false);
+});
+
+for (const scenario of ["available", "session-denied", "http-denied", "graphql-error", "transport-error"] as const) {
+  test(`Viewed authenticates and publishes through the PR progress tree (${scenario})`, async () => {
+    const immutable = Object.freeze({ kind: "pull-request", pullRequest: Object.freeze({
+      host: "github.com", owner: "fixture", repository: "reviewed", number: 38,
+      state: "open", baseSha: BASE_SHA, headSha: HEAD_SHA
+    }), files: Object.freeze({ local: "complete" }) });
+    const beforeState = structuredClone(immutable);
+    const history = Object.freeze(["local review saved"]);
+    const store = {
+      load: async () => ({ contextState: immutable }) as unknown as ReviewStateCommit,
+      commit: () => assert.fail("read-only GitHub status cannot commit local state"),
+      recordHistory: () => assert.fail("read-only GitHub status cannot append history"),
+    };
+    const provider = new PullRequestProgressTreeDataProvider({
+      openDiff: async () => undefined, openFile: async () => undefined
+    });
+    const active = snapshot([progressFile("file", "src/file.ts", {
+      reviewedLineCount: 3, totalLineCount: 3, progress: 1
+    })]);
+    provider.replaceSnapshot(active);
+    const node = files(provider, categories(provider).find(({ category }) => category === "completed")!)[0]!;
+    const beforeProgress = structuredClone(provider.getEffectiveProgress());
+    const controller = new GitHubViewedDisplayController(() => provider.clearGitHubViewedCandidates());
+    const auth = new VsCodeGitHubAuthenticationProvider({
+      onDidChangeSessions: () => ({ dispose: () => undefined }),
+      getSession: async (_provider, _scopes, options) => {
+        assert.equal(options.silent, true);
+        return scenario === "session-denied" ? undefined : {
+          id: "mock-session", accessToken: "fixture-only-token", account: {id: "mock-account", label: "mock"}, scopes: ["repo"]
+        };
+      }
+    });
+    const requests: string[] = [];
+    const checkedQueries: string[] = [];
+    const read = createGitHubViewedSelectionReader({
+      load: store.load, auth,
+      fetch: async (input, init) => {
+        const url = new URL(String(input));
+        assert.equal(url.host, "api.github.com");
+        assert.equal(new Headers(init?.headers).get("authorization"), "Bearer fixture-only-token");
+        requests.push(url.pathname);
+        if (url.pathname !== "/graphql") {
+          assert.equal(init?.method ?? "GET", "GET");
+          assert.equal(url.pathname, "/repos/fixture/reviewed/compare/" + "c".repeat(40) + "..." + HEAD_SHA);
+          return Response.json({ merge_base_commit: { sha: BASE_SHA } });
+        }
+        const body = JSON.parse(String(init?.body)) as { query: string };
+        assert.match(body.query.trim(), /^query\s/u);
+        assert.doesNotMatch(body.query, /\bmutation\b/u);
+        checkedQueries.push(url.pathname);
+        if (scenario === "http-denied") return new Response(undefined,{status:403});
+        if (scenario === "graphql-error" && /viewerViewedState/u.test(body.query)) {
+          return Response.json({ errors: [{ message: "fixture response rejected" }] });
+        }
+        if (scenario === "transport-error" && /viewerViewedState/u.test(body.query)) throw new Error("mock network disconnected");
+        const pullRequest = {
+          id: "PR_mock", number: 38, state: "OPEN", baseRefOid: "c".repeat(40), headRefOid: HEAD_SHA,
+          files: { totalCount: 1, pageInfo: { hasNextPage: false, endCursor: null },
+            nodes: [{ path: "src/file.ts", changeType: "MODIFIED", additions: 2, deletions: 1, viewerViewedState: "UNVIEWED" }] },
+        };
+        return Response.json({ data: { viewer: { id: "U_mock", login: "fixture-user" },
+          repository: { nameWithOwner: "fixture/reviewed", pullRequest } } });
+      },
+    });
+    try {
+      const generation = controller.invalidate();
+      await controller.read({
+        epoch: generation, enabled: true, isSourceCurrent: () => true,
+        run: ({ isCurrent, signal }) => read({ isCurrent, signal, generation, repositoryId: "github.com/fixture/reviewed",
+          contextId: active.contextId, number: 38, headSha: active.headSha, baseSha: active.baseSha,
+          originalDiffId: active.originalDiffId, configured: [{
+            host: "github.com", owner: "fixture", repository: "reviewed", viewerId: "U_mock", login: "fixture-user"
+          }] }),
+        publish: (result, current) => {
+          publishGitHubViewedSelection({ result, current, progress: provider, contextId: active.contextId, number: 38,
+            headSha: active.headSha, baseSha: active.baseSha, originalDiffId: active.originalDiffId,
+            generation, fileCount: 1 });
+        }
+      });
+      assert.equal(provider.getGitHubViewedState(node), scenario === "available" ? "UNVIEWED" : "unavailable");
+      assert.deepEqual(provider.getEffectiveProgress(), beforeProgress);
+      assert.deepEqual(immutable, beforeState);
+      assert.deepEqual(history, ["local review saved"]);
+      const expectedCalls = scenario === "session-denied" ? 0 : scenario === "http-denied" ? 1 : scenario === "available" ? 3 : 2;
+      assert.equal(requests.length, expectedCalls);
+      assert.equal(checkedQueries.length, requests.filter((url) => url === "/graphql").length);
+    } finally {
+      auth.dispose();
+    }
+  });
+}

@@ -46,6 +46,7 @@ interface WorkingTreeOpenTarget {
 type WorkingTreeRuntimeOptions<Uri> = PullRequestReviewRuntimeOptions<Uri> & {
   readonly openWorkingTreeFile?: (target: WorkingTreeOpenTarget) => Promise<void>;
   readonly reportDerivedProjectionError?: (error: unknown) => void | Promise<void>;
+  readonly beginGitHubViewedLocalChange?: () => (outcome: "settled" | "failed") => void;
 };
 
 interface ReviewProjectionProgressSource {
@@ -84,11 +85,13 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
   private readonly openFileHost: PullRequestReviewRuntimeOptions<Uri>["openFile"];
   private readonly parseUri: PullRequestReviewRuntimeOptions<Uri>["diffHost"]["parseUri"];
   private readonly reportDerivedProjectionError: (error: unknown) => void | Promise<void>;
+  private readonly beginGitHubViewedLocalChange: WorkingTreeRuntimeOptions<Uri>["beginGitHubViewedLocalChange"];
   private readonly projectionNotifier = new PullRequestReviewProjectionNotifier();
 
   public constructor(options: PullRequestReviewRuntimeOptions<Uri>) {
     super(options);
     this.getExclusionPolicy = options.getExclusionPolicy;
+    this.beginGitHubViewedLocalChange = (options as WorkingTreeRuntimeOptions<Uri>).beginGitHubViewedLocalChange;
     this.openWorkingTreeFileHost = (options as WorkingTreeRuntimeOptions<Uri>).openWorkingTreeFile;
     this.openFileHost = options.openFile;
     this.parseUri = options.diffHost.parseUri;
@@ -142,12 +145,22 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
     const service = super.createCommandService(dependencies);
     const synchronize = async (
       operation: () => Promise<DiffEditorReviewCommandResult>
-    ): Promise<DiffEditorReviewCommandResult> => synchronizeAppliedPullRequestReview(
-      await operation(),
-      () => this.refreshActiveProgress(),
-      () => this.projectionNotifier.notify(),
-      this.reportDerivedProjectionError
-    );
+    ): Promise<DiffEditorReviewCommandResult> => {
+      const endViewedChange = this.beginGitHubViewedLocalChange?.();
+      let settled = false;
+      try {
+        const result = await synchronizeAppliedPullRequestReview(
+          await operation(),
+          () => this.refreshActiveProgress(),
+          () => this.projectionNotifier.notify(),
+          this.reportDerivedProjectionError
+        );
+        settled = true;
+        return result;
+      } finally {
+        endViewedChange?.(settled ? "settled" : "failed");
+      }
+    };
     const markSelectionReviewed = service.markSelectionReviewed.bind(service);
     const unmarkSelectionReviewed = service.unmarkSelectionReviewed.bind(service);
     const markFileReviewed = service.markFileReviewed.bind(service);

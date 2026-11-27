@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 import type { NormalEditorReviewedDecoration } from "../../application/editor-decoration/index";
+import type { GitHubViewedState } from "./github-viewed-candidate-projection";
 import type { ResourceUri } from "../../application/workspace-identity/index";
 import { resolveT305RepositoryWorkingTreeFileTarget } from "../../application/repository-path/repository-root-uri";
 import {
@@ -40,6 +41,7 @@ export interface PullRequestProgressTreeTestObserver {
 export interface PullRequestProgressTreeSource {
   getChildren(node?: PullRequestProgressTreeNode): readonly PullRequestProgressTreeNode[];
   select(node: PullRequestProgressTreeFileNode): Promise<PullRequestProgressTreeSelectionResult>;
+  getGitHubViewedState?(node: PullRequestProgressTreeFileNode): GitHubViewedState | "unavailable" | undefined;
   openWorkingTreeFile?(node: PullRequestProgressTreeFileNode): Promise<void>;
   workingTreeFileTarget?(node: PullRequestProgressTreeFileNode): PullRequestProgressWorkingTreeFileTarget;
   onDidChangeReviewProjection?(
@@ -104,6 +106,12 @@ implements vscode.TreeDataProvider<PullRequestProgressTreeNode>, PullRequestProg
     item.tooltip = node.reason === undefined
       ? `${node.path}: ${node.reviewedLineCount}/${node.totalLineCount}`
       : `${node.path}: ${node.reason}`;
+    const viewedState = this.activeSource().getGitHubViewedState?.(node);
+    if (viewedState !== undefined) {
+      const label = { VIEWED: "Viewed", UNVIEWED: "Not viewed", DISMISSED: "再確認が必要", unavailable: "取得不可" }[viewedState];
+      item.description += ` · GitHub: ${label}`;
+      item.tooltip += `\nGitHub Viewed: ${label}`;
+    }
     item.contextValue = "reviewRange.prProgressFile";
     item.command = {
       command: OPEN_PULL_REQUEST_PROGRESS_ITEM_COMMAND_ID,

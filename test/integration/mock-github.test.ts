@@ -464,7 +464,7 @@ test("GitHub adapter classifies malformed elements, JSON, shapes, network errors
 });
 
 test("VS Code authentication selects GitHub.com and only the configured Enterprise authority without prompting", async () => {
-  const calls: Array<{ providerId: string; createIfNone: boolean }> = [];
+  const calls: Array<{ providerId: string; createIfNone: boolean | undefined }> = [];
   const provider = new VsCodeGitHubAuthenticationProvider({
     getSession: async (providerId, _scopes, options) => {
       calls.push({ providerId, createIfNone: options.createIfNone });

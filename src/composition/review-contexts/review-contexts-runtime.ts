@@ -1,4 +1,5 @@
-﻿import path from "node:path";
+import { createGitHubViewedSelectionReader, type GitHubViewedSelectionInput, type GitHubViewedSelectionRead } from "./github-viewed-selection-reader";
+import path from "node:path";
 import * as vscode from "vscode";
 
 import { NodeSha256StableHash } from "../../adapters/crypto/index";
@@ -209,6 +210,7 @@ interface T405ReviewStateRepository {
 
 export interface RegisteredT405ReviewContextsRuntime
 extends RegisteredReviewContextsRuntime {
+  readGitHubViewedForSelection?(input: GitHubViewedSelectionInput): Promise<GitHubViewedSelectionRead | undefined>;
   /** Arms one accepted Current Context PR preparation for its direct dependent tree refresh. */
   acceptCurrentContextPreparation?(selection: SelectedReviewContext | undefined): void;
   preparePullRequestCandidateForExplicitContextSelection?(
@@ -896,6 +898,8 @@ export function registerT405ReviewContextsRuntime(
     ["repo"],
     vscode.workspace.getConfiguration("github-enterprise").get<string>("uri"),
   );
+
+  options.context.subscriptions.push(auth);
 
   const sourceRef: { current?: T405ReviewContextsSource } = {};
 
@@ -1878,6 +1882,7 @@ export function registerT405ReviewContextsRuntime(
 
   return {
     ...registered,
+    readGitHubViewedForSelection: createGitHubViewedSelectionReader({ load: (target) => repository.load(target), auth, fetch: globalThis.fetch }),
     acceptCurrentContextPreparation: (selection) => source.acceptCurrentContextPreparation(selection),
     preparePullRequestCandidateForExplicitContextSelection,
     augmentCurrentContextCandidates: (localCandidates, signal, feedbackContext) =>

@@ -2,6 +2,12 @@
 
 > 更新ルール: このファイルは `task-breakdown-planner`、`task-consistency-manager`、または `progress-sync-manager` を通してのみ更新する。
 
+## Issue #154 / PR #151 GitHub Viewed の取得と表示
+
+- I154-READ: 読み取りのみの実装・通常レビューを完了。通常必須6件を解消し、CI対応も確認。技術版 `4f0726181e540da33b69131bbe700ebbafeb4eba` の自動 CI 46075453598 は成功。
+- I154-PRE-FREEZE: 初回の通常記録・追跡確定と凍結・初回独立レビューは実施済み。初回の必須3件は通常修正確認で解消し、現在は管理記録を載せた正本と同じ自動CIを確認してから、既存予約のまま同じ独立担当の指摘解消確認へ進む。
+- I154-INDEPENDENT: 初回凍結版 `53aac0142e553dd1b24b99e7eab22262bfd08ca9` の独立最終レビューは必須3件。修正技術版 `2557e2e5b7a2a26cca872097f6a19547dd4bd80d` は同じ通常担当が3件の解消を確認し、自動PR CI 46081171854 成功。[修正確認と根拠](../reports/issue-154-pr151-normal-independent-findings-closure-20261128.md)。同じ独立担当による3件とCI差分の解消確認が残る。新規予約・独立レビューは行わない。親 #93 の書き込み段階は対象外。
+
 ## Issue #146 PR #145 比較元不一致（2026-11-27）
 
 - I146-IMPL / I146-NORMAL-VERIFY (P4, S): 実装・対象回帰・通常再レビュー完了。technical_head `250d667b8d0e830632d047dbdcdfe4968418b82c`、対象101/101、通常再レビュー前回必須1件解消・新規必須0件（親担当提供）、自動push/PR CI 45962097811/45962103916 success。通常工程統合記録: [issue-146-pr145-normal-consolidated-20261127.md](../reports/issue-146-pr145-normal-consolidated-20261127.md)。記録HEAD `eda5220fd9e5151481e5f6c73e4a61063a3d1fce` の自動CI両方success。親判断: Skill変更不要、実装回帰として通常工程で閉鎖。所定検証構成は同技術HEAD CIで確認済み（ローカル一括全gateは未再実行）。通常引継ぎ記録追補commit_pending、後続HEADは外部引継ぎ。

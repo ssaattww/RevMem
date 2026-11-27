@@ -5,6 +5,7 @@ import type {
   PullRequestDiffFileProgress,
   PullRequestDiffProgress
 } from "../../core/pr-progress/index";
+import type { GitHubViewedCandidate, GitHubViewedState } from "./github-viewed-candidate-projection";
 import { requireWorkingTreeFileTarget } from "./working-tree-file-target";
 
 /** Stable PR Progress Tree root categories in their default display order. */
@@ -623,6 +624,9 @@ export class PullRequestProgressTreeDataProvider {
     readonly PullRequestProgressTreeFileNode[]
   >();
   private currentFileNodes = new Set<PullRequestProgressTreeFileNode>();
+  private readonly githubViewedByFileId = new Map<string, GitHubViewedState>();
+  private githubViewedUnavailable = false;
+  private githubViewedIsCurrent: (() => boolean) | undefined;
   private effectiveProgress: PullRequestEffectiveProgress =
     EMPTY_EFFECTIVE_PROGRESS;
 
@@ -742,6 +746,7 @@ export class PullRequestProgressTreeDataProvider {
         Object.freeze([...next.get(category)!].sort(compareFileNodes))
       );
     }
+    this.clearGitHubViewedCandidates();
     this.currentFileNodes = nextCurrentFileNodes;
     this.effectiveProgress = Object.freeze({
       reviewedLineCount: effectiveReviewed,
@@ -844,6 +849,7 @@ export class PullRequestProgressTreeDataProvider {
     for (const { category } of CATEGORY_DEFINITIONS) {
       this.filesByCategory.set(category, sortedByCategory.get(category)!);
     }
+    this.clearGitHubViewedCandidates();
     this.currentFileNodes = nextCurrentFileNodes;
     this.effectiveProgress = Object.freeze({
       reviewedLineCount: effectiveReviewed,
@@ -864,8 +870,62 @@ export class PullRequestProgressTreeDataProvider {
     };
   }
 
+  /** Publishes a detached, read-only GitHub state overlay for the current Tree snapshot. */
+  public replaceGitHubViewedCandidates(
+    candidates: readonly GitHubViewedCandidate[],
+    isCurrent: () => boolean
+  ): boolean {
+    if (!isCurrent()) return false;
+    const currentById = new Map(
+      [...this.currentFileNodes].map((node) => [node.source.fileId, node] as const)
+    );
+    const next = new Map<string, GitHubViewedState>();
+    for (const candidate of candidates) {
+      const node = currentById.get(candidate.fileId);
+      if (
+        node !== undefined &&
+        node.path === candidate.path &&
+        node.category === candidate.localCategory &&
+        node.category === "completed"
+      ) next.set(candidate.fileId, candidate.viewedState);
+    }
+    if (!isCurrent()) return false;
+    this.githubViewedByFileId.clear();
+    this.githubViewedUnavailable = false;
+    for (const [fileId, state] of next) this.githubViewedByFileId.set(fileId, state);
+    this.githubViewedIsCurrent = isCurrent;
+    return true;
+  }
+
+  public showGitHubViewedUnavailable(isCurrent: () => boolean): boolean {
+    if (!isCurrent()) return false;
+    this.githubViewedByFileId.clear();
+    this.githubViewedUnavailable = true;
+    this.githubViewedIsCurrent = isCurrent;
+    return true;
+  }
+
+  /** Clears the remote overlay without changing local line-review progress. */
+  public clearGitHubViewedCandidates(): void {
+    this.githubViewedByFileId.clear();
+    this.githubViewedUnavailable = false;
+    this.githubViewedIsCurrent = undefined;
+  }
+
+  /** Returns remote state only for a current node and still-current captured selection. */
+  public getGitHubViewedState(
+    node: PullRequestProgressTreeFileNode
+  ): GitHubViewedState | "unavailable" | undefined {
+    if (!this.currentFileNodes.has(node)) return undefined;
+    if (this.githubViewedIsCurrent?.() !== true) {
+      this.clearGitHubViewedCandidates();
+      return undefined;
+    }
+    return this.githubViewedUnavailable ? "unavailable" : this.githubViewedByFileId.get(node.source.fileId);
+  }
   /** Removes all file children and invalidates every previously returned file node. */
   public clear(): void {
+    this.clearGitHubViewedCandidates();
     for (const { category } of CATEGORY_DEFINITIONS) {
       this.filesByCategory.set(category, Object.freeze([]));
     }
