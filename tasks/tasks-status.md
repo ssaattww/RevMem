@@ -2,6 +2,11 @@
 
 > 更新ルール: このファイルは `task-breakdown-planner`、`task-consistency-manager`、または `progress-sync-manager` を通してのみ更新する。
 
+## Issue #146 PR #145 比較元不一致（2026-11-27）
+
+- I146-IMPL / I146-NORMAL-VERIFY (P4, S): 実装・対象回帰・通常再レビュー完了。technical_head `250d667b8d0e830632d047dbdcdfe4968418b82c`、対象101/101、通常再レビュー前回必須1件解消・新規必須0件（親担当提供）、自動push/PR CI 45962097811/45962103916 success。通常工程統合記録: [issue-146-pr145-normal-consolidated-20261127.md](../reports/issue-146-pr145-normal-consolidated-20261127.md)。記録commit_pending、後続HEADは外部引継ぎ。
+- I146-INDEPENDENT-REVIEW: 未着手（別担当）。予約・freeze・判定・公開は未実施。終了条件は #146 のみ、親 #142 の本人症状は未確定のためOpen、#143は維持、マージなし。
+
 ## Issues #136/#137 PR Progress refresh coordination and safe diagnostics (2026-10-06)
 
 - Current task: I137-ANONYMOUS-IDENTITY (P4, M), IR138-REQ-003 at `cc59c2c6357786afc8f03809088c540d90db22f2`. Existing branch `issue-136-137-refresh-and-safe-diagnostics`; implement the accepted short-lived alias contract, retain earlier fixes, correct the Issue136 evidence wording, validate and publish ordinary review-target commits. Independent closure follows the new fixed HEAD.
