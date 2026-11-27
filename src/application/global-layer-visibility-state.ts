@@ -34,10 +34,14 @@ export class GlobalLayerVisibilityState {
   }
 
   public applySetting(setting: boolean): Promise<boolean> {
+    return this.acceptSetting(setting, false);
+  }
+
+  private acceptSetting(setting: boolean, startup: boolean): Promise<boolean> {
     return this.enqueue(async () => {
-      const observedChange = setting !== this.observedSetting;
+      const previous = startup ? this.state.settingAtSave : this.observedSetting;
       this.observedSetting = setting;
-      if (!observedChange && setting === this.state.settingAtSave) return false;
+      if (setting === previous) return false;
       const changed = setting !== this.state.selected;
       await this.save(setting, setting);
       return changed;
@@ -49,7 +53,7 @@ export class GlobalLayerVisibilityState {
     readSetting: () => boolean,
     refresh: () => void | PromiseLike<void>,
   ): Promise<void> {
-    return this.applySetting(readSetting()).then(async (changed) => {
+    return this.acceptSetting(readSetting(), true).then(async (changed) => {
       if (changed) await refresh();
     });
   }

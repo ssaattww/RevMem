@@ -179,7 +179,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   const readGlobalLayerSetting = () =>
     vscode.workspace.getConfiguration("reviewRange").get("showGlobalReviewed", true);
   const initialGlobalLayerSetting = readGlobalLayerSetting();
-  const visibility = new GlobalLayerVisibilityState(context.workspaceState, initialGlobalLayerSetting);
+  const createGlobalLayerVisibility = (setting: boolean) => new GlobalLayerVisibilityState(context.workspaceState, setting);
+  const visibility = createGlobalLayerVisibility(initialGlobalLayerSetting);
   const baseApi = activateBaseExtension(context, () => visibility.isEnabled());
   const runtimePort: ReviewRangeRuntimePort = baseApi;
   let selectedContext: SelectedReviewContext | undefined;
@@ -1142,6 +1143,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     return {
       ...baseApi,
       getGlobalLayerVisibilityForTest: () => visibility.isEnabled(),
+      readStoredGlobalLayerVisibilityForTest: async () => {
+        const restored = createGlobalLayerVisibility(readGlobalLayerSetting());
+        await restored.reconcileStartup(readGlobalLayerSetting, () => undefined);
+        return restored.isEnabled();
+      },
       initializePullRequestReviewRuntimeForTest,
       getPullRequestReviewStateForTest: () => testPullRequestRuntimeTarget === undefined
         ? Promise.resolve(undefined)

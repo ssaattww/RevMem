@@ -27,7 +27,7 @@ test("Global layer restores an internal selection without rewriting the effectiv
   const first = new GlobalLayerVisibilityState(store, true);
   assert.equal(await first.toggle(), false);
   const restarted = new GlobalLayerVisibilityState(store, true);
-  assert.equal(await restarted.applySetting(true), false);
+  await restarted.reconcileStartup(() => true, () => assert.fail("no refresh for unchanged setting"));
   assert.equal(restarted.isEnabled(), false);
   assert.equal(store.writes, 1);
   assert.equal(await restarted.toggle(), true);
@@ -40,7 +40,7 @@ test("Global layer applies changes before and after a saved selection", async ()
   assert.equal(fresh.isEnabled(), false);
   assert.equal(await fresh.toggle(), true);
   const restartAfterSettingChange = new GlobalLayerVisibilityState(store, true);
-  assert.equal(await restartAfterSettingChange.applySetting(true), false);
+  await restartAfterSettingChange.reconcileStartup(() => true, () => assert.fail("the selected display was already on"));
   assert.equal(restartAfterSettingChange.isEnabled(), true);
   const restartWithoutFurtherChanges = new GlobalLayerVisibilityState(store, true);
   assert.equal(restartWithoutFurtherChanges.isEnabled(), true);
@@ -80,7 +80,7 @@ test("a successful toggle after a failed setting save survives restart", async (
   await assert.rejects(state.applySetting(false), /save failed/u);
   assert.equal(await state.toggle(), true);
   const restarted = new GlobalLayerVisibilityState(store, false);
-  assert.equal(await restarted.applySetting(false), false);
+  await restarted.reconcileStartup(() => false, () => assert.fail("do not override a restored toggle"));
   assert.equal(restarted.isEnabled(), true);
 });
 
@@ -91,6 +91,16 @@ test("a setting returning to its old stored value still wins after a failed obse
   store.nextFailure = true;
   await assert.rejects(state.applySetting(false), /save failed/u);
   assert.equal(await state.applySetting(true), true);
+  assert.equal(state.isEnabled(), true);
+});
+
+test("an unchanged effective setting does not retry a failed save or alter the display", async () => {
+  const store = new MemoryStore();
+  const state = new GlobalLayerVisibilityState(store, true);
+  store.nextFailure = true;
+  await assert.rejects(state.applySetting(false), /save failed/u);
+  assert.equal(await state.applySetting(false), false);
+  assert.equal(store.writes, 1);
   assert.equal(state.isEnabled(), true);
 });
 

@@ -76,6 +76,7 @@ interface ReviewRangeExtensionTestApi {
   drainVisibleEditorDecorations(): Promise<void>;
   getVisibleReviewedIntervals(documentUri: string): readonly ReviewedInterval[];
   getGlobalLayerVisibilityForTest(): boolean;
+  readStoredGlobalLayerVisibilityForTest(): Promise<boolean>;
   getFileExclusionPolicySnapshot(): FileExclusionPolicySnapshot;
   evaluateFileExclusion(path: string, isBinary?: boolean): FileExclusionDecision;
 }
@@ -339,21 +340,21 @@ export async function run(): Promise<void> {
     );
     await vscode.commands.executeCommand("reviewRange.toggleGlobalLayer");
     assert.equal(extensionApi.getGlobalLayerVisibilityForTest(), false);
+    // The Extension Test launch uses VS Code's in-memory WorkspaceState
+    // database. Verify a new reader sees the actual stored choice in this Host.
+    assert.equal(await extensionApi.readStoredGlobalLayerVisibilityForTest(), false);
     return;
   }
 
   await within("refresh restored decorations", extensionApi.refreshVisibleEditorDecorations());
   await within("drain restored decorations", extensionApi.drainVisibleEditorDecorations());
   if (phase === "restore-confirmed-and-unmark") {
-    assert.equal(extensionApi.getGlobalLayerVisibilityForTest(), false, "The chosen Global visibility must survive restart.");
     assert.deepEqual(
       extensionApi.getVisibleReviewedIntervals(documentUri.toString()),
       [{ startLine: 0, endLineExclusive: 1 }],
       "The confirmed line decoration should be restored after Extension Host restart."
     );
 
-    await vscode.commands.executeCommand("reviewRange.toggleGlobalLayer");
-    assert.equal(extensionApi.getGlobalLayerVisibilityForTest(), true);
     splitEditor.selection = new vscode.Selection(0, 0, 0, 0);
     await within("unmark selection command", vscode.commands.executeCommand("reviewRange.unmarkSelectionReviewed"));
     await within("refresh unmarked decorations", extensionApi.refreshVisibleEditorDecorations());
