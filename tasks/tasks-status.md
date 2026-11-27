@@ -2,6 +2,12 @@
 
 > 更新ルール: このファイルは `task-breakdown-planner`、`task-consistency-manager`、または `progress-sync-manager` を通してのみ更新する。
 
+## Issue #154 / PR #151 GitHub Viewed の取得と表示
+
+- I154-READ: 読み取りのみの実装・通常レビューを完了。通常必須6件を解消し、CI対応も確認。技術版 `4f0726181e540da33b69131bbe700ebbafeb4eba` の自動 CI 46075453598 は成功。
+- I154-PRE-FREEZE: [通常工程統合記録](../reports/issue-154-pr151-normal-consolidated-20261127.md) と通常引継ぎを保存する。今回固有の実装・試験差分の指摘で、追加スキルや全体共通の分類変更はなし。管理差分の通常確認と候補版の検証を残す。
+- I154-INDEPENDENT: 別担当で実施予定。予約・凍結・本人レビューは未実施。実アカウント・本人の画面は未検証。親 #93 の書き込み段階は対象外。
+
 ## Issue #146 PR #145 比較元不一致（2026-11-27）
 
 - I146-IMPL / I146-NORMAL-VERIFY (P4, S): 実装・対象回帰・通常再レビュー完了。technical_head `250d667b8d0e830632d047dbdcdfe4968418b82c`、対象101/101、通常再レビュー前回必須1件解消・新規必須0件（親担当提供）、自動push/PR CI 45962097811/45962103916 success。通常工程統合記録: [issue-146-pr145-normal-consolidated-20261127.md](../reports/issue-146-pr145-normal-consolidated-20261127.md)。記録HEAD `eda5220fd9e5151481e5f6c73e4a61063a3d1fce` の自動CI両方success。親判断: Skill変更不要、実装回帰として通常工程で閉鎖。所定検証構成は同技術HEAD CIで確認済み（ローカル一括全gateは未再実行）。通常引継ぎ記録追補commit_pending、後続HEADは外部引継ぎ。

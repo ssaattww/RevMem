@@ -4,6 +4,8 @@
 
 ## 計画の前提
 
+- P4 Issue #154 / PR #151: 現在は通常工程の記録確定。読み取り専用の取得・表示と関連テストを対象に、技術版の自動 CI と通常レビュー完了。[通常記録](../reports/issue-154-pr151-normal-consolidated-20261127.md)。残りは管理差分と確定版の確認、正式な独立最終レビュー。親 #93 の書き込み範囲は進めない。
+
 - P4 Issue #146 / PR #145 (2026-11-27): 比較元不一致の実装・対象回帰・通常再レビュー完了（技術HEAD `250d667b8d0e830632d047dbdcdfe4968418b82c`、101/101、通常CI success）。[通常工程統合記録](../reports/issue-146-pr145-normal-consolidated-20261127.md) と task tracking を同期。独立最終レビューは別担当の未着手、#142 の本人症状解消は未確定。
 
 - P4 current follow-up (2026-10-10 UTC): I137-ANONYMOUS-IDENTITY (M), IR138-REQ-003 at cc59. Actual alias Red6 and ownerless Red retained; typed short-lived verified selection/registration/snapshot/Tree correspondence, OFF/ON and owner/generation/terminal cleanup/privacy regressions Green. Final tooling32/unit1015, Git67+3existing skip, GitHub49/T50211, build/compile/lint/contracts/architecture pass. Review-target commit/push and exact-head CI status are recorded externally; independent closure pending. Original Issue136 Output excerpt exists; identified-target checkout-before/after evidence remains missing. Full local Host component remains unsupported by FA780 updater mutex.
