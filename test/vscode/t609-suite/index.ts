@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
 import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
-import { promisify } from "node:util";
 
 import * as vscode from "vscode";
 
@@ -10,7 +8,6 @@ import type { CurrentContextUiSnapshot } from "../../../src/ui/current-context/i
 import type { PullRequestReviewRuntimeTestFixture } from "../../../src/composition/extension";
 import type { PullRequestProgressTreeFileNode } from "../../../src/ui/pr-progress/index";
 
-const execFileAsync = promisify(execFile);
 const phase = process.env.REVIEW_RANGE_TEST_PHASE;
 const isPrepare = phase === "prepare";
 const isSingleRoot = phase === "single-root";
@@ -431,14 +428,21 @@ const assertLiveEncodingTransition = async (
   await vscode.workspace.getConfiguration("files", shiftedUri).update("encoding", "shift_jis", vscode.ConfigurationTarget.WorkspaceFolder);
 };
 
-const assertGlobalLayerSettingsUnchanged = async (api: T609ExtensionApi): Promise<void> => {
+const assertGlobalLayerSettingsUnchanged = async (
+  folder: vscode.WorkspaceFolder,
+  api: T609ExtensionApi,
+): Promise<void> => {
   const workspaceFile = vscode.workspace.workspaceFile;
   const roots = vscode.workspace.workspaceFolders;
-  const editor = vscode.window.activeTextEditor;
   assert.ok(workspaceFile);
   assert.ok(workspaceFile.path.endsWith(".code-workspace"));
-  assert.ok(roots?.length === 2 && editor);
-  const documentUri = editor.document.uri.toString();
+  assert.equal(roots?.length, 2);
+  assert.ok(roots);
+  const document = await vscode.workspace.openTextDocument(fixtureUri(folder, "global-layer-visibility.txt"));
+  await vscode.window.showTextDocument(document, { preview: false });
+  await api.refreshVisibleEditorDecorations();
+  await api.drainVisibleEditorDecorations();
+  const documentUri = document.uri.toString();
   const settings = roots.map((root) => vscode.Uri.joinPath(root.uri, ".vscode", "settings.json"));
   const bytes = async (uri: vscode.Uri): Promise<Uint8Array | undefined> => {
     try {
@@ -448,26 +452,23 @@ const assertGlobalLayerSettingsUnchanged = async (api: T609ExtensionApi): Promis
       throw error;
     }
   };
-  const snapshot = async () => ({
-    files: await Promise.all([workspaceFile, ...settings].map(bytes)),
-    git: await Promise.all(roots.map(async (root) => (await execFileAsync("git", [
-      "status", "--porcelain=v1", "--untracked-files=all", "--", ".vscode/settings.json"
-    ], { cwd: root.uri.fsPath, windowsHide: true })).stdout))
-  });
+  const snapshot = () => Promise.all([workspaceFile, ...settings].map(bytes));
   const before = await snapshot();
-  assert.ok(before.files[0]?.length);
-  assert.equal(before.files[1], undefined);
-  assert.ok(before.files[2]?.length);
+  assert.ok(before[0]?.length);
+  assert.ok(before[1]?.length);
+  assert.equal(before[2], undefined);
   const context = api.getVisibleReviewedIntervals(documentUri);
   const global = api.getVisibleGlobalLayerIntervalsForTest(documentUri);
-  assert.deepEqual(global, [{ startLine: 0, endLineExclusive: 1 }], "The seeded range must have a visible Global layer before the toggle.");
+  const contextOnly = [{ startLine: 0, endLineExclusive: 1 }];
+  assert.deepEqual(context, [...contextOnly, { startLine: 2, endLineExclusive: 3 }]);
+  assert.deepEqual(global, context, "The seeded Context overlap and Global-only range must be visible before the toggle.");
   for (const enabled of [false, true]) {
     await vscode.commands.executeCommand("reviewRange.toggleGlobalLayer");
     await api.drainVisibleEditorDecorations();
     assert.equal(api.getGlobalLayerVisibilityForTest(), enabled);
     assert.deepEqual(api.getVisibleGlobalLayerIntervalsForTest(documentUri), enabled ? global : []);
-    assert.deepEqual(api.getVisibleReviewedIntervals(documentUri), context, "The Context range must remain visible.");
-    assert.deepEqual(await snapshot(), before, "The workspace file, both settings files and their Git status must not change.");
+    assert.deepEqual(api.getVisibleReviewedIntervals(documentUri), enabled ? context : contextOnly, "Only the Global-only range may disappear.");
+    assert.deepEqual(await snapshot(), before, "The workspace file and both settings files must not change.");
   }
 };
 
@@ -487,7 +488,6 @@ const assertMappedGitTransitions = async (
     [{ startLine: 0, endLineExclusive: 1 }],
     "a committed Git rename must retain the reviewed stable identity through the public normal-editor composition"
   );
-  await assertGlobalLayerSettingsUnchanged(api);
   assert.deepEqual(
     await reviewed("new-file.txt"),
     [],
@@ -588,6 +588,7 @@ export async function run(): Promise<void> {
 
   await within("multi-root fixture readiness", assertMultiRootCancellation(folder));
   await assertMappedGitTransitions(folder, api);
+  await within("Global toggle changes only the seeded Global layer and not settings", assertGlobalLayerSettingsUnchanged(folder, api));
   await within("clear mapped editor before Current Context selection", closeAllEditors());
   api.setCurrentContextSelectionForTest("first");
   await vscode.commands.executeCommand("reviewRange.refreshContext");

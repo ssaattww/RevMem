@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { GlobalLayerVisibilityState } from "../../src/application/global-layer-visibility-state";
 
@@ -67,7 +68,8 @@ test("failed Global layer save keeps committed display and leaves the queue usab
   store.nextFailure = true;
   await assert.rejects(state.applySetting(false), /save failed/u);
   assert.equal(state.isEnabled(), false);
-  assert.equal(await state.applySetting(true), false);
+  assert.equal(await state.applySetting(true), true);
+  assert.equal(state.isEnabled(), true);
 });
 
 test("a successful toggle after a failed setting save survives restart", async () => {
@@ -82,7 +84,25 @@ test("a successful toggle after a failed setting save survives restart", async (
   assert.equal(restarted.isEnabled(), true);
 });
 
-test("a newer setting observed during a delayed save is not lost", async () => {
+test("a setting returning to its old stored value still wins after a failed observation save", async () => {
+  const store = new MemoryStore();
+  const state = new GlobalLayerVisibilityState(store, true);
+  await state.toggle();
+  store.nextFailure = true;
+  await assert.rejects(state.applySetting(false), /save failed/u);
+  assert.equal(await state.applySetting(true), true);
+  assert.equal(state.isEnabled(), true);
+});
+
+test("startup rereads after the actual configuration listener is installed", async () => {
+  const composition = await readFile("src/composition/extension.ts", "utf8");
+  const initial = composition.indexOf("const initialGlobalLayerSetting = readGlobalLayerSetting();");
+  const subscription = composition.indexOf("const globalRuntime = registerGlobalUnderstandingRuntime(");
+  const reconcile = composition.indexOf("visibility.reconcileStartup(");
+  assert.ok(initial >= 0 && initial < subscription && subscription < reconcile);
+  const runtime = await readFile("src/ui/global-understanding/vscode-global-understanding-runtime.ts", "utf8");
+  assert.match(runtime, /onDidChangeConfiguration\(\(event\)\s*=>[\s\S]*?layerState\.applyCurrentSetting\(\)/u);
+
   const store = new MemoryStore();
   let release!: () => void;
   let entered!: () => void;
@@ -100,11 +120,15 @@ test("a newer setting observed during a delayed save is not lost", async () => {
       await store.update(key, value);
     }
   }, true);
-  const firstSetting = state.applySetting(false);
+  let effectiveSetting = false;
+  let refreshes = 0;
+  const firstSetting = state.reconcileStartup(() => effectiveSetting, () => { refreshes++; });
   await started;
-  const nextSetting = state.applySetting(true);
+  effectiveSetting = true;
+  const nextSetting = state.applySetting(effectiveSetting);
   release();
-  assert.deepEqual(await Promise.all([firstSetting, nextSetting]), [true, true]);
+  assert.deepEqual(await Promise.all([firstSetting, nextSetting]), [undefined, true]);
   assert.equal(state.isEnabled(), true);
   assert.equal(store.writes, 2);
+  assert.equal(refreshes, 1);
 });

@@ -35,11 +35,22 @@ export class GlobalLayerVisibilityState {
 
   public applySetting(setting: boolean): Promise<boolean> {
     return this.enqueue(async () => {
+      const observedChange = setting !== this.observedSetting;
       this.observedSetting = setting;
-      if (setting === this.state.settingAtSave) return false;
+      if (!observedChange && setting === this.state.settingAtSave) return false;
       const changed = setting !== this.state.selected;
       await this.save(setting, setting);
       return changed;
+    });
+  }
+
+  /** Read only after the configuration subscription has been installed. */
+  public reconcileStartup(
+    readSetting: () => boolean,
+    refresh: () => void | PromiseLike<void>,
+  ): Promise<void> {
+    return this.applySetting(readSetting()).then(async (changed) => {
+      if (changed) await refresh();
     });
   }
 

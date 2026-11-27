@@ -1051,9 +1051,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
 
   // The configuration listener is installed before this second read. Changes
   // during startup are either included here or queued by the listener.
-  await visibility.applySetting(readGlobalLayerSetting()).then(async (changed) => {
-    if (changed) await runtimePort.refreshVisibleEditorDecorations();
-  }).catch((error: unknown) => {
+  await visibility.reconcileStartup(
+    readGlobalLayerSetting,
+    () => runtimePort.refreshVisibleEditorDecorations()
+  ).catch((error: unknown) => {
     reportActiveOperationFailure("Global レイヤー表示設定の復元", error);
   });
 
