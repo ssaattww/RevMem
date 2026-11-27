@@ -22,7 +22,7 @@ import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index";
 import { NormalEditorReviewCommandService } from "../../src/application/review-commands/index";
 import { calculatePullRequestDiffProgress, calculatePullRequestDiffProgressCooperatively, type PullRequestDiffSnapshot } from "../../src/core/pr-progress/index";
 import { calculateGlobalUnderstandingFileProgressCooperatively } from "../../src/application/global-understanding/cooperative-global-understanding-calculation";
-import { OperationFeedback, setActiveOperationFeedback } from "../../src/application/operation-feedback/index";
+import { OperationCancelledError, OperationFeedback, setActiveOperationFeedback, type OperationFeedbackContext } from "../../src/application/operation-feedback/index";
 import {
   PullRequestProgressTreeDataProvider,
   type PullRequestProgressTreeSnapshot
@@ -408,7 +408,7 @@ test("T607 production VS Code Global runtime fences partial publication on inval
       openFile: async (target) => { opened.push(target); },
       reportError: async (error) => { reported.push(error); }
     });
-    await registered.refresh();
+    await assert.rejects(registered.refresh(), OperationCancelledError);
     assert.equal(interrupted, true, "the VS Code Tree runtime observed one actual partial publication before invalidation");
     assert.equal(signals[0]?.aborted, true, "invalidation and disposal abort the registered refresh owner");
     assert.equal(statusShows, 0, "a generation invalidated during Tree publication cannot emit a stale terminal presentation");
@@ -454,31 +454,34 @@ test("T607 production Global runtime supersedes old/new refreshes and gives each
       openFile: async (target) => { opened.push(target); }, reportError: async (error) => { reported.push(error); }
     });
     const oldRefresh = registered.refresh();
+    const oldCancelled = assert.rejects(oldRefresh, OperationCancelledError);
     await new Promise((resolve) => setImmediate(resolve));
     const newRefresh = registered.refresh();
     await newRefresh;
     assert.equal(signals[0]?.aborted, true, "the new production refresh aborts the old owner before old publication");
     old.resolve(withTargets(current));
-    await oldRefresh;
+    await oldCancelled;
     const group = provider!.getChildren().find((node) => node.kind === "files-group");
     const staleNode = provider!.getChildren(group).find((node) => node.kind === "file");
     const invalidateRefresh = registered.refresh();
+    const invalidatedCancelled = assert.rejects(invalidateRefresh, OperationCancelledError);
     await new Promise((resolve) => setImmediate(resolve));
     registered.invalidate();
     assert.equal(signals[2]?.aborted, true, "invalidate-only aborts its distinct in-flight refresh");
     invalidated.resolve(withTargets(current));
-    await invalidateRefresh;
+    await invalidatedCancelled;
     await commands.get(runtime.OPEN_GLOBAL_UNDERSTANDING_FILE_COMMAND_ID)!(staleNode);
     assert.equal(opened.length, 0, "an old node cannot open after invalidate-only clears the production model");
     assert.equal(reported.length, 1);
     const disposeRefresh = registered.refresh();
+    const disposedCancelled = assert.rejects(disposeRefresh, OperationCancelledError);
     await new Promise((resolve) => setImmediate(resolve));
     registered.dispose();
     assert.equal(signals[3]?.aborted, true, "dispose aborts a distinct in-flight refresh");
     disposed.resolve(withTargets(current));
-    await disposeRefresh;
+    await disposedCancelled;
     const starts = logs.filter((entry) => entry.event === "started").length;
-    const terminals = logs.filter((entry) => entry.event === "succeeded" || entry.event === "failed").length;
+    const terminals = logs.filter((entry) => entry.event === "succeeded" || entry.event === "failed" || entry.event === "cancelled").length;
     assert.equal(starts, 5, "four refreshes plus the stale-node command each enter the shared production feedback boundary");
     assert.equal(terminals, starts, "every relevant production operation has exactly one feedback terminal");
   } finally { setActiveOperationFeedback(undefined); }
@@ -840,19 +843,33 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
   let enabled = false;
   let phase: "pending" | "success" = "pending";
   let refreshCurrent: (() => Promise<void>) | undefined;
+  const listRefresh: { current?: (feedbackContext?: OperationFeedbackContext) => Promise<void> } = {};
   let cachePublishes = 0;
   const writeSignals: AbortSignal[] = [];
   const errors: unknown[] = [];
   const commands = new Map<string, (...args: unknown[]) => Promise<void>>();
   const contextBatches: Array<{ readonly kind: string; readonly count: number }> = [];
   const feedbackLogs: Array<{ readonly event: string }> = [];
+  const treePublications: Array<{ readonly rows: readonly unknown[]; readonly afterDispose: boolean }> = [];
+  let treeEmitterDisposed = false;
+  let treeEmitterDisposals = 0;
+  let treePublicationsAfterDispose = 0;
   let disposeDuringLateProjection = false;
+  let lateDisposeTriggered = false;
   let registeredRef: { refresh(): Promise<void>; dispose(): void } | undefined;
   const vscode = {
-    EventEmitter: class { public readonly event = () => undefined; public fire(): void {} public dispose(): void {} }, TreeItem: class {}, ThemeIcon: class {}, TreeItemCollapsibleState: { None: 0, Expanded: 1 },
+    EventEmitter: class {
+      public readonly event = () => undefined;
+      public fire(): void {
+        const afterDispose = treeEmitterDisposed;
+        treePublications.push({ rows: provider?.getChildren() ?? [], afterDispose });
+        if (afterDispose) treePublicationsAfterDispose += 1;
+      }
+      public dispose(): void { treeEmitterDisposed = true; treeEmitterDisposals += 1; }
+    }, TreeItem: class {}, ThemeIcon: class {}, TreeItemCollapsibleState: { None: 0, Expanded: 1 },
     commands: { registerCommand: (id: string, handler: (...args: unknown[]) => Promise<void>) => { commands.set(id, handler); return { dispose(): void {} }; } },
     window: { activeTextEditor: undefined, createTreeView: (_id: string, value: { treeDataProvider: typeof provider }) => { provider = value.treeDataProvider; return { dispose(): void {} }; }, showErrorMessage: async (error: unknown) => { errors.push(error); } },
-    workspace: { getConfiguration: () => ({ get: () => undefined }) }, authentication: { getSession: async () => ({ accessToken: "fixture-token" }) }
+    workspace: { getConfiguration: () => ({ get: () => undefined }), textDocuments: [], workspaceFolders: [{ uri: { scheme: "file", path: repositoryRoot, fsPath: repositoryRoot } }] }, authentication: { getSession: async () => ({ accessToken: "fixture-token" }) }
   };
   const saved = Array.from({ length: 256 }, (_, index): ReviewContextState => ({
     schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, contextId: `saved-${index}`, kind: "workspace", repositoryId: "repo-t607", displayName: `saved-${index}`,
@@ -866,6 +883,7 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input) => {
     const url = String(input);
+    if (url.includes("/compare/")) return new Response(JSON.stringify({ merge_base_commit: { sha: "a".repeat(40) } }), { status: 200 });
     if (url.includes("/files")) return new Response(JSON.stringify([{ filename: "f-0.ts", status: "modified", additions: 1, deletions: 0, patch: "@@ -0,0 +1 @@\n+opened" }]), { status: 200 });
     return new Response(JSON.stringify({ number: 79, title: "T607", html_url: "https://example.invalid/79", state: "open", merged_at: null, changed_files: 1, base: { sha: "a".repeat(40) }, head: { sha: revision } }), { status: 200 });
   };
@@ -876,7 +894,7 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
     const registered = t405.registerT405ReviewContextsRuntime({
       context: { globalStorageUri: { fsPath: path.join(root, "global") }, storageUri: { fsPath: path.join(root, "workspace") }, workspaceState: new Memento(), subscriptions: [] } as never,
       git: createNodeLocalGitAdapter(), enumerateCurrentContexts: async () => enabled ? [branch] : [],
-      refreshDecorations: async () => undefined, refreshCurrentContext: async () => undefined, registerPullRequestReviewDiff: () => undefined, openPullRequestReviewDiff: async () => undefined,
+      refreshDecorations: async () => undefined, refreshCurrentContext: async (context) => { await listRefresh.current?.(context); }, registerPullRequestReviewDiff: () => undefined, openPullRequestReviewDiff: async () => undefined,
       getPullRequestReviewProgress: async () => ({ reviewedLineCount: 0, totalLineCount: 1, progress: 0 }),
       reviewStateRepository: { load: async () => undefined, loadGlobal: async () => undefined, listRepositoryContexts: async () => [...saved, pullRequest], commit: async () => undefined, create: async () => undefined },
       reviewHistoryRecorder: { recordContextCreated: async () => undefined, recordRevisionMapping: async () => undefined },
@@ -886,11 +904,15 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
         yieldControl: () => undefined,
         accountBatch: (entry) => {
           contextBatches.push(entry);
-          if (disposeDuringLateProjection && entry.kind === "sorted-context") registeredRef?.dispose();
+          if (disposeDuringLateProjection && !lateDisposeTriggered && entry.kind === "sorted-context") {
+            lateDisposeTriggered = true;
+            registeredRef?.dispose();
+          }
         }
       }
     });
     registeredRef = registered;
+    listRefresh.current = registered.refreshListOnly;
     await new Promise<void>((resolve) => setImmediate(resolve));
     enabled = true;
     refreshCurrent = () => registered.refresh();
@@ -903,11 +925,25 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
     assert.ok(contextBatches.some((entry) => entry.kind === "materialized-context"), "candidate materialization is accounted before the bounded merge sort");
     assert.ok(contextBatches.some((entry) => entry.kind === "sorted-context"));
     assert.ok(contextBatches.every((entry) => entry.count <= 128), "saved-context collection, projection, and merge sort share the <=128 scheduler");
+    const acceptedRowsBeforeDispose = provider?.getChildren() ?? [];
+    assert.equal(acceptedRowsBeforeDispose.length, 258, "capture the accepted projection immediately before dispose");
+    const publicationsBeforeDispose = treePublications.length;
+    const writeStartsBeforeDispose = writeSignals.length;
     const cacheBeforeDispose = cachePublishes;
+    const emitterDisposalsBeforeLateRefresh = treeEmitterDisposals;
     disposeDuringLateProjection = true;
     await registered.refresh();
-    assert.equal(cachePublishes, cacheBeforeDispose, "dispose during late projection cannot transfer deferred cache ownership");
-    assert.equal(provider?.getChildren().length, 0, "disposed late projection publishes no stale Tree rows");
+    assert.equal(lateDisposeTriggered, true, "the late projection actually invokes registered.dispose()");
+    assert.equal(treeEmitterDisposals, emitterDisposalsBeforeLateRefresh + 1, "the provider's change emitter is disposed during the late projection");
+    assert.equal(treePublicationsAfterDispose, 0, "the disposed provider emits no later Tree publication notification");
+    assert.equal(treePublications.length, publicationsBeforeDispose, "the late projection emits no additional Tree publication notification");
+    assert.equal(writeSignals.length, writeStartsBeforeDispose, "dispose prevents any new PR cache write from starting");
+    assert.equal(cachePublishes, cacheBeforeDispose, "dispose prevents any later PR cache save");
+    const rowsAfterDispose = provider?.getChildren() ?? [];
+    assert.equal(rowsAfterDispose.length, acceptedRowsBeforeDispose.length, "dispose retains the last accepted projection");
+    rowsAfterDispose.forEach((row, index) => {
+      assert.strictEqual(row, acceptedRowsBeforeDispose[index], `dispose retains accepted row object ${index}`);
+    });
     const starts = feedbackLogs.filter((entry) => entry.event === "started").length;
     const terminals = feedbackLogs.filter((entry) => entry.event === "succeeded" || entry.event === "failed" || entry.event === "cancelled").length;
     assert.equal(terminals, starts, "every actual Review Contexts feedback operation emits exactly one terminal");
