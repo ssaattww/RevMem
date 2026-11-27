@@ -10,7 +10,7 @@ GitHub検索は全状態を対象にする。HEAD SHA一致だけに依存せず
 
 ## 表示と状態分離
 
-候補にopen / closed / merged状態を保持し、既存Quick PickにPR番号・タイトルと状態を表示する。選択後は既存repository/PR番号に基づくContext identityとimmutable base/head revision、Progress、review stateの分離を維持する。新しい依存や認証設定は追加しない。
+候補にopen / closed / merged状態を保持し、既存Quick PickにPR番号・タイトルと状態を表示する。 比較元revisionはlifecycle/diff取得と共通の規則とし、open PRではmerge-base、closed / merged PRではAPIのbase SHAを保持する。選択後は既存repository/PR番号に基づくContext identityとimmutable base/head revision、Progress、review stateの分離を維持する。新しい依存や認証設定は追加しない。
 
 ## 検証計画
 

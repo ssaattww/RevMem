@@ -304,6 +304,12 @@ export class FetchGitHubPullRequestAdapter implements GitHubPullRequestSearchPor
     let candidateOrdinal = 0;
     for (const candidate of candidates) {
       if (isSignalAborted(signal)) throw new DOMException("GitHub PR search was superseded.", "AbortError");
+      // Lifecycle and diff acquisition preserve the API base for closed/merged PRs.
+      // Normalize open (and legacy unspecified-state) candidates to the branch point.
+      if (candidate.state === "closed" || candidate.state === "merged") {
+        normalizedCandidates.push(candidate);
+        continue;
+      }
       candidateOrdinal += 1;
       const mergeBaseStartedAt = Date.now();
       this.emit({ stage: "merge-base", status: "started", ordinal: candidateOrdinal });

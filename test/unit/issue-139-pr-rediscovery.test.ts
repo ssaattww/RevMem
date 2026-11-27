@@ -1,7 +1,7 @@
 ﻿import assert from "node:assert/strict";
 import test from "node:test";
 
-import { FetchGitHubPullRequestAdapter } from "../../src/adapters/github/index.js";
+import { FetchGitHubPullRequestAdapter, FetchGitHubPullRequestLifecycleAdapter } from "../../src/adapters/github/index.js";
 import { createNodeLocalGitAdapter } from "../../src/adapters/local-git/index.js";
 import type { GitHubPullRequestSearchResult } from "../../src/application/github-pr-context/index.js";
 import { createTemporaryGitRepository } from "../support/temporary-git-repository.js";
@@ -146,6 +146,83 @@ for (const state of ["closed", "merged"]) {
       const candidates = await fixture.runtime.augmentCurrentContextCandidates([localCandidate(fixture.repositoryRoot, fixture.B)]);
       assert.ok(candidates.some(candidate => candidate.context.selection?.kind === "pull-request" &&
         candidate.context.selection.contextId === ownerContextId(52)));
+    } finally { await fixture.dispose(); }
+  });
+}
+
+for (const state of ["open", "closed", "merged"] as const) {
+  test(`Issue142 base revision: ${state}の検索とlifecycleの比較元を一致させる`, async () => {
+    const mergeBase = "d".repeat(40);
+    const requests: URL[] = [];
+    const payload = response(139, state);
+    const fetch: typeof globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      requests.push(url);
+      if (url.pathname.includes("/compare/")) return Response.json({ merge_base_commit: { sha: mergeBase } });
+      if (url.pathname.endsWith("/pulls/139")) return Response.json(payload);
+      assert.ok(url.pathname.endsWith("/pulls"));
+      return Response.json([payload]);
+    };
+    const search = new FetchGitHubPullRequestAdapter({ apiBaseUrl: "https://api.github.com", fetch });
+    const lifecycle = new FetchGitHubPullRequestLifecycleAdapter({ apiBaseUrl: "https://api.github.com", fetch });
+    const found = await search.findByHead(identity, head);
+    assert.equal(found.kind, "found");
+    if (found.kind !== "found") return;
+    assert.equal(found.candidates.length, 1);
+    const searchCompareCount = requests.filter(url => url.pathname.includes("/compare/")).length;
+    const current = await lifecycle.fetchCurrent(identity, 139);
+    assert.equal(current.kind, "available");
+    if (current.kind !== "available") return;
+    const candidate = found.candidates[0]!;
+    assert.equal(candidate.state, state);
+    assert.equal(current.metadata.state, state);
+    assert.equal(candidate.headSha, current.metadata.headSha);
+    assert.equal(candidate.baseSha, current.metadata.baseSha);
+    assert.equal(candidate.baseSha, state === "open" ? mergeBase : base);
+    assert.equal(searchCompareCount, state === "open" ? 1 : 0);
+  });
+
+  test(`Issue142 base revision: API baseとmerge-baseが異なる保存済み${state}を選択してProgressを取得する`, async () => {
+    const fixture = await createOwnerProductFixture([52]);
+    try {
+      await fixture.git("checkout", "-B", "fixture-base-tip", fixture.A);
+      await fixture.git("commit", "--allow-empty", "-m", "fixture base advance");
+      const baseTip = await fixture.git("rev-parse", "HEAD");
+      await fixture.git("checkout", "-B", "main", fixture.B);
+      const mergeBase = await fixture.git("merge-base", baseTip, fixture.C);
+      assert.equal(mergeBase, fixture.A);
+      assert.notEqual(baseTip, mergeBase);
+      fixture.remote.clear();
+      fixture.remote.set(52, { base: baseTip, head: fixture.C, state });
+      fixture.remote.set(53, { base: fixture.A, head: fixture.C, state: "open" });
+      fixture.auth.required = true;
+      fixture.auth.connected = false;
+      await fixture.workspaceState.update("reviewRange.currentPullRequestSelections.v1", {
+        [`${OWNER_ID}\0${fixture.B}`]: ownerContextId(53),
+      });
+      const publicationsBefore = fixture.publications.owner;
+
+      await fixture.runtime.preparePullRequestCandidateForExplicitContextSelection!();
+
+      assert.equal(fixture.auth.connected, true);
+      assert.ok(fixture.candidatePicks.some(items => items.some(item => item.candidate.number === 52)),
+        "選択した保存済みPRがPR一覧に表示される");
+      assert.deepEqual(fixture.errors, []);
+      const expectedBase = state === "open" ? mergeBase : baseTip;
+      const saved = (await fixture.load(52))?.contextState.pullRequest;
+      assert.equal(saved?.state, state);
+      assert.equal(saved?.baseSha, expectedBase);
+      assert.equal(saved?.headSha, fixture.C);
+      assert.equal(fixture.publications.owner, publicationsBefore + 1);
+      const candidates = await fixture.runtime.augmentCurrentContextCandidates([localCandidate(fixture.repositoryRoot, fixture.B)]);
+      const selected = candidates.find(candidate => candidate.context.selection?.kind === "pull-request" &&
+        candidate.context.selection.contextId === ownerContextId(52));
+      assert.ok(selected, "Current Context候補へ表示する");
+      assert.equal(selected.context.baseRevision, expectedBase);
+      assert.equal(selected.context.headRevision, fixture.C);
+      assert.ok(selected.progress);
+      assert.ok(fixture.registrations.has(ownerContextId(52)));
+      assert.ok(await fixture.review.getProgress(ownerContextId(52)));
     } finally { await fixture.dispose(); }
   });
 }
