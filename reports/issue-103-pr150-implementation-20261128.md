@@ -13,3 +13,7 @@ Global 確認済みレイヤーの切り替えから、共有され得る VS Cod
 [先行版 CI](https://github.com/ssaattww/RevMem/actions/runs/46061182933) では、Extension Host の再起動で表示設定が既定値へ戻りました。[VS Code の試験起動ではワークスペースの状態保存にメモリを使う実装](https://github.com/microsoft/vscode/blob/main/src/vs/platform/storage/electron-main/storageMainService.ts#L98-L101) と一致します。実ホストでは同じホスト内で新しく読み直し、再起動時の優先順位は保存済み入力を与える単体試験で検証します。通常版の VS Code を閉じて開く検証は未実施です。
 
 現修正版は隔離 Linux で試験ビルド、関連60件、lintが成功しました。追加した Extension Host 試験の結果は対象版の自動CIで確認します。
+
+## 通常レビューと実ホスト確認
+
+対象 `e2a273ff003ab53c401e85227fb18063ec0261c7` の通常レビューで I01〜I04 をすべて解消し、残る必須指摘は0件です。[同じ版の自動CI](https://github.com/ssaattww/RevMem/actions/runs/46062370707) は単体、複数フォルダーを含む T609、VS Code Extension Host をすべて通過しました。通常版 VS Code を再起動する確認はこの試験に含まれません。今回の調整はこの拡張機能の設定表示に限り、共通スキルの更新は不要と判断しました。
