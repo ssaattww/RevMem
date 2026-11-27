@@ -1,5 +1,9 @@
 # Breaking Changes
 
+## 2026-11-28 — Issue #103 の Global レイヤー表示
+
+表示切り替えは共有され得る設定ファイルに保存せず、拡張機能が作業場所ごとに保持します。ほかの利用者と表示設定を共有したい場合は、VS Code の設定から `reviewRange.showGlobalReviewed` を直接変更してください。設定名と既定値、既存設定ファイルは変えません。
+
 ## 2026-10-09 — Issue139 PR検索境界
 
 `GitHubPullRequestSearchPort.findOpenByHead` は `findByHead` へ変更した。

@@ -86,7 +86,7 @@ code --install-extension review-range-tracker-<version>.vsix
 
 | 種類 | 操作する場所 | 切り替わるもの |
 | --- | --- | --- |
-| **Globalレイヤー** | Global Understanding のタイトル欄、またはコマンドパレットの **Review Range: Global確認済みレイヤーを切り替え** | 通常エディタへGlobalの確認済み表示を重ねるかどうか。設定 `reviewRange.showGlobalReviewed` と同じ切り替えです。 |
+| **Globalレイヤー** | Global Understanding のタイトル欄、またはコマンドパレットの **Review Range: Global確認済みレイヤーを切り替え** | 通常エディタへGlobalの確認済み表示を重ねるかどうか。選択は拡張機能内にワークスペース単位で保存し、設定ファイルは変更しません。 |
 | **PRレイヤー** | Review Contexts のPR項目で **PR layerを切り替え** | そのPRのON/OFF設定と、一覧の `Layer: ON` / `Layer: OFF` 表示。**現在は行のグレー表示への反映が未対応です。** |
 
 #### GlobalをOFFにすると、何が変わるか
@@ -166,7 +166,7 @@ PR Progress と Global Understanding は同じ除外設定 `reviewRange.exclude`
 | 設定 | 既定値 | 内容 |
 | --- | --- | --- |
 | `reviewRange.prDiffSelectionMode` | `side` | PR diff の確認単位を `side` / `block` から選びます。 |
-| `reviewRange.showGlobalReviewed` | `true` | Global 確認済み範囲を通常エディタへ重ねて表示します。 |
+| `reviewRange.showGlobalReviewed` | `true` | Global 確認済み範囲の初期表示です。利用者が有効な設定値を変えた場合は、保存した表示の選択より優先します。 |
 | `reviewRange.ignoreWhitespaceChanges` | `false` | 空白だけの編集を確認済み範囲の追従で無視します。 |
 | `reviewRange.ignoreEolChanges` | `false` | 改行コードだけの編集を確認済み範囲の追従で無視します。 |
 | `reviewRange.showGutterIcon` | `true` | 確認済み行のガターアイコンを表示します。 |

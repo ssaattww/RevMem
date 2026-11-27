@@ -2,6 +2,7 @@ import path from "node:path";
 import * as vscode from "vscode";
 
 import { NodeSha256StableHash } from "../adapters/crypto/index";
+import { GlobalLayerVisibilityState } from "../application/global-layer-visibility-state";
 import { getActiveReviewFileExclusionPolicyService } from "../application/file-exclusion/review-file-exclusion-policy-service";
 import { createNodeLocalGitAdapter } from "../adapters/local-git/index";
 import { runPersistenceStartupMigration } from "../adapters/persistence-startup-migration";
@@ -175,7 +176,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   } else {
     await persistenceStartup;
   }
-  const baseApi = activateBaseExtension(context);
+  const readGlobalLayerSetting = () =>
+    vscode.workspace.getConfiguration("reviewRange").get("showGlobalReviewed", true);
+  const initialGlobalLayerSetting = readGlobalLayerSetting();
+  const createGlobalLayerVisibility = (setting: boolean) => new GlobalLayerVisibilityState(context.workspaceState, setting);
+  const visibility = createGlobalLayerVisibility(initialGlobalLayerSetting);
+  const baseApi = activateBaseExtension(context, () => visibility.isEnabled());
   const runtimePort: ReviewRangeRuntimePort = baseApi;
   let selectedContext: SelectedReviewContext | undefined;
   let testCurrentContextSelection: "first" | "cancel" | "stale" | undefined;
@@ -551,14 +557,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     resolveFolderPathForResource: (resource) => resource instanceof vscode.Uri
       ? globalSource.folderPathForEntry(resource.fsPath)
       : undefined,
-    readGlobalLayerEnabled: () =>
-      vscode.workspace.getConfiguration("reviewRange").get("showGlobalReviewed", true),
-    writeGlobalLayerEnabled: (enabled) =>
-      vscode.workspace.getConfiguration("reviewRange").update(
-        "showGlobalReviewed",
-        enabled,
-        vscode.ConfigurationTarget.Workspace
-      ),
+    layerState: {
+      toggle: () => visibility.toggle(),
+      applyCurrentSetting: () => visibility.applySetting(readGlobalLayerSetting())
+    },
     refreshDecorations: () => runtimePort.refreshVisibleEditorDecorations(),
     openFile: openGlobalFile,
     reportError: (error) => {
@@ -1048,6 +1050,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   ];
   context.subscriptions.push(...folderEntryWatcherRegistrations);
 
+  // The configuration listener is installed before this second read. Changes
+  // during startup are either included here or queued by the listener.
+  await visibility.reconcileStartup(
+    readGlobalLayerSetting,
+    () => runtimePort.refreshVisibleEditorDecorations()
+  ).catch((error: unknown) => {
+    reportActiveOperationFailure("Global レイヤー表示設定の復元", error);
+  });
+
   if (context.extensionMode === vscode.ExtensionMode.Test) {
     const gitReviewStateSnapshotForTest = async (document: vscode.TextDocument) => {
       const documentPath = workspaceFilesystemPath(document.uri);
@@ -1131,6 +1142,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     };
     return {
       ...baseApi,
+      getGlobalLayerVisibilityForTest: () => visibility.isEnabled(),
+      readStoredGlobalLayerVisibilityForTest: async () => {
+        const restored = createGlobalLayerVisibility(readGlobalLayerSetting());
+        await restored.reconcileStartup(readGlobalLayerSetting, () => undefined);
+        return restored.isEnabled();
+      },
       initializePullRequestReviewRuntimeForTest,
       getPullRequestReviewStateForTest: () => testPullRequestRuntimeTarget === undefined
         ? Promise.resolve(undefined)

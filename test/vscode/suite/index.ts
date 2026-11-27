@@ -75,6 +75,8 @@ interface ReviewRangeExtensionTestApi {
   refreshVisibleEditorDecorations(): Promise<void>;
   drainVisibleEditorDecorations(): Promise<void>;
   getVisibleReviewedIntervals(documentUri: string): readonly ReviewedInterval[];
+  getGlobalLayerVisibilityForTest(): boolean;
+  readStoredGlobalLayerVisibilityForTest(): Promise<boolean>;
   getFileExclusionPolicySnapshot(): FileExclusionPolicySnapshot;
   evaluateFileExclusion(path: string, isBinary?: boolean): FileExclusionDecision;
 }
@@ -263,6 +265,31 @@ const openLifecycleFixture = async (
   return { documentUri, editor, splitEditor };
 };
 
+const workspaceSettingsBytes = async (folder: vscode.WorkspaceFolder): Promise<Uint8Array | undefined> => {
+  const uri = vscode.Uri.joinPath(folder.uri, ".vscode", "settings.json");
+  try {
+    return await vscode.workspace.fs.readFile(uri);
+  } catch (error) {
+    if (error instanceof vscode.FileSystemError && error.code === "FileNotFound") return undefined;
+    throw error;
+  }
+};
+
+const assertToggleKeepsWorkspaceSettings = async (
+  folder: vscode.WorkspaceFolder,
+  api: ReviewRangeExtensionTestApi,
+  exists: boolean,
+): Promise<void> => {
+  const before = await workspaceSettingsBytes(folder);
+  assert.equal(before !== undefined, exists, "The fixture must start with the expected settings-file presence.");
+  const initial = api.getGlobalLayerVisibilityForTest();
+  for (let i = 0; i < 2; i++) {
+    await vscode.commands.executeCommand("reviewRange.toggleGlobalLayer");
+    assert.equal(api.getGlobalLayerVisibilityForTest(), i === 0 ? !initial : initial);
+    assert.deepEqual(await workspaceSettingsBytes(folder), before, "Toggling the Global layer must not create or change workspace settings.");
+  }
+};
+
 /** Runs the Extension Host lifecycle assertions invoked by VS Code's test runner. */
 export async function run(): Promise<void> {
   const phase = readTestPhase();
@@ -279,12 +306,21 @@ export async function run(): Promise<void> {
   );
   await within("manifest and configuration", assertManifestAndConfiguration(extension));
   await within("refresh context command", vscode.commands.executeCommand("reviewRange.refreshContext"));
-  if (phase === "confirm") {
-    await within("exclusion configuration lifecycle", assertExclusionConfigurationLifecycle(extensionApi));
-  }
-
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
   assert.ok(workspaceFolder, "The Extension Host fixture should open a workspace folder.");
+  if (phase === "confirm") {
+    await within("Global toggle before any fixture configuration edits", assertToggleKeepsWorkspaceSettings(workspaceFolder, extensionApi, false));
+    await within("exclusion configuration lifecycle", assertExclusionConfigurationLifecycle(extensionApi));
+    if (await workspaceSettingsBytes(workspaceFolder) === undefined) {
+      const folder = vscode.Uri.joinPath(workspaceFolder.uri, ".vscode");
+      await vscode.workspace.fs.createDirectory(folder);
+      await vscode.workspace.fs.writeFile(
+        vscode.Uri.joinPath(folder, "settings.json"),
+        Buffer.from('{ "files.trimTrailingWhitespace": false }\n')
+      );
+    }
+    await within("Global toggle with existing fixture settings", assertToggleKeepsWorkspaceSettings(workspaceFolder, extensionApi, true));
+  }
   const { documentUri, editor, splitEditor } = await within("open lifecycle fixture", openLifecycleFixture(
     phase,
     workspaceFolder
@@ -302,6 +338,11 @@ export async function run(): Promise<void> {
       [{ startLine: 0, endLineExclusive: 1 }],
       "A confirmed line should be persisted before its success decoration is observable."
     );
+    await vscode.commands.executeCommand("reviewRange.toggleGlobalLayer");
+    assert.equal(extensionApi.getGlobalLayerVisibilityForTest(), false);
+    // The Extension Test launch uses VS Code's in-memory WorkspaceState
+    // database. Verify a new reader sees the actual stored choice in this Host.
+    assert.equal(await extensionApi.readStoredGlobalLayerVisibilityForTest(), false);
     return;
   }
 

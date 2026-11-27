@@ -78,6 +78,7 @@ const prepareT609Fixture = async (root: string): Promise<void> => {
     writeFile(join(root, "utf8-bom.txt"), Buffer.from([0xef, 0xbb, 0xbf, 0x62, 0x65, 0x74, 0x61, 0x0a])),
     writeFile(join(root, "invalid.txt"), Buffer.from([0xff, 0xfe, 0xfd])),
     writeFile(join(root, "rename-source.txt"), "rename fixture\n", "utf8"),
+    writeFile(join(root, "global-layer-visibility.txt"), "context overlap\nuntouched\nglobal only\n", "utf8"),
     writeFile(join(root, "whitespace.txt"), "whitespace fixture\n", "utf8"),
     writeFile(join(root, "eol.txt"), "eol fixture\n", "utf8"),
     writeFile(join(root, "fixtures", "branch-switch-disappears.ts"), "deleted open document\n", "utf8"),
@@ -152,7 +153,7 @@ const prepareT609InitialReviewState = async (root: string, userData: string): Pr
       ignoreEolChanges: true
     }
   });
-  const descriptors = await Promise.all(["rename-source.txt", "whitespace.txt", "eol.txt"].map(async (name) => {
+  const descriptors = await Promise.all(["rename-source.txt", "whitespace.txt", "eol.txt", "global-layer-visibility.txt"].map(async (name) => {
     const documentFsPath = join(root, name);
     const text = await readFile(documentFsPath, "utf8");
     const uri = pathToFileURL(documentFsPath);
@@ -192,6 +193,16 @@ const prepareT609InitialReviewState = async (root: string, userData: string): Pr
       globalState = transaction.next.globalState;
     }
     if (transaction === undefined) throw new Error("T609 runner seed requires initial sessions.");
+    const layerFileId = sessions.find((session) => session.target.currentPath === "global-layer-visibility.txt")?.target.fileId;
+    const layerFile = layerFileId === undefined ? undefined : globalState.files[layerFileId];
+    if (layerFileId === undefined || layerFile === undefined) throw new Error("Global layer fixture state was not seeded.");
+    globalState = {
+      ...globalState,
+      files: {
+        ...globalState.files,
+        [layerFileId]: { ...layerFile, reviewed: [...layerFile.reviewed, { startLine: 2, endLineExclusive: 3 }] }
+      }
+    };
     const batchTransaction: ReviewStateTransaction = { ...transaction, expected, next: { contextState, globalState } };
     await initial.committer.commit(batchTransaction);
     await historyRecorder.recordTransaction(batchTransaction, "test-mapping-seed");
@@ -414,12 +425,19 @@ async function main(): Promise<void> {
       };
       for (const phase of t609Phases) {
         if (phase === "prepare") await advanceT609Fixture(t609Paths.workspace);
+        const readSettingsStatus = async () => (await execFileAsync("git", [
+          "status", "--porcelain=v1", "--untracked-files=all", "--", ".vscode/settings.json"
+        ], { cwd: t609Paths.workspace, windowsHide: true })).stdout;
+        const beforeSettingsStatus = phase === "prepare" ? await readSettingsStatus() : undefined;
         await launch(
           `t609-${phase}`,
           phase === "single-root" ? t609SingleRootLaunchPaths : t609LaunchPaths,
           join(__dirname, "t609-suite"),
           phase
         );
+        if (beforeSettingsStatus !== undefined && await readSettingsStatus() !== beforeSettingsStatus) {
+          throw new Error("T609 Global layer toggle changed the workspace settings Git status.");
+        }
       }
       return;
     }
