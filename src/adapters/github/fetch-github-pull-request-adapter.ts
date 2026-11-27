@@ -5,6 +5,7 @@
   GitHubPullRequestSearchResult,
   GitHubRepositoryIdentity
 } from "../../application/github-pr-context/index";
+import { requirePullRequestCommitObjectId } from "../../application/github-pr-diff/index";
 import {
   fetchGitHubPullRequestMergeBase,
   readGitHubPullRequestMergeBase,
@@ -103,6 +104,16 @@ const toCandidate = (
     value.head.repo.full_name.toLowerCase() !== expectedFullName.toLowerCase())) return undefined;
   const state = value.state === "closed" ? (isString(value.merged_at) ? "merged" : "closed")
     : value.state === "open" ? "open" : undefined;
+  // Closed/merged candidates bypass merge-base acquisition, so validate their
+  // immutable revision IDs here with the same shared validator.
+  if (state === "closed" || state === "merged") {
+    try {
+      requirePullRequestCommitObjectId(value.base.sha);
+      requirePullRequestCommitObjectId(value.head.sha);
+    } catch {
+      return "malformed";
+    }
+  }
   return {
     ...(state === undefined ? {} : { state }),
     number: value.number,

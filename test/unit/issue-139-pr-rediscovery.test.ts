@@ -227,6 +227,45 @@ for (const state of ["open", "closed", "merged"] as const) {
   });
 }
 
+for (const state of ["closed", "merged"] as const) {
+  for (const field of ["base", "head"] as const) {
+    test(`Issue146 object ID: ${state}の不正な${field}を候補に返さない`, async () => {
+      for (const invalid of ["abc123", "f".repeat(39), "g".repeat(40), "A".repeat(40), "f".repeat(63), "refs/heads/main"]) {
+        const payload = response(139, state);
+        payload[field].sha = invalid;
+        const requests: URL[] = [];
+        const adapter = new FetchGitHubPullRequestAdapter({
+          apiBaseUrl: "https://api.github.com",
+          fetch: async input => { requests.push(new URL(String(input))); return Response.json([payload]); },
+        });
+        // Branch matching allows a different head SHA, so malformed head IDs
+        // must be rejected by validation, not accidentally filtered by SHA equality.
+        assert.deepEqual(await adapter.findByHead(identity, head, { headRef: "feature", headRepository: identity }),
+          { kind: "unavailable", reason: "api" });
+        assert.equal(requests.length, 1, "reject malformed IDs without a comparison request");
+        assert.ok(requests[0]!.pathname.endsWith("/pulls"));
+      }
+    });
+  }
+
+  test(`Issue146 object ID: ${state}の完全なSHA-256を保持する`, async () => {
+    const payload = response(139, state, "example", "feature", "a".repeat(64));
+    payload.base.sha = "b".repeat(64);
+    const requests: URL[] = [];
+    const adapter = new FetchGitHubPullRequestAdapter({
+      apiBaseUrl: "https://api.github.com",
+      fetch: async input => { requests.push(new URL(String(input))); return Response.json([payload]); },
+    });
+    const result = await adapter.findByHead(identity, head, { headRef: "feature", headRepository: identity });
+    assert.equal(result.kind, "found");
+    if (result.kind !== "found") return;
+    assert.equal(result.candidates.length, 1);
+    assert.equal(result.candidates[0]!.baseSha, payload.base.sha);
+    assert.equal(result.candidates[0]!.headSha, payload.head.sha);
+    assert.equal(requests.length, 1);
+  });
+}
+
 test("Issue139: 別hostの同名repository/branchを候補にしない", async () => {
   const adapter = new FetchGitHubPullRequestAdapter({ apiBaseUrl: "https://api.github.com", fetch: async () => {
     throw new Error("別hostを検索しない");
