@@ -61,7 +61,15 @@ const event = (eventId: string, contextId: string): ReviewHistoryEvent => ({
   reason: "created"
 });
 
-const startLockChild = (rootPath: string): { readonly child: ReturnType<typeof spawn>; readonly ready: Promise<void>; readonly output: Promise<string>; release(): void } => {
+interface OwnedLockChild {
+  readonly child: ReturnType<typeof spawn>;
+  readonly ready: Promise<void>;
+  readonly output: Promise<string>;
+  release(): void;
+  terminateAndWait(): Promise<void>;
+}
+
+const startLockChild = (rootPath: string): OwnedLockChild => {
     const modulePath = path.join(process.cwd(), "test-dist", "src", "adapters", "state-repository", "storage-root-lock.js");
     const script = [
       `const { NodeStorageRootLock } = require(${JSON.stringify(modulePath)});`,
@@ -76,24 +84,63 @@ const startLockChild = (rootPath: string): { readonly child: ReturnType<typeof s
     let readyReject: (error: Error) => void = () => undefined;
     const ready = new Promise<void>((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
     void ready.catch(() => undefined);
-    const timeout = setTimeout(() => child.kill(), 30_000);
+    let closed = false;
+    let releaseRequested = false;
+    let stdinError: Error | undefined;
+    let errorOutput = "";
+    const closedEvent = new Promise<void>((resolve) => {
+      child.once("close", () => { closed = true; resolve(); });
+    });
+    child.stdin.on("error", (error) => { stdinError = error; });
+    const release = (): void => {
+      if (releaseRequested || closed) return;
+      releaseRequested = true;
+      try {
+        child.stdin.write("release\\n", (error) => { if (error != null) stdinError = error; });
+      } catch (error) {
+        stdinError = error instanceof Error ? error : new Error(String(error));
+      }
+    };
+    const terminateAndWait = async (): Promise<void> => {
+      if (closed) return;
+      release();
+      const killTimeout = setTimeout(() => {
+        if (!closed) {
+          try { child.kill(); } catch { /* The owned child may already be closing. */ }
+        }
+      }, 1_000);
+      try {
+        await closedEvent;
+      } finally {
+        clearTimeout(killTimeout);
+      }
+    };
+    const timeout = setTimeout(() => { if (!closed) child.kill(); }, 30_000);
     child.stdout.on("data", (value: Buffer) => { outputText += value.toString("utf8"); if (!acquired && outputText.includes("acquired\n")) { acquired = true; readyResolve(); } });
+    child.stderr.on("data", (value: Buffer) => { errorOutput += value.toString("utf8"); });
     const output = new Promise<string>((resolve, reject) => {
       child.once("error", (error) => { readyReject(error); reject(error); });
-      child.once("exit", (code) => {
+      child.once("close", (code, signal) => {
       clearTimeout(timeout);
       if (!acquired) readyReject(new Error("lock child exited before acquisition: " + String(code)));
       if (code === 0) {
         resolve(outputText.trim());
       } else {
-        reject(new Error(`lock child exited ${String(code)}`));
+        const details = [errorOutput.trim(), stdinError?.message].filter(Boolean).join("; ");
+        reject(new Error(`lock child exited ${String(code)}${signal === null ? "" : ` via ${signal}`}${details.length === 0 ? "" : `: ${details}`}`));
       }
       });
     });
-    return { child, ready, output, release: () => { child.stdin.write("release\\n"); } };
+    void output.catch(() => undefined);
+    return { child, ready, output, release, terminateAndWait };
 };
 
-const runLockChild = async (rootPath: string): Promise<string> => { const started = startLockChild(rootPath); started.release(); return started.output; };
+const runLockChild = async (rootPath: string, ownedChildren?: Set<OwnedLockChild>): Promise<string> => {
+  const started = startLockChild(rootPath);
+  ownedChildren?.add(started);
+  started.release();
+  return started.output;
+};
 
 /** Runs only production migration, state, history, and snapshot composition in an owned Node process. */
 const runProductionPersistenceChild = (rootPath: string, action: "startup" | "writer"): Promise<string> => {
@@ -409,15 +456,21 @@ test("T604 cleans an owned partial lease after write, sync, or close acquisition
 test("T604 uses an owned OS child-process lease and releases it for a successor", async () => {
   const temporary = await createTemporaryStorage();
   const route = resolveReviewStateStorageRoute(temporary.storageUris, target("branch:child-process"));
+  const ownedChildren = new Set<OwnedLockChild>();
   try {
     const first = startLockChild(route.rootPath);
+    ownedChildren.add(first);
     await first.ready;
-    assert.equal(await runLockChild(route.rootPath), "StorageRootLockTimeoutError");
+    assert.equal(await runLockChild(route.rootPath, ownedChildren), "StorageRootLockTimeoutError");
     first.release();
     assert.equal(await first.output, "acquired");
-    assert.equal(await runLockChild(route.rootPath), "acquired");
+    assert.equal(await runLockChild(route.rootPath, ownedChildren), "acquired");
   } finally {
-    await rm(temporary.root, { recursive: true, force: true });
+    try {
+      await Promise.all([...ownedChildren].map((ownedChild) => ownedChild.terminateAndWait()));
+    } finally {
+      await rm(temporary.root, { recursive: true, force: true });
+    }
   }
 });
 
