@@ -255,10 +255,10 @@ const toResourceUri = (uri: vscode.Uri) => ({
   fragment: uri.fragment
 });
 
-const readDecorationSettings = (): NormalEditorDecorationSettings => {
+const readDecorationSettings = (globalLayerEnabled?: () => boolean): NormalEditorDecorationSettings => {
   const configuration = vscode.workspace.getConfiguration("reviewRange");
   return {
-    showGlobalReviewed: configuration.get("showGlobalReviewed", true),
+    showGlobalReviewed: globalLayerEnabled?.() ?? configuration.get("showGlobalReviewed", true),
     showGutterIcon: configuration.get("showGutterIcon", true),
     showOverviewRuler: configuration.get("showOverviewRuler", false)
   };
@@ -350,6 +350,7 @@ export const createNormalEditorDecorationActivation = (dependencies: {
   readonly documentSessionProvider: Pick<DocumentReviewStateSessionProvider, "loadForDecoration">;
   readonly selectedContext: () => SelectedReviewContext | undefined;
   readonly currentPullRequestDiff?: () => Readonly<PullRequestDiffSnapshot> | undefined;
+  readonly globalLayerEnabled?: (() => boolean) | undefined;
   readonly reportError: (error: unknown) => void | Promise<void>;
   readonly workBudget?: NormalEditorDecorationWorkBudget;
 }): {
@@ -427,7 +428,7 @@ export const createNormalEditorDecorationActivation = (dependencies: {
   const host: NormalEditorDecorationHost<vscode.TextEditor, vscode.TextEditorDecorationType> = {
     getVisibleEditors: () => vscode.window.visibleTextEditors,
     isDiffEditor: (editor) => isVisibleDiffEditor(editor),
-    getSettings: () => readDecorationSettings(),
+    getSettings: () => readDecorationSettings(dependencies.globalLayerEnabled),
     loadDecorations: async (editor, showGlobalReviewed, loadContext) =>
       FILESYSTEM_SCHEMES.has(editor.document.uri.scheme)
         ? loadDecorations(editor, showGlobalReviewed, loadContext)
@@ -473,7 +474,9 @@ export const createNormalEditorDecorationActivation = (dependencies: {
     }),
     onDidChangeActiveEditor: (listener) => vscode.window.onDidChangeActiveTextEditor(() => invokeListener(listener)),
     onDidChangeSettings: (listener) => vscode.workspace.onDidChangeConfiguration((event) => {
-      if (DECORATION_CONFIGURATION_KEYS.some((key) => event.affectsConfiguration(key))) invokeListener(listener);
+      if (DECORATION_CONFIGURATION_KEYS.some((key) =>
+        (key !== "reviewRange.showGlobalReviewed" || dependencies.globalLayerEnabled === undefined)
+        && event.affectsConfiguration(key))) invokeListener(listener);
     }),
     onDidChangeDocument: (listener) => vscode.workspace.onDidChangeTextDocument((event) => {
       for (const editor of vscode.window.visibleTextEditors) {
@@ -559,7 +562,8 @@ const uniqueVisibleIntervals = (
 
 /** Activates the Review Range Tracker extension. */
 export function activate(
-  context: vscode.ExtensionContext
+  context: vscode.ExtensionContext,
+  globalLayerEnabled?: () => boolean
 ): ReviewRangeRuntimePort | ReviewRangeExtensionTestApi {
   const reviewStateChanged = new vscode.EventEmitter<void>();
   context.subscriptions.push(reviewStateChanged);
@@ -710,6 +714,7 @@ export function activate(
     documentSessionProvider,
     selectedContext: () => selectedContext,
     currentPullRequestDiff: () => currentPullRequestDiff,
+    globalLayerEnabled,
     reportError: reportDecorationError
   });
   const { toDocumentDescriptor, controller: decorationController, appliedDecorations } = decorationActivation;

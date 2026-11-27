@@ -59,15 +59,11 @@ export interface GlobalUnderstandingRuntimeSource {
 }
 
 /** VS Code composition dependencies for the owner-scoped Global Understanding runtime. */
-export interface GlobalUnderstandingRuntimeDependencies {
+export type GlobalUnderstandingRuntimeDependencies = {
   /** Current owner-scoped source controlled by this runtime. */
   readonly source: GlobalUnderstandingRuntimeSource;
   /** Resolves an editor-context resource to a canonical current-owner folder. */
   readonly resolveFolderPathForResource?: (resource: unknown) => string | undefined;
-  /** Reads whether the global reviewed-line decoration layer is enabled. */
-  readonly readGlobalLayerEnabled: () => boolean;
-  /** Persists the global reviewed-line decoration layer setting. */
-  readonly writeGlobalLayerEnabled: (enabled: boolean) => void | PromiseLike<void>;
   /** Refreshes reviewed-line decorations after a layer change. */
   readonly refreshDecorations: () => void | Promise<void>;
   /** Opens an immutable current-owner file target. */
@@ -80,7 +76,16 @@ export interface GlobalUnderstandingRuntimeDependencies {
   readonly onSnapshotPublishedForTest?: (snapshot: GlobalUnderstandingTreeSnapshot) => void;
   /** Test-only observation of the production Tree provider's rendered hierarchy and Status Bar text. */
   readonly onPresentationPublishedForTest?: (presentation: GlobalUnderstandingPresentationForTest) => void;
-}
+} & ({
+  /** Production state, shared with normal-editor decorations. */
+  readonly layerState: {
+    toggle(): Promise<boolean>;
+    applyCurrentSetting(): Promise<boolean>;
+  };
+} | {
+  readonly readGlobalLayerEnabled: () => boolean;
+  readonly writeGlobalLayerEnabled: (enabled: boolean) => void | PromiseLike<void>;
+});
 
 /** Immutable rendering observation captured only from the actual Tree provider in Extension tests. */
 export interface GlobalUnderstandingPresentationForTest {
@@ -457,14 +462,24 @@ export const registerGlobalUnderstandingRuntime = (
     return refreshWithErrorBoundary();
   };
 
-  const toggle = new GlobalLayerToggleController({
-    readEnabled: dependencies.readGlobalLayerEnabled,
-    writeEnabled: async (enabled) => {
-      await dependencies.writeGlobalLayerEnabled(enabled);
-    },
-    refreshDecorations: dependencies.refreshDecorations,
-    refreshGlobalUnderstanding: () => refreshWithDetail({ reason: "global-layer-toggled", phase: "global-refresh-trigger" })
-  });
+  const refreshAfterToggle = () => refreshWithDetail({ reason: "global-layer-toggled", phase: "global-refresh-trigger" });
+  const toggleLayer = (() => {
+    if ("layerState" in dependencies) {
+      return async (): Promise<boolean> => {
+        const enabled = await dependencies.layerState.toggle();
+        await dependencies.refreshDecorations();
+        await refreshAfterToggle();
+        return enabled;
+      };
+    }
+    const controller = new GlobalLayerToggleController({
+      readEnabled: dependencies.readGlobalLayerEnabled,
+      writeEnabled: async (enabled) => { await dependencies.writeGlobalLayerEnabled(enabled); },
+      refreshDecorations: dependencies.refreshDecorations,
+      refreshGlobalUnderstanding: refreshAfterToggle
+    });
+    return () => controller.toggle();
+  })();
 
   const registrations: vscode.Disposable[] = [];
   if (typeof (vscode.window as { readonly createTreeView?: unknown }).createTreeView === "function") {
@@ -549,7 +564,7 @@ export const registerGlobalUnderstandingRuntime = (
         try {
           await runWithActiveOperationFeedback(
             "Global理解率Layerを切り替える",
-            () => toggle.toggle(),
+            toggleLayer,
           );
         } catch (error) {
           await dependencies.reportError(formatOperationFailureForUser(error));
@@ -557,10 +572,20 @@ export const registerGlobalUnderstandingRuntime = (
       }
     ),
     vscode.workspace.onDidChangeConfiguration((event) => {
+      const layerSettingChanged = event.affectsConfiguration("reviewRange.showGlobalReviewed");
+      const otherRelevantSettingChanged = event.affectsConfiguration("reviewRange.exclude")
+        || event.affectsConfiguration("reviewRange.globalUnderstanding.autoStartDescendants");
+      if (layerSettingChanged && "layerState" in dependencies) {
+        void dependencies.layerState.applyCurrentSetting().then(async (changed) => {
+          if (changed) await dependencies.refreshDecorations();
+          if (changed || otherRelevantSettingChanged) {
+            await refreshWithDetail({ reason: "configuration-changed", phase: "global-refresh-trigger" });
+          }
+        }).catch((error: unknown) => dependencies.reportError(formatOperationFailureForUser(error)));
+        return;
+      }
       if (
-        event.affectsConfiguration("reviewRange.exclude") ||
-        event.affectsConfiguration("reviewRange.globalUnderstanding.autoStartDescendants") ||
-        event.affectsConfiguration("reviewRange.showGlobalReviewed")
+        otherRelevantSettingChanged || layerSettingChanged
       ) {
         void refreshWithDetail({ reason: "configuration-changed", phase: "global-refresh-trigger" });
       }
