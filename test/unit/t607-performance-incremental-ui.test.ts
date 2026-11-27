@@ -571,21 +571,24 @@ test("T607 production Global runtime supersedes old/new refreshes and gives each
     assert.equal(treeFiresAfterDispose.length, firesAfterDispose, "stale-disposed input adds no fire after dispose");
     assert.equal(treeNotifications.length, notificationsAfterDispose, "stale-disposed input adds no subscriber notification after dispose");
     assert.equal(treeFiresAfterDispose.some((afterDispose) => afterDispose), false, "no Tree fire is attempted after emitter disposal");
-    const starts = logs.filter((entry) => entry.event === "started");
+    const lifecycle = logs.filter((entry) => ["started", "succeeded", "failed", "cancelled"].includes(entry.event));
     const eventsByOperation = new Map<number, string[]>();
-    for (const entry of logs) {
-      if (entry.operationId === undefined) continue;
-      const events = eventsByOperation.get(entry.operationId) ?? [];
+    for (const entry of lifecycle) {
+      assert.equal(typeof entry.operationId, "number", `Global ${entry.event} event must retain its operation ID`);
+      const operationId = entry.operationId as number;
+      const events = eventsByOperation.get(operationId) ?? [];
       events.push(entry.event);
-      eventsByOperation.set(entry.operationId, events);
+      eventsByOperation.set(operationId, events);
     }
+    const starts = lifecycle.filter((entry) => entry.event === "started");
     assert.equal(starts.length, 5, "four refreshes plus the stale-node command enter the feedback boundary");
     assert.equal(eventsByOperation.size, starts.length, "each operation is indexed by its actual operation ID");
     for (const events of eventsByOperation.values()) {
-      assert.equal(events.filter((event) => event === "started").length, 1, "each ID has one start");
-      assert.equal(events.filter((event) => ["succeeded", "failed", "cancelled"].includes(event)).length, 1, "each ID has one terminal");
+      assert.equal(events.length, 2, "duplicate start or terminal events are rejected");
+      assert.equal(events[0], "started", "each ID starts exactly once");
+      assert.match(events[1]!, /^(succeeded|failed|cancelled)$/u, "each ID has one valid terminal");
     }
-    assert.deepEqual(starts.map((entry) => eventsByOperation.get(entry.operationId!)?.find((event) => event !== "started")), ["cancelled", "succeeded", "cancelled", "failed", "cancelled"], "old/new/invalidate/command/dispose outcomes retain their operation-ID classification");
+    assert.deepEqual(starts.map((entry) => eventsByOperation.get(entry.operationId as number)?.[1]), ["cancelled", "succeeded", "cancelled", "failed", "cancelled"], "old/new/invalidate/command/dispose outcomes retain their operation-ID classification");
   } finally { setActiveOperationFeedback(undefined); }
 });
 
@@ -959,7 +962,9 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
   let treeSubscriberNotifications = 0;
   const pullRequestRequests: string[] = [];
   let progressPreparations = 0;
-  let disposeAfterLateProgress = false;
+  let disposeAtLateSortedContext = false;
+  let lateProgressPrepared = false;
+  let lateSortedCheckpointTriggered = false;
   let lateDisposeTriggered = false;
   let registeredRef: { refresh(): Promise<void>; dispose(): void } | undefined;
   const vscode = {
@@ -1010,7 +1015,7 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
       getPullRequestReviewProgress: async () => {
         const progress = { reviewedLineCount: 0, totalLineCount: 1, progress: 0 };
         progressPreparations += 1;
-        if (disposeAfterLateProgress) { lateDisposeTriggered = true; registeredRef?.dispose(); }
+        if (disposeAtLateSortedContext) lateProgressPrepared = true;
         return progress;
       },
       reviewStateRepository: { load: async () => undefined, loadGlobal: async () => undefined, listRepositoryContexts: async () => [...saved, pullRequest], commit: async () => undefined, create: async () => undefined },
@@ -1021,7 +1026,11 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
         yieldControl: () => undefined,
         accountBatch: (entry) => {
           contextBatches.push(entry);
-          // Late cancellation is triggered after PR acquisition and progress preparation.
+          if (disposeAtLateSortedContext && lateProgressPrepared && !lateSortedCheckpointTriggered && entry.kind === "sorted-context") {
+            lateSortedCheckpointTriggered = true;
+            lateDisposeTriggered = true;
+            registeredRef?.dispose();
+          }
         }
       }
     });
@@ -1055,9 +1064,11 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
     const progressBeforeLateGeneration = progressPreparations;
     const writeStartsBeforeLateGeneration = writeSignals.length;
     const cacheSavesBeforeLateGeneration = cachePublishes;
-    disposeAfterLateProgress = true;
+    disposeAtLateSortedContext = true;
     await registered.refresh();
-    assert.equal(lateDisposeTriggered, true, "the final generation prepares PR progress before disposal");
+    assert.equal(lateProgressPrepared, true, "the final generation reaches PR progress preparation before the sort checkpoint");
+    assert.equal(lateSortedCheckpointTriggered, true, "dispose is invoked at a later sorted-context checkpoint");
+    assert.equal(lateDisposeTriggered, true, "the final generation is disposed by that checkpoint");
     assert.equal(treeEmitterDisposed, true, "the progress hook actually disposes the provider emitter");
     const lateRequests = pullRequestRequests.slice(requestsBeforeLateGeneration);
     assert.ok(lateRequests.some((url) => url.includes("/pulls/79")), "the final generation reaches PR detail fetch");
