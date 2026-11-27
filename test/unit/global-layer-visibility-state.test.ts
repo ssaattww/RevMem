@@ -69,3 +69,42 @@ test("failed Global layer save keeps committed display and leaves the queue usab
   assert.equal(state.isEnabled(), false);
   assert.equal(await state.applySetting(true), false);
 });
+
+test("a successful toggle after a failed setting save survives restart", async () => {
+  const store = new MemoryStore();
+  const state = new GlobalLayerVisibilityState(store, true);
+  assert.equal(await state.toggle(), false);
+  store.nextFailure = true;
+  await assert.rejects(state.applySetting(false), /save failed/u);
+  assert.equal(await state.toggle(), true);
+  const restarted = new GlobalLayerVisibilityState(store, false);
+  assert.equal(await restarted.applySetting(false), false);
+  assert.equal(restarted.isEnabled(), true);
+});
+
+test("a newer setting observed during a delayed save is not lost", async () => {
+  const store = new MemoryStore();
+  let release!: () => void;
+  let entered!: () => void;
+  const started = new Promise<void>((resolve) => { entered = resolve; });
+  const blocker = new Promise<void>((resolve) => { release = resolve; });
+  let delay = true;
+  const state = new GlobalLayerVisibilityState({
+    get: (key) => store.get(key),
+    update: async (key, value) => {
+      if (delay) {
+        delay = false;
+        entered();
+        await blocker;
+      }
+      await store.update(key, value);
+    }
+  }, true);
+  const firstSetting = state.applySetting(false);
+  await started;
+  const nextSetting = state.applySetting(true);
+  release();
+  assert.deepEqual(await Promise.all([firstSetting, nextSetting]), [true, true]);
+  assert.equal(state.isEnabled(), true);
+  assert.equal(store.writes, 2);
+});

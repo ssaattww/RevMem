@@ -338,6 +338,12 @@ async function main(): Promise<void> {
     if (focusedT609) {
       await prepareT609Fixture(t609Paths.workspace);
       await prepareT609SecondRoot(t609Paths.additionalWorkspace);
+      await mkdir(join(t609Paths.additionalWorkspace, ".vscode"));
+      await writeFile(
+        join(t609Paths.additionalWorkspace, ".vscode", "settings.json"),
+        '{ "files.trimTrailingWhitespace": false }\n',
+        "utf8"
+      );
       await prepareT609InitialReviewState(t609Paths.workspace, t609Paths.userData);
       await writeFile(t609Paths.workspaceFile, `${JSON.stringify({
         folders: [

@@ -75,6 +75,7 @@ interface ReviewRangeExtensionTestApi {
   refreshVisibleEditorDecorations(): Promise<void>;
   drainVisibleEditorDecorations(): Promise<void>;
   getVisibleReviewedIntervals(documentUri: string): readonly ReviewedInterval[];
+  getGlobalLayerVisibilityForTest(): boolean;
   getFileExclusionPolicySnapshot(): FileExclusionPolicySnapshot;
   evaluateFileExclusion(path: string, isBinary?: boolean): FileExclusionDecision;
 }
@@ -273,10 +274,17 @@ const workspaceSettingsBytes = async (folder: vscode.WorkspaceFolder): Promise<U
   }
 };
 
-const assertToggleKeepsWorkspaceSettings = async (folder: vscode.WorkspaceFolder): Promise<void> => {
+const assertToggleKeepsWorkspaceSettings = async (
+  folder: vscode.WorkspaceFolder,
+  api: ReviewRangeExtensionTestApi,
+  exists: boolean,
+): Promise<void> => {
   const before = await workspaceSettingsBytes(folder);
+  assert.equal(before !== undefined, exists, "The fixture must start with the expected settings-file presence.");
+  const initial = api.getGlobalLayerVisibilityForTest();
   for (let i = 0; i < 2; i++) {
     await vscode.commands.executeCommand("reviewRange.toggleGlobalLayer");
+    assert.equal(api.getGlobalLayerVisibilityForTest(), i === 0 ? !initial : initial);
     assert.deepEqual(await workspaceSettingsBytes(folder), before, "Toggling the Global layer must not create or change workspace settings.");
   }
 };
@@ -300,9 +308,17 @@ export async function run(): Promise<void> {
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
   assert.ok(workspaceFolder, "The Extension Host fixture should open a workspace folder.");
   if (phase === "confirm") {
-    await within("Global toggle before any fixture configuration edits", assertToggleKeepsWorkspaceSettings(workspaceFolder));
+    await within("Global toggle before any fixture configuration edits", assertToggleKeepsWorkspaceSettings(workspaceFolder, extensionApi, false));
     await within("exclusion configuration lifecycle", assertExclusionConfigurationLifecycle(extensionApi));
-    await within("Global toggle with existing fixture settings", assertToggleKeepsWorkspaceSettings(workspaceFolder));
+    if (await workspaceSettingsBytes(workspaceFolder) === undefined) {
+      const folder = vscode.Uri.joinPath(workspaceFolder.uri, ".vscode");
+      await vscode.workspace.fs.createDirectory(folder);
+      await vscode.workspace.fs.writeFile(
+        vscode.Uri.joinPath(folder, "settings.json"),
+        Buffer.from('{ "files.trimTrailingWhitespace": false }\n')
+      );
+    }
+    await within("Global toggle with existing fixture settings", assertToggleKeepsWorkspaceSettings(workspaceFolder, extensionApi, true));
   }
   const { documentUri, editor, splitEditor } = await within("open lifecycle fixture", openLifecycleFixture(
     phase,
@@ -321,18 +337,23 @@ export async function run(): Promise<void> {
       [{ startLine: 0, endLineExclusive: 1 }],
       "A confirmed line should be persisted before its success decoration is observable."
     );
+    await vscode.commands.executeCommand("reviewRange.toggleGlobalLayer");
+    assert.equal(extensionApi.getGlobalLayerVisibilityForTest(), false);
     return;
   }
 
   await within("refresh restored decorations", extensionApi.refreshVisibleEditorDecorations());
   await within("drain restored decorations", extensionApi.drainVisibleEditorDecorations());
   if (phase === "restore-confirmed-and-unmark") {
+    assert.equal(extensionApi.getGlobalLayerVisibilityForTest(), false, "The chosen Global visibility must survive restart.");
     assert.deepEqual(
       extensionApi.getVisibleReviewedIntervals(documentUri.toString()),
       [{ startLine: 0, endLineExclusive: 1 }],
       "The confirmed line decoration should be restored after Extension Host restart."
     );
 
+    await vscode.commands.executeCommand("reviewRange.toggleGlobalLayer");
+    assert.equal(extensionApi.getGlobalLayerVisibilityForTest(), true);
     splitEditor.selection = new vscode.Selection(0, 0, 0, 0);
     await within("unmark selection command", vscode.commands.executeCommand("reviewRange.unmarkSelectionReviewed"));
     await within("refresh unmarked decorations", extensionApi.refreshVisibleEditorDecorations());

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
+import { promisify } from "node:util";
 
 import * as vscode from "vscode";
 
@@ -8,6 +10,7 @@ import type { CurrentContextUiSnapshot } from "../../../src/ui/current-context/i
 import type { PullRequestReviewRuntimeTestFixture } from "../../../src/composition/extension";
 import type { PullRequestProgressTreeFileNode } from "../../../src/ui/pr-progress/index";
 
+const execFileAsync = promisify(execFile);
 const phase = process.env.REVIEW_RANGE_TEST_PHASE;
 const isPrepare = phase === "prepare";
 const isSingleRoot = phase === "single-root";
@@ -26,6 +29,8 @@ interface T609ExtensionApi {
     readonly encodingHint?: string;
   }[];
   getVisibleReviewedIntervals(documentUri: string): readonly ReviewedIntervalSnapshot[];
+  getVisibleGlobalLayerIntervalsForTest(documentUri: string): readonly ReviewedIntervalSnapshot[];
+  getGlobalLayerVisibilityForTest(): boolean;
   getNormalEditorCommandFailureForTest(): {
     readonly operation: string;
     readonly message: string;
@@ -426,6 +431,46 @@ const assertLiveEncodingTransition = async (
   await vscode.workspace.getConfiguration("files", shiftedUri).update("encoding", "shift_jis", vscode.ConfigurationTarget.WorkspaceFolder);
 };
 
+const assertGlobalLayerSettingsUnchanged = async (api: T609ExtensionApi): Promise<void> => {
+  const workspaceFile = vscode.workspace.workspaceFile;
+  const roots = vscode.workspace.workspaceFolders;
+  const editor = vscode.window.activeTextEditor;
+  assert.ok(workspaceFile);
+  assert.ok(workspaceFile.path.endsWith(".code-workspace"));
+  assert.ok(roots?.length === 2 && editor);
+  const documentUri = editor.document.uri.toString();
+  const settings = roots.map((root) => vscode.Uri.joinPath(root.uri, ".vscode", "settings.json"));
+  const bytes = async (uri: vscode.Uri): Promise<Uint8Array | undefined> => {
+    try {
+      return await vscode.workspace.fs.readFile(uri);
+    } catch (error) {
+      if (error instanceof vscode.FileSystemError && error.code === "FileNotFound") return undefined;
+      throw error;
+    }
+  };
+  const snapshot = async () => ({
+    files: await Promise.all([workspaceFile, ...settings].map(bytes)),
+    git: await Promise.all(roots.map(async (root) => (await execFileAsync("git", [
+      "status", "--porcelain=v1", "--untracked-files=all", "--", ".vscode/settings.json"
+    ], { cwd: root.uri.fsPath, windowsHide: true })).stdout))
+  });
+  const before = await snapshot();
+  assert.ok(before.files[0]?.length);
+  assert.equal(before.files[1], undefined);
+  assert.ok(before.files[2]?.length);
+  const context = api.getVisibleReviewedIntervals(documentUri);
+  const global = api.getVisibleGlobalLayerIntervalsForTest(documentUri);
+  assert.deepEqual(global, [{ startLine: 0, endLineExclusive: 1 }], "The seeded range must have a visible Global layer before the toggle.");
+  for (const enabled of [false, true]) {
+    await vscode.commands.executeCommand("reviewRange.toggleGlobalLayer");
+    await api.drainVisibleEditorDecorations();
+    assert.equal(api.getGlobalLayerVisibilityForTest(), enabled);
+    assert.deepEqual(api.getVisibleGlobalLayerIntervalsForTest(documentUri), enabled ? global : []);
+    assert.deepEqual(api.getVisibleReviewedIntervals(documentUri), context, "The Context range must remain visible.");
+    assert.deepEqual(await snapshot(), before, "The workspace file, both settings files and their Git status must not change.");
+  }
+};
+
 const assertMappedGitTransitions = async (
   folder: vscode.WorkspaceFolder,
   api: T609ExtensionApi
@@ -442,6 +487,7 @@ const assertMappedGitTransitions = async (
     [{ startLine: 0, endLineExclusive: 1 }],
     "a committed Git rename must retain the reviewed stable identity through the public normal-editor composition"
   );
+  await assertGlobalLayerSettingsUnchanged(api);
   assert.deepEqual(
     await reviewed("new-file.txt"),
     [],

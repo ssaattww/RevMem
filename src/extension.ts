@@ -185,6 +185,7 @@ export interface ReviewRangeExtensionTestApi extends ReviewRangeRuntimePort {
     readonly encodingHint?: string;
   }[];
   getVisibleReviewedIntervals(documentUri: string): readonly ReviewedIntervalSnapshot[];
+  getVisibleGlobalLayerIntervalsForTest(documentUri: string): readonly ReviewedIntervalSnapshot[];
   getFileExclusionPolicySnapshot(): FileExclusionPolicySnapshot;
   evaluateFileExclusion(path: string, isBinary?: boolean): ReviewFileExclusionDecision;
   initializeLocalBaseHeadRuntime(input: {
@@ -533,7 +534,8 @@ const uniqueVisibleIntervals = (
   appliedDecorations: ReadonlyMap<
     vscode.TextEditor,
     readonly NormalEditorReviewedDecoration[]
-  >
+  >,
+  include: (decoration: NormalEditorReviewedDecoration) => boolean = () => true
 ): readonly ReviewedIntervalSnapshot[] => {
   const intervals = new Map<string, ReviewedIntervalSnapshot>();
 
@@ -542,6 +544,7 @@ const uniqueVisibleIntervals = (
       continue;
     }
     for (const decoration of appliedDecorations.get(editor) ?? []) {
+      if (!include(decoration)) continue;
       const interval = {
         startLine: decoration.interval.startLine,
         endLineExclusive: decoration.interval.endLineExclusive
@@ -1092,6 +1095,8 @@ export function activate(
     getObservedEncodingHintsForTest: () => documentSessionProvider.observedEncodingHintsSnapshot(),
     getVisibleReviewedIntervals: (documentUri) =>
       uniqueVisibleIntervals(documentUri, appliedDecorations),
+    getVisibleGlobalLayerIntervalsForTest: (documentUri) =>
+      uniqueVisibleIntervals(documentUri, appliedDecorations, (decoration) => decoration.globalActive),
     getFileExclusionPolicySnapshot: () => ({
       revision: fileExclusionPolicyService.getRevision(),
       userGlobs: fileExclusionPolicyService.getUserGlobs()

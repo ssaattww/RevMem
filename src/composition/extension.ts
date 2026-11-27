@@ -180,9 +180,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     vscode.workspace.getConfiguration("reviewRange").get("showGlobalReviewed", true);
   const initialGlobalLayerSetting = readGlobalLayerSetting();
   const visibility = new GlobalLayerVisibilityState(context.workspaceState, initialGlobalLayerSetting);
-  await visibility.applySetting(initialGlobalLayerSetting).catch((error: unknown) => {
-    reportActiveOperationFailure("Global レイヤー表示設定の復元", error);
-  });
   const baseApi = activateBaseExtension(context, () => visibility.isEnabled());
   const runtimePort: ReviewRangeRuntimePort = baseApi;
   let selectedContext: SelectedReviewContext | undefined;
@@ -1052,6 +1049,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
   ];
   context.subscriptions.push(...folderEntryWatcherRegistrations);
 
+  // The configuration listener is installed before this second read. Changes
+  // during startup are either included here or queued by the listener.
+  await visibility.applySetting(readGlobalLayerSetting()).then(async (changed) => {
+    if (changed) await runtimePort.refreshVisibleEditorDecorations();
+  }).catch((error: unknown) => {
+    reportActiveOperationFailure("Global レイヤー表示設定の復元", error);
+  });
+
   if (context.extensionMode === vscode.ExtensionMode.Test) {
     const gitReviewStateSnapshotForTest = async (document: vscode.TextDocument) => {
       const documentPath = workspaceFilesystemPath(document.uri);
@@ -1135,6 +1140,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     };
     return {
       ...baseApi,
+      getGlobalLayerVisibilityForTest: () => visibility.isEnabled(),
       initializePullRequestReviewRuntimeForTest,
       getPullRequestReviewStateForTest: () => testPullRequestRuntimeTarget === undefined
         ? Promise.resolve(undefined)
