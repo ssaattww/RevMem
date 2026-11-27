@@ -376,12 +376,19 @@ test("T609 single-root uses public mixed-encoding marks after startup settlement
     extension.indexOf("const registrations = registerNormalEditorReviewCommands"),
     extension.indexOf("context.subscriptions.push", extension.indexOf("const registrations = registerNormalEditorReviewCommands"))
   );
+  for (const operation of ["markSelectionReviewed", "unmarkSelectionReviewed", "markFileReviewed", "unmarkFileReviewed"]) {
+    assert.equal(
+      occurrences(normalCommandRegistration, operation + ": (editor) => commandService." + operation + "(editor)"),
+      1,
+      "production must register " + operation + " once through the shared wrapper"
+    );
+  }
   assert.equal(
-    occurrences(normalCommandRegistration, 'if (result === "applied") reviewStateChanged.fire();'),
-    4,
-    "every normal mark operation must publish exactly one applied event"
+    occurrences(normalCommandRegistration, "onReviewMutationApplied: () => reviewStateChanged.fire()"),
+    1,
+    "the normal command wrapper must publish through one shared applied-event callback"
   );
-  assert.match(extension, /deferAppliedDecorationRefresh: true/u);
+  assert.match(normalCommandRegistration, /deferAppliedDecorationRefresh: context\.extensionMode === vscode\.ExtensionMode\.Test/u);
   const composition = await readFile(path.join(projectRoot, "src", "composition", "extension.ts"), "utf8");
   assert.match(composition, /new TestReviewStateDependentQueue\(/u);
   assert.match(composition, /enqueueAll\(\)/u);
