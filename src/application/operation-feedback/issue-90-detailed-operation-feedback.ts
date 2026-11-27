@@ -75,7 +75,6 @@ const validateDetail = (detail: OperationDiagnosticDetail, pullRequest = false):
   return Object.freeze({ reason, ...(phase === undefined ? {} : { phase }) });
 };
 
-const detailedEntries = new WeakSet<object>();
 const queuedStartDetails = new Map<string, readonly OperationDiagnosticDetail[]>();
 
 /** Queues opt-in details for the next operation with this label. */
@@ -93,14 +92,24 @@ export class OperationFeedback extends BaseOperationFeedback {
   private readonly detailedHost: DetailedOperationFeedbackHost;
   private readonly nowDetailed: () => number;
 
-  public constructor(host: OperationFeedbackHost, now: () => number = () => Date.now()) {
+  public constructor(
+    host: OperationFeedbackHost,
+    now: () => number = () => Date.now(),
+    fallbackWriter?: (line: string) => void,
+  ) {
     const detailedHost = host as DetailedOperationFeedbackHost;
     const activities: ActivityState[] = [];
     const operationScope = new AsyncLocalStorage<number>();
+    let isDetailed = (): boolean => false;
+    let reportConfigurationFailure = (error: unknown): void => { void error; };
+    isDetailed = () => {
+      try { return detailedHost.isDetailedDiagnosticsEnabled?.() === true; }
+      catch (error) { reportConfigurationFailure(error); return false; }
+    };
     let suppressReveal = false;
     const wrappedHost: OperationFeedbackHost = {
       showBusy: (label, activeCount, progress) => {
-        const detailed = detailedHost.isDetailedDiagnosticsEnabled?.() === true;
+        const detailed = isDetailed();
         const projected = activities.map((activity) => Object.freeze({
           id: activity.id,
           label: activity.label,
@@ -111,7 +120,7 @@ export class OperationFeedback extends BaseOperationFeedback {
       },
       clearBusy: () => host.clearBusy(),
       appendLog: (entry) => {
-        const detailed = detailedHost.isDetailedDiagnosticsEnabled?.() === true;
+        const detailed = isDetailed();
         const operationId = entry.operationId ?? (detailed ? operationScope.getStore() : undefined);
         const cancelled = entry.event === "failed" && entry.errorName === "OperationCancelledError";
         const mapped: OperationLogEntry = {
@@ -120,7 +129,6 @@ export class OperationFeedback extends BaseOperationFeedback {
           ...(operationId === undefined ? {} : { operationId }),
         };
         if (cancelled) suppressReveal = true;
-        if (detailed && operationId !== undefined) detailedEntries.add(mapped);
         host.appendLog(mapped as BaseOperationLogEntry);
       },
       revealLog: () => {
@@ -131,7 +139,8 @@ export class OperationFeedback extends BaseOperationFeedback {
         host.revealLog();
       },
     };
-    super(wrappedHost, now);
+    super(wrappedHost, now, fallbackWriter);
+    reportConfigurationFailure = (error) => this.reportLoggerFailure("diagnostics-configuration", error);
     this.activities = activities;
     this.operationScope = operationScope;
     this.detailedHost = detailedHost;
@@ -144,7 +153,7 @@ export class OperationFeedback extends BaseOperationFeedback {
     operation: (context: OperationFeedbackContext) => Promise<T>,
     detail?: OperationDiagnosticDetail,
   ): Promise<T> {
-    const detailed = this.detailedHost.isDetailedDiagnosticsEnabled?.() === true;
+    const detailed = this.isDetailedDiagnosticsEnabledSafely();
     const startDetail = detail ?? (detailed ? this.detailedHost.takeOperationStartDetail?.(label) : undefined);
     const queued = detailed ? queuedStartDetails.get(label) ?? [] : [];
     queuedStartDetails.delete(label);
@@ -174,13 +183,13 @@ export class OperationFeedback extends BaseOperationFeedback {
       ? this.activities.at(-1)
       : this.activities.find((candidate) => candidate.id === context.id);
     if (activity !== undefined) activity.progress = progress;
-    const id = this.detailedHost.isDetailedDiagnosticsEnabled?.() === true ? activity?.id : undefined;
+    const id = this.isDetailedDiagnosticsEnabledSafely() ? activity?.id : undefined;
     if (id === undefined) super.reportProgress(progress, context);
     else this.operationScope.run(id, () => super.reportProgress(progress, context));
   }
 
   public reportDetail(detail: OperationDiagnosticDetail, context?: OperationFeedbackContext): void {
-    if (this.detailedHost.isDetailedDiagnosticsEnabled?.() !== true) return;
+    if (!this.isDetailedDiagnosticsEnabledSafely()) return;
     const activity = context === undefined
       ? this.activities.at(-1)
       : this.activities.find((candidate) => candidate.id === context.id);
@@ -194,22 +203,29 @@ export class OperationFeedback extends BaseOperationFeedback {
       operationId: activity.id,
       detail: validated,
     };
-    detailedEntries.add(entry);
-    this.detailedHost.appendLog(entry as BaseOperationLogEntry);
+    try { this.detailedHost.appendLog(entry as BaseOperationLogEntry); }
+    catch (error) { this.reportLoggerFailure("detail-output", error); }
     const latest = this.activities.at(-1);
     if (latest !== undefined) {
-      this.detailedHost.showBusy(
-        latest.label,
-        this.activities.length,
-        latest.progress,
-        this.activities.map((candidate) => Object.freeze({
-          id: candidate.id,
-          label: candidate.label,
-          ...(candidate.progress === undefined ? {} : { progress: candidate.progress }),
-          ...(candidate.detail === undefined ? {} : { detail: candidate.detail }),
-        })),
-      );
+      try {
+        this.detailedHost.showBusy(
+          latest.label,
+          this.activities.length,
+          latest.progress,
+          this.activities.map((candidate) => Object.freeze({
+            id: candidate.id,
+            label: candidate.label,
+            ...(candidate.progress === undefined ? {} : { progress: candidate.progress }),
+            ...(candidate.detail === undefined ? {} : { detail: candidate.detail }),
+          })),
+        );
+      } catch (error) { this.reportLoggerFailure("detail-status", error); }
     }
+  }
+
+  private isDetailedDiagnosticsEnabledSafely(): boolean {
+    try { return this.detailedHost.isDetailedDiagnosticsEnabled?.() === true; }
+    catch (error) { this.reportLoggerFailure("diagnostics-configuration", error); return false; }
   }
 }
 
@@ -225,24 +241,11 @@ export const reportActiveOperationDetail = (
 };
 
 export const formatOperationLogEntry = (entry: OperationLogEntry): string => {
-  if (entry.event === "refresh") return formatBaseOperationLogEntry(entry as BaseOperationLogEntry);
-  if (entry.event !== "detail" && entry.event !== "cancelled" && !detailedEntries.has(entry)) {
+  if (entry.event !== "detail") {
     return formatBaseOperationLogEntry(entry as BaseOperationLogEntry);
   }
-  const stage = entry.event === "started" ? "START"
-    : entry.event === "progress" ? "PROGRESS"
-      : entry.event === "detail" ? "DETAIL"
-        : entry.event === "succeeded" ? "OK"
-          : entry.event === "cancelled" ? "CANCEL" : "ERROR";
   const op = entry.operationId === undefined ? "" : ` op=${entry.operationId}`;
-  const progress = entry.event === "progress" && entry.progress !== undefined
-    ? ` stage=${entry.progress.stage} progress=${entry.progress.completed}${entry.progress.total === undefined ? "" : `/${entry.progress.total}`}`
-    : "";
   const detail = entry.detail === undefined ? ""
     : ` reason=${entry.detail.reason}${entry.detail.phase === undefined ? "" : ` phase=${entry.detail.phase}`}${entry.detail.target === undefined ? "" : ` target=${entry.detail.target}`}`;
-  const duration = entry.durationMs === undefined ? "" : ` (${entry.durationMs} ms)`;
-  const failureCategory = entry.event === "failed" && entry.failureCategory !== undefined
-    ? ` category=${entry.failureCategory}`
-    : "";
-  return bounded(`[${entry.timestamp}] ${stage}${op} ${entry.label}${progress}${detail}${duration}${failureCategory}`, 512);
+  return bounded(`[${entry.timestamp}] DETAIL${op} ${entry.label}${detail}`, 512);
 };

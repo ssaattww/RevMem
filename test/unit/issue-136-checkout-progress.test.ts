@@ -209,7 +209,9 @@ test(`Issue137 alias provenance, multiple identities, owner/generation isolation
       owner.owner.reportPullRequestRefresh(owner, { generation: 1, trigger: "review-contexts-refresh", stage: "pr-progress",
         status: outcome === "success" ? "succeeded" : outcome === "failure" ? "failed" : "cancelled", aliases });
       previous = aliases;
-      if (outcome === "failure") throw new Error("private-repository ghp_fixture-secret private-sha");
+      // The lifecycle event must remain alias-only; local failure diagnostics
+      // separately retain useful caller-provided text after credential masking.
+      if (outcome === "failure") throw new Error("refresh failed ghp_fixturesecret012345678901234567890");
     });
     if (outcome === "failure") await assert.rejects(result);
     else await result;
@@ -217,8 +219,8 @@ test(`Issue137 alias provenance, multiple identities, owner/generation isolation
     assert.equal(completedAllocator.allocate("repo", ["private-repository"]), undefined, "every terminal outcome releases the allocator and forbids rebuilding its raw identity map");
   }
   const diagnostic = JSON.stringify(entries) + entries.map(formatOperationLogEntry).join("\n");
-  for (const forbidden of ["private-repository", "private/source", "private-branch", "private-context", "private-sha", "ghp_fixture-secret", "base-A", "head-B", "head-C"]) {
-    assert.equal(diagnostic.includes(forbidden), false);
+  for (const forbidden of ["private-repository", "private/source", "private-branch", "private-context", "private-sha", "ghp_fixturesecret012345678901234567890", "base-A", "head-B", "head-C"]) {
+    assert.equal(diagnostic.includes(forbidden), false, `alias value leaked: ${forbidden}`);
   }
   assert.equal(entries.filter((entry) => entry.pullRequestRefresh?.aliases?.repository !== undefined).length, 3);
 });

@@ -745,3 +745,26 @@ test("lifecycle adapter classifies rate-limit and network failures without subst
     reason: "network",
   });
 });
+
+test("lifecycle adapter retains network and JSON rejection causes for unavailable metadata", async () => {
+  const networkCause = new Error("socket reset");
+  const network = new FetchGitHubPullRequestLifecycleAdapter({
+    apiBaseUrl: "https://api.github.com",
+    fetch: async () => { throw networkCause; },
+  });
+  assert.deepEqual(await network.fetchCurrent(identity, 52), {
+    kind: "unavailable", reason: "network", cause: networkCause,
+  });
+
+  const jsonCause = new SyntaxError("invalid JSON");
+  const malformed = new FetchGitHubPullRequestLifecycleAdapter({
+    apiBaseUrl: "https://api.github.com",
+    fetch: async () => ({
+      ok: true, status: 200, headers: new Headers(),
+      json: async () => { throw jsonCause; },
+    } as unknown as Response),
+  });
+  assert.deepEqual(await malformed.fetchCurrent(identity, 52), {
+    kind: "unavailable", reason: "api", cause: jsonCause,
+  });
+});

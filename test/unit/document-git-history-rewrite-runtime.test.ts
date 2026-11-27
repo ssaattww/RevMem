@@ -23,6 +23,12 @@ import {
   type NonGitTrackedFileState,
   type SavedNonGitSnapshot
 } from "../../src/application/non-git-snapshots/index";
+import {
+  formatOperationLogEntry,
+  OperationFeedback,
+  setActiveOperationFeedback,
+  type OperationLogEntry
+} from "../../src/application/operation-feedback/index";
 import type { GitRevisionMappingSource } from "../../src/application/review-context/index";
 import { WorkspaceIdentityService } from "../../src/application/workspace-identity/index";
 import {
@@ -44,6 +50,7 @@ const keyOf = (target: ReviewStateRepositoryTarget): string =>
 
 class MemoryRepository implements DocumentReviewStateRepository {
   private readonly commits = new Map<string, ReviewStateCommit>();
+  public commitCalls = 0;
 
   public async load(target: ReviewStateRepositoryTarget): Promise<ReviewStateCommit | undefined> {
     const value = this.commits.get(keyOf(target));
@@ -81,6 +88,7 @@ class MemoryRepository implements DocumentReviewStateRepository {
   public async commit(
     transaction: Readonly<ReviewStateTransactionLike>
   ): Promise<void> {
+    this.commitCalls += 1;
     const entry = [...this.commits.entries()].find(([, commit]) =>
       commit.contextState.repositoryId === transaction.repositoryId &&
       commit.contextState.contextId === transaction.contextId
@@ -132,6 +140,7 @@ class RuntimeSource implements GitRevisionMappingSource {
     [`${OLD_SHA}\0src/example.ts`, CONTENT],
     [`${NEW_SHA}\0src/example.ts`, CONTENT]
   ]);
+  public nextReadError: unknown;
   private readGate:
     | {
         started: () => void;
@@ -175,6 +184,11 @@ class RuntimeSource implements GitRevisionMappingSource {
     | { readonly kind: "missing-file" }
     | { readonly kind: "invalid-encoding"; readonly encoding: "utf-8" }
   > {
+    if (this.nextReadError !== undefined) {
+      const error = this.nextReadError;
+      this.nextReadError = undefined;
+      throw error;
+    }
     const gate = this.readGate;
     if (gate !== undefined && root === "/repo/src" && revision === gate.revision) {
       this.readGate = undefined;
@@ -189,6 +203,8 @@ class RuntimeSource implements GitRevisionMappingSource {
 }
 
 class DelayedSnapshotTracker extends NonGitSnapshotTracker {
+  public nextSaveError: unknown;
+  public nextInvalidationError: unknown;
   private gate:
     | {
         started: () => void;
@@ -209,6 +225,11 @@ class DelayedSnapshotTracker extends NonGitSnapshotTracker {
     state: NonGitTrackedFileState,
     now: number
   ): Promise<SavedNonGitSnapshot> {
+    if (this.nextSaveError !== undefined) {
+      const error = this.nextSaveError;
+      this.nextSaveError = undefined;
+      throw error;
+    }
     const gate = this.gate;
     if (gate !== undefined) {
       this.gate = undefined;
@@ -216,6 +237,15 @@ class DelayedSnapshotTracker extends NonGitSnapshotTracker {
       await gate.wait;
     }
     return super.saveLatest(state, now);
+  }
+
+  public override async invalidateLatest(workspaceContextId: string, fileId: string): Promise<void> {
+    if (this.nextInvalidationError !== undefined) {
+      const error = this.nextInvalidationError;
+      this.nextInvalidationError = undefined;
+      throw error;
+    }
+    await super.invalidateLatest(workspaceContextId, fileId);
   }
 }
 
@@ -262,7 +292,7 @@ const setup = (tracker?: NonGitSnapshotTracker) => {
     stableHash,
     now: () => new Date(NOW)
   });
-  return { stableHash, inspector, source, provider, tracker: actualTracker };
+  return { stableHash, repository, inspector, source, provider, tracker: actualTracker };
 };
 
 test("production Git provider publishes snapshots and restores reviewed ranges after the old object disappears", async () => {
@@ -292,6 +322,142 @@ test("production Git provider publishes snapshots and restores reviewed ranges a
   );
   assert.equal(recovered.target.revisionId, NEW_SHA);
   provider.dispose();
+});
+
+test("post-commit source-read and invalidation failures keep the original diagnostics while commit succeeds", async () => {
+  const tracker = new DelayedSnapshotTracker(
+    new InMemoryNonGitSnapshotStorage(),
+    new NodeNonGitSnapshotCodec(),
+    { maxSnapshots: 32, maxCompressedBytes: 1024 * 1024, retentionMs: 24 * 60 * 60 * 1_000 }
+  );
+  const { stableHash, source, provider, repository } = setup(tracker);
+  const feedbackLogs: OperationLogEntry[] = [];
+  const feedback = new OperationFeedback({
+    showBusy() {}, clearBusy() {}, appendLog(entry) { feedbackLogs.push(entry); }, revealLog() {},
+  }, () => 1_000);
+  setActiveOperationFeedback(feedback);
+  try {
+    const session = await provider.open(descriptor(stableHash.digest(CONTENT)));
+    const transaction = markReviewedRanges({
+      contextState: session.contextState,
+      globalState: session.globalState,
+      target: session.target,
+      intervals: [{ startLine: 0, endLineExclusive: 1 }],
+      occurredAt: NOW
+    });
+    const readCause = Object.assign(new Error("post-commit revision read failed"), { code: "EIO" });
+    const readError = Object.assign(new Error("could not verify committed document", { cause: readCause }), { code: "EACCES" });
+    const invalidationError = Object.assign(new Error("snapshot pointer invalidation failed"), { code: "EPERM" });
+    source.nextReadError = readError;
+    tracker.nextInvalidationError = invalidationError;
+
+    const result = await feedback.run("Review state save", async () => {
+      await session.committer.commit(transaction);
+      return "saved";
+    });
+
+    assert.equal(result, "saved", "post-commit diagnostics do not alter the successful save result");
+    assert.equal(repository.commitCalls, 1, "the delegate review-state commit completed exactly once");
+    const diagnostic = feedbackLogs.find((entry) => entry.event === "failed" && entry.label === "Document review snapshot refresh");
+    assert.ok(diagnostic);
+    assert.equal(diagnostic.errorDetails?.message, "Post-commit snapshot refresh and invalidation failed.");
+    assert.equal(diagnostic.errorDetails?.cause?.message, "could not verify committed document");
+    assert.match(diagnostic.errorDetails?.cause?.stack ?? "", /could not verify committed document/u);
+    assert.match(diagnostic.errorDetails?.cause?.cause?.stack ?? "", /post-commit revision read failed/u);
+    assert.equal(diagnostic.errorDetails?.causes?.[0]?.message, "snapshot pointer invalidation failed");
+    assert.match(diagnostic.errorDetails?.causes?.[0]?.stack ?? "", /snapshot pointer invalidation failed/u);
+    const formatted = formatOperationLogEntry(diagnostic);
+    assert.match(formatted, /could not verify committed document/u);
+    assert.match(formatted, /post-commit revision read failed/u);
+    assert.match(formatted, /snapshot pointer invalidation failed/u);
+    assert.equal(feedbackLogs.at(-1)?.event, "succeeded", "the owning save remains successful");
+  } finally {
+    setActiveOperationFeedback(undefined);
+  }
+});
+
+test("post-commit snapshot-save and invalidation failures keep both stacks while commit succeeds", async () => {
+  const tracker = new DelayedSnapshotTracker(
+    new InMemoryNonGitSnapshotStorage(),
+    new NodeNonGitSnapshotCodec(),
+    { maxSnapshots: 32, maxCompressedBytes: 1024 * 1024, retentionMs: 24 * 60 * 60 * 1_000 }
+  );
+  const { stableHash, provider, repository } = setup(tracker);
+  const feedbackLogs: OperationLogEntry[] = [];
+  const feedback = new OperationFeedback({
+    showBusy() {}, clearBusy() {}, appendLog(entry) { feedbackLogs.push(entry); }, revealLog() {},
+  }, () => 2_000);
+  setActiveOperationFeedback(feedback);
+  try {
+    const session = await provider.open(descriptor(stableHash.digest(CONTENT)));
+    const transaction = markReviewedRanges({
+      contextState: session.contextState,
+      globalState: session.globalState,
+      target: session.target,
+      intervals: [{ startLine: 0, endLineExclusive: 1 }],
+      occurredAt: NOW
+    });
+    const saveError = Object.assign(new Error("latest snapshot write failed"), { code: "EIO" });
+    const invalidationError = Object.assign(new Error("snapshot invalidation failed"), { code: "EPERM" });
+    tracker.nextSaveError = saveError;
+    tracker.nextInvalidationError = invalidationError;
+
+    const result = await feedback.run("Review state save", async () => {
+      await session.committer.commit(transaction);
+      return "saved";
+    });
+
+    assert.equal(result, "saved", "snapshot persistence failure does not undo the saved review state");
+    assert.equal(repository.commitCalls, 1, "the delegate review-state commit completed exactly once");
+    const diagnostic = feedbackLogs.find((entry) => entry.event === "failed" && entry.label === "Document review snapshot refresh");
+    assert.ok(diagnostic);
+    assert.equal(diagnostic.errorDetails?.cause?.message, "snapshot invalidation failed");
+    assert.match(diagnostic.errorDetails?.cause?.stack ?? "", /snapshot invalidation failed/u);
+    assert.equal(diagnostic.errorDetails?.causes?.[0]?.message, "latest snapshot write failed");
+    assert.match(diagnostic.errorDetails?.causes?.[0]?.stack ?? "", /latest snapshot write failed/u);
+    const formatted = formatOperationLogEntry(diagnostic);
+    assert.match(formatted, /latest snapshot write failed/u);
+    assert.match(formatted, /snapshot invalidation failed/u);
+    assert.equal(feedbackLogs.at(-1)?.event, "succeeded", "the owning save remains successful");
+  } finally {
+    setActiveOperationFeedback(undefined);
+  }
+});
+
+test("post-commit content mismatch is diagnosed while the saved review state remains successful", async () => {
+  const { stableHash, source, provider, repository } = setup();
+  const feedbackLogs: OperationLogEntry[] = [];
+  const feedback = new OperationFeedback({
+    showBusy() {}, clearBusy() {}, appendLog(entry) { feedbackLogs.push(entry); }, revealLog() {},
+  }, () => 3_000);
+  setActiveOperationFeedback(feedback);
+  try {
+    const session = await provider.open(descriptor(stableHash.digest(CONTENT)));
+    const transaction = markReviewedRanges({
+      contextState: session.contextState,
+      globalState: session.globalState,
+      target: session.target,
+      intervals: [{ startLine: 0, endLineExclusive: 1 }],
+      occurredAt: NOW
+    });
+    source.texts.set(`${OLD_SHA}\0src/example.ts`, "changed content no longer matches the target hash");
+
+    const result = await feedback.run("Review state save", async () => {
+      await session.committer.commit(transaction);
+      return "saved";
+    });
+
+    assert.equal(result, "saved");
+    assert.equal(repository.commitCalls, 1, "the delegate review-state commit completed exactly once");
+    const diagnostic = feedbackLogs.find((entry) => entry.event === "failed" && entry.label === "Document review snapshot refresh");
+    assert.ok(diagnostic);
+    assert.match(diagnostic.errorDetails?.message ?? "", /could not prove content and state consistency/u);
+    assert.match(diagnostic.errorDetails?.stack ?? "", /could not prove content and state consistency/u);
+    assert.match(formatOperationLogEntry(diagnostic), /could not prove content and state consistency/u);
+    assert.equal(feedbackLogs.at(-1)?.event, "succeeded", "a consistency diagnostic does not change save success");
+  } finally {
+    setActiveOperationFeedback(undefined);
+  }
 });
 
 test("a delayed stale open cannot republish reviewed ranges after a newer unreview commit", async () => {

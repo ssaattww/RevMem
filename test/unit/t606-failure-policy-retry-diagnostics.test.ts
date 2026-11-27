@@ -82,6 +82,153 @@ test("T606 retries only retryable faults with a bounded cancellable sequence", a
   );
 });
 
+test("retry success, exhaustion, backoff cancellation, and stale failure retain retry history and one owner terminal", async () => {
+  const host = new FakeHost();
+  const feedback = new OperationFeedback(host, () => 10);
+  let calls = 0;
+  await feedback.run("retry succeeds", (context) => runWithBoundedRetry(async () => {
+    calls += 1;
+    if (calls === 1) throw Object.assign(new Error("network token=fixture-retry-token"), { code: "ECONNRESET" });
+    return "snapshot";
+  }, { maxAttempts: 3, feedbackContext: context, sleep: async () => undefined }).then((result) => result.value));
+  const successLifecycle = host.logs.slice(0, 3);
+  assert.deepEqual(successLifecycle.map((entry) => entry.event), ["started", "retry", "succeeded"]);
+  assert.ok(successLifecycle.every((entry) => entry.operationId === 1));
+  assert.deepEqual({
+    attempt: successLifecycle[1]?.retryAttempt?.attempt,
+    category: successLifecycle[1]?.retryAttempt?.category,
+    code: successLifecycle[1]?.retryAttempt?.code,
+    delayMs: successLifecycle[1]?.retryAttempt?.delayMs,
+  }, { attempt: 1, category: "retryable", code: "ECONNRESET", delayMs: 25 });
+  const successfulRetryOutput = host.logs.map(formatOperationLogEntry).join("\n");
+  assert.match(successfulRetryOutput, /network token=\[REDACTED\]/u);
+  assert.doesNotMatch(successfulRetryOutput, /fixture-retry-token/u);
+
+  const exhausted = new Error("network timeout at C:\\local\\repo");
+  await assert.rejects(feedback.run("retry exhausted", (context) => runWithBoundedRetry(async () => {
+    throw Object.assign(new Error(exhausted.message), { code: "ECONNRESET" });
+  }, { feedbackContext: context, sleep: async () => undefined })), /network timeout/u);
+  const exhaustedEvents = host.logs.slice(3);
+  assert.deepEqual(exhaustedEvents.map((entry) => entry.event), ["started", "retry", "retry", "failed"]);
+  assert.equal(exhaustedEvents.at(-1)?.operationId, 2);
+  assert.match(exhaustedEvents.at(-1)?.message ?? "", /retries=ECONNRESET -> ECONNRESET/u);
+
+  await assert.rejects(feedback.run("backoff cancelled", (context) => runWithBoundedRetry(async () => {
+    throw Object.assign(new Error("socket reset"), { code: "ECONNRESET" });
+  }, { feedbackContext: context, sleep: async () => { throw new DOMException("backoff cancelled token=fixture-backoff-secret", "AbortError"); } })), /backoff cancelled/u);
+  const cancelledEvents = host.logs.slice(7);
+  assert.deepEqual(cancelledEvents.map((entry) => entry.event), ["started", "retry", "cancelled"]);
+  assert.equal(cancelledEvents.at(-1)?.operationId, 3);
+  assert.match(host.logs.map(formatOperationLogEntry).join("\n"), /retryable code=ECONNRESET backoff=25ms/u);
+
+  await assert.rejects(feedback.run("stale retry boundary", async () => { throw new DOMException("stale", "AbortError"); }),
+    (error: unknown) => error instanceof DOMException);
+  assert.deepEqual(host.logs.slice(-2).map((entry) => entry.event), ["started", "cancelled"]);
+});
+
+test("T606 backoff cancellation retains the retry cause and both stacks on one cancelled lifecycle", async () => {
+  const host = new FakeHost();
+  const feedback = new OperationFeedback(host, () => 12);
+  const networkCause = new Error("socket layer reset token=fixture-cause-secret");
+  const retryFailure = Object.assign(
+    new Error("GitHub request reset token=fixture-retry-secret", { cause: networkCause }),
+    { code: "ECONNRESET" },
+  );
+  const abortCause = new Error("caller cancelled during backoff");
+  const abortError = Object.assign(
+    new Error("backoff cancelled token=fixture-abort-secret", { cause: abortCause }),
+    { name: "AbortError" },
+  );
+  let calls = 0;
+
+  await assert.rejects(
+    feedback.run("backoff cancellation", (context) => runWithBoundedRetry(async () => {
+      calls += 1;
+      throw retryFailure;
+    }, {
+      feedbackContext: context,
+      sleep: async (delayMs, signal) => {
+        assert.equal(delayMs, 25);
+        assert.equal(signal, undefined);
+        throw abortError;
+      },
+    })),
+    (error: unknown) => error === abortError,
+  );
+
+  assert.equal(calls, 1, "cancellation during the first backoff prevents a second attempt");
+  assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "retry", "cancelled"]);
+  assert.ok(host.logs.every((entry) => entry.operationId === 1));
+  const retry = host.logs[1]!;
+  assert.deepEqual({
+    attempt: retry.retryAttempt?.attempt,
+    category: retry.retryAttempt?.category,
+    code: retry.retryAttempt?.code,
+    delayMs: retry.retryAttempt?.delayMs,
+  }, { attempt: 1, category: "retryable", code: "ECONNRESET", delayMs: 25 });
+  assert.equal(retry.retryAttempt?.error?.message, "GitHub request reset token=[REDACTED]");
+  assert.equal(retry.retryAttempt?.error?.code, "ECONNRESET");
+  assert.match(retry.retryAttempt?.error?.stack ?? "", /GitHub request reset token=\[REDACTED\]/u);
+  assert.equal(retry.retryAttempt?.error?.cause?.message, "socket layer reset token=[REDACTED]");
+  assert.match(retry.retryAttempt?.error?.cause?.stack ?? "", /socket layer reset token=\[REDACTED\]/u);
+
+  const cancelled = host.logs[2]!;
+  assert.equal(cancelled.failureCategory, "stale");
+  assert.equal(cancelled.errorDetails?.message, "backoff cancelled token=[REDACTED]");
+  assert.match(cancelled.errorDetails?.stack ?? "", /backoff cancelled token=\[REDACTED\]/u);
+  assert.equal(cancelled.errorDetails?.cause?.message, "caller cancelled during backoff");
+  assert.match(cancelled.errorDetails?.cause?.stack ?? "", /caller cancelled during backoff/u);
+  const output = host.logs.map(formatOperationLogEntry).join("\n");
+  assert.match(output, /attempt=1 category=retryable code=ECONNRESET backoff=25ms/u);
+  assert.doesNotMatch(output, /fixture-(?:cause|retry|abort)-secret/u);
+});
+
+test("T606 stale final attempt retains the earlier retry and terminal cause diagnostics", async () => {
+  const host = new FakeHost();
+  const feedback = new OperationFeedback(host, () => 13);
+  const retryCause = new Error("socket reset layer");
+  const retryFailure = Object.assign(new Error("request reset token=fixture-retry-history", { cause: retryCause }), { code: "ECONNRESET" });
+  const staleCause = new Error("refresh generation was replaced");
+  const staleFailure = Object.assign(new Error("superseded after retry token=fixture-stale-history", { cause: staleCause }), { name: "AbortError" });
+  let calls = 0;
+  let waits = 0;
+
+  await assert.rejects(
+    feedback.run("retry then stale", (context) => runWithBoundedRetry(async () => {
+      calls += 1;
+      throw calls === 1 ? retryFailure : staleFailure;
+    }, {
+      feedbackContext: context,
+      sleep: async (delayMs) => {
+        waits += 1;
+        assert.equal(delayMs, 25);
+      },
+    })),
+    (error: unknown) => error === staleFailure,
+  );
+
+  assert.equal(calls, 2, "the retry is attempted once, then stale terminates without another retry");
+  assert.equal(waits, 1);
+  assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "retry", "cancelled"]);
+  assert.ok(host.logs.every((entry) => entry.operationId === 1));
+  const retry = host.logs[1]!;
+  assert.equal(retry.retryAttempt?.error?.code, "ECONNRESET");
+  assert.match(retry.retryAttempt?.error?.stack ?? "", /request reset token=\[REDACTED\]/u);
+  assert.equal(retry.retryAttempt?.error?.cause?.message, "socket reset layer");
+  assert.match(retry.retryAttempt?.error?.cause?.stack ?? "", /socket reset layer/u);
+
+  const cancelled = host.logs[2]!;
+  assert.equal(cancelled.failureCategory, "stale");
+  assert.match(cancelled.message ?? "", /retries=ECONNRESET; final=stale/u);
+  assert.equal(cancelled.errorDetails?.message, "superseded after retry token=[REDACTED]");
+  assert.match(cancelled.errorDetails?.stack ?? "", /superseded after retry token=\[REDACTED\]/u);
+  assert.equal(cancelled.errorDetails?.cause?.message, "refresh generation was replaced");
+  assert.match(cancelled.errorDetails?.cause?.stack ?? "", /refresh generation was replaced/u);
+  const output = host.logs.map(formatOperationLogEntry).join("\n");
+  assert.match(output, /attempt=1 category=retryable code=ECONNRESET backoff=25ms/u);
+  assert.doesNotMatch(output, /fixture-(?:retry|stale)-history/u);
+});
+
 test("T606 never retries authentication, validation, stale, or partial-side-effect failures", async () => {
   const nonRetryable = [
     Object.assign(new Error("auth"), { status: 401 }),
@@ -99,7 +246,7 @@ test("T606 never retries authentication, validation, stale, or partial-side-effe
   }
 });
 
-test("T606 emits one bounded single-line redacted ERROR and always clears activity", async () => {
+test("T606 emits one local ERROR with the original code and message and always clears activity", async () => {
   const host = new FakeHost();
   const feedback = new OperationFeedback(host, () => 1);
   const failure = Object.assign(new Error("token=abc\nC:\\private\\repo\\source.ts"), { code: "ENOSPC" });
@@ -107,8 +254,9 @@ test("T606 emits one bounded single-line redacted ERROR and always clears activi
   feedback.reportFailure("Storage state", failure);
   const errors = host.logs.filter((entry) => entry.event === "failed");
   assert.equal(errors.length, 1);
-  assert.equal(errors[0]?.message, "Operation failed (code ENOSPC); details were redacted.");
-  assert.ok((errors[0]?.message?.length ?? 0) <= 160);
+  assert.match(errors[0]?.message ?? "", /token=\[REDACTED\]/u);
+  assert.match(errors[0]?.message ?? "", /C:\\private\\repo\\source\.ts/u);
+  assert.equal(errors[0]?.errorDetails?.code, "ENOSPC");
   assert.equal(host.clear, 1);
 });
 
@@ -132,7 +280,9 @@ test("Issue #136 operation ERROR retains safe failure classification with detail
       const errors = host.logs.filter((entry) => entry.event === "failed");
       assert.equal(errors.length, 1);
       const formatted = formatOperationLogEntry(errors[0]!);
-      assert.doesNotMatch(formatted, /untrusted failure text|private-fixture|source\.ts|fixture-secret/u);
+      assert.match(formatted, /untrusted failure text/u);
+      assert.match(formatted, /private-fixture\/source\.ts/u);
+      assert.doesNotMatch(formatted, /fixture-secret/u);
       formattedFailures.push(formatted);
       assert.match(formatted, new RegExp(`\\bcategory=${expectedCategories[index]}\\b`, "u"),
         `safe category must be visible with detailed diagnostics ${detailedDiagnostics ? "on" : "off"}`);

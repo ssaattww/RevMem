@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -15,7 +15,14 @@ import {
   type GitHubPullRequestCacheEntry,
   type PullRequestDiffAcquisitionPort
 } from "../../src/application/github-pr-cache/index";
+import {
+  OperationFeedback,
+  formatOperationLogEntry,
+  type OperationFeedbackHost,
+  type OperationLogEntry,
+} from "../../src/application/operation-feedback/index";
 import { NodeGitHubPullRequestCacheStorage } from "../../src/adapters/github/index";
+import { NodeAtomicTextFileStore } from "../../src/adapters/state-repository/index";
 import type { PullRequestDiffSnapshot } from "../../src/core/pr-progress/index";
 
 const BASE_SHA = "1111111111111111111111111111111111111111";
@@ -249,6 +256,206 @@ test("non-offline API failures do not substitute cached data", async () => {
   assert.deepEqual(result, acquisition.result);
 });
 
+test("authentication failure never reads or substitutes an exact offline cache", async () => {
+  const acquisition = new MutableAcquisition();
+  const durableStorage = new InMemoryGitHubPullRequestCacheStorage();
+  await new GitHubPullRequestCacheService({
+    acquisition,
+    storage: durableStorage,
+    freshnessMs: 60_000,
+    now: fixedDate(1_000),
+  }).acquire(request);
+
+  let readCount = 0;
+  const storage = {
+    read: async (...args: Parameters<typeof durableStorage.read>) => {
+      readCount += 1;
+      return durableStorage.read(...args);
+    },
+    write: (...args: Parameters<typeof durableStorage.write>) => durableStorage.write(...args),
+  };
+  acquisition.result = {
+    kind: "unavailable",
+    attempts: [
+      { source: "local-git", reason: "missing-revision" },
+      { source: "github-patch", reason: "authentication" },
+      { source: "github-content", reason: "authentication" },
+    ],
+  };
+
+  const result = await new GitHubPullRequestCacheService({
+    acquisition,
+    storage,
+    freshnessMs: 60_000,
+    now: fixedDate(2_000),
+  }).acquire(request);
+
+  assert.deepEqual(result, acquisition.result);
+  assert.equal(readCount, 0, "authentication failures are never eligible for offline cache fallback");
+});
+
+test("offline-eligible acquisition remains unavailable when reading the cache fails", async () => {
+  const acquisition = new MutableAcquisition();
+  acquisition.result = {
+    kind: "unavailable",
+    attempts: [
+      { source: "local-git", reason: "missing-revision" },
+      { source: "github-patch", reason: "network" },
+      { source: "github-content", reason: "network" },
+    ],
+  };
+  const storage = {
+    read: async () => { throw Object.assign(new Error("private path must not be logged"), { code: "EACCES" }); },
+    write: async () => undefined,
+  };
+
+  const result = await new GitHubPullRequestCacheService({
+    acquisition,
+    storage,
+    freshnessMs: 60_000,
+    now: fixedDate(2_000),
+  }).acquire(request);
+
+  assert.deepEqual(result, acquisition.result, "a failed cache read cannot provide stale or unverifiable data");
+});
+
+test("cache fallback logs missing, unreadable, invalid, and usable cache outcomes without replacing live attempts", async () => {
+  const acquisition = new MutableAcquisition();
+  acquisition.result = {
+    kind: "unavailable",
+    attempts: [
+      { source: "local-git", reason: "missing-revision" },
+      { source: "github-patch", reason: "network" },
+      { source: "github-content", reason: "network" },
+    ],
+  };
+  const run = async (read: () => Promise<unknown>) => {
+    const logs: OperationLogEntry[] = [];
+    const feedback = new OperationFeedback({
+      showBusy() {}, clearBusy() {}, appendLog(entry) { logs.push(entry); }, revealLog() {},
+    } satisfies OperationFeedbackHost, () => 2_500);
+    const storage = { read, write: async () => undefined } as never;
+    const service = new GitHubPullRequestCacheService({ acquisition, storage, freshnessMs: 60_000, now: fixedDate(2_000) });
+    const result = await feedback.run("PR cache fallback", (context) => service.acquire(request, context));
+    return { result, logs, output: logs.map(formatOperationLogEntry).join("\n") };
+  };
+
+  const readFailure = await run(async () => { throw Object.assign(new Error("read C:\\private\\cache.json token=fixture-cache-token"), { code: "EACCES" }); });
+  assert.deepEqual(readFailure.result, acquisition.result);
+  assert.match(readFailure.output, /stage=cache-read status=failed category=permanent code=EACCES/u);
+  assert.match(readFailure.output, /C:\\private\\cache\.json/u);
+  assert.doesNotMatch(readFailure.output, /fixture-cache-token/u);
+  assert.deepEqual(readFailure.logs.filter((entry) => entry.operationDiagnostic?.stage === "cache-read").map((entry) => entry.operationDiagnostic?.status), ["started", "failed"]);
+
+  const missing = await run(async () => undefined);
+  assert.deepEqual(missing.result, acquisition.result);
+  assert.deepEqual(missing.logs.filter((entry) => entry.operationDiagnostic?.stage === "cache-read").map((entry) => entry.operationDiagnostic?.status), ["started", "no-result"]);
+
+  const invalid = await run(async () => ({ schemaVersion: 1, request: { ...request, number: 99 } }));
+  assert.deepEqual(invalid.result, acquisition.result);
+  assert.match(invalid.output, /invalid or does not match the requested PR identity/u);
+  assert.deepEqual(invalid.logs.filter((entry) => entry.operationDiagnostic?.stage === "cache-read").map((entry) => entry.operationDiagnostic?.status), ["started", "failed"]);
+
+  const usableStorage = new InMemoryGitHubPullRequestCacheStorage();
+  const liveAcquisition = new MutableAcquisition();
+  await new GitHubPullRequestCacheService({ acquisition: liveAcquisition, storage: usableStorage, freshnessMs: 60_000, now: fixedDate(1_000) }).acquire(request);
+  liveAcquisition.result = acquisition.result;
+  const logs: OperationLogEntry[] = [];
+  const feedback = new OperationFeedback({ showBusy() {}, clearBusy() {}, appendLog(entry) { logs.push(entry); }, revealLog() {} }, () => 2_600);
+  const cachedResult = await feedback.run("PR cache fallback", (context) => new GitHubPullRequestCacheService({
+    acquisition: liveAcquisition, storage: usableStorage, freshnessMs: 60_000, now: fixedDate(2_000),
+  }).acquire(request, context));
+  assert.equal(cachedResult.kind, "acquired");
+  assert.equal(cachedResult.source, "offline-cache");
+  assert.deepEqual(logs.filter((entry) => entry.operationDiagnostic?.stage === "cache-read").map((entry) => entry.operationDiagnostic?.status), ["started", "succeeded"]);
+});
+
+test("malformed persisted cache JSON is diagnosed at each document boundary and remains a cache miss", async () => {
+  const run = async (corrupt: "pointer" | "metadata" | "diff" | "missing") => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "review-range-t403-malformed-cache-"));
+    try {
+      const storage = new NodeGitHubPullRequestCacheStorage({
+        cacheDirectory: root,
+        createGenerationId: () => "generation-1",
+      });
+      const seedStorage = new InMemoryGitHubPullRequestCacheStorage();
+      await new GitHubPullRequestCacheService({
+        acquisition: new MutableAcquisition(),
+        storage: seedStorage,
+        freshnessMs: 60_000,
+        now: fixedDate(1_000),
+      }).acquire(request);
+      const entry = await seedStorage.read(request);
+      assert.ok(entry, "seed data should produce a valid cache entry");
+      await storage.write(entry);
+
+      const persistedFiles = await collectJsonFiles(root);
+      const target = corrupt === "pointer" || corrupt === "missing"
+        ? persistedFiles.find((file) => path.basename(file) === "latest.json")
+        : corrupt === "metadata"
+          ? persistedFiles.find((file) => path.basename(file) === "metadata-generation-1.json")
+          : persistedFiles.find((file) => path.basename(file) === "diff-generation-1.json");
+      assert.ok(target, `expected persisted ${corrupt} file`);
+      if (corrupt === "missing") {
+        await rm(target, { force: true });
+      } else {
+        await writeFile(target, "{ malformed cache json", "utf8");
+      }
+
+      const logs: OperationLogEntry[] = [];
+      const feedback = new OperationFeedback({
+        showBusy() {}, clearBusy() {}, appendLog(entry) { logs.push(entry); }, revealLog() {},
+      } satisfies OperationFeedbackHost, () => 2_650);
+      const result = await feedback.run("PR cache read", (context) => storage.read(request, context));
+      return { result, logs, output: logs.map(formatOperationLogEntry).join("\n") };
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  };
+
+  const assertMalformedMiss = (outcome: Awaited<ReturnType<typeof run>>, document: string): void => {
+    assert.equal(outcome.result, undefined, `${document} corruption remains a cache miss`);
+    const parseFailure = outcome.logs.find((entry) => entry.operationDiagnostic?.stage === "cache-read" && entry.operationDiagnostic.status === "failed");
+    assert.equal(parseFailure?.operationDiagnostic?.error?.name, "SyntaxError");
+    assert.match(parseFailure?.operationDiagnostic?.error?.stack ?? "", /JSON\.parse/u, `${document} diagnostic retains the original parse stack`);
+    assert.match(outcome.output, /cache-read status=failed/u);
+    assert.match(outcome.output, /SyntaxError/u);
+    assert.ok(outcome.logs.some((entry) => entry.event === "succeeded"), `${document} corruption does not fail the owning operation`);
+    assert.equal(outcome.logs.some((entry) => entry.event === "failed"), false, `${document} corruption does not create a failed parent operation`);
+  };
+
+  assertMalformedMiss(await run("pointer"), "pointer");
+  assertMalformedMiss(await run("metadata"), "metadata");
+  assertMalformedMiss(await run("diff"), "diff");
+
+  const missing = await run("missing");
+  assert.equal(missing.result, undefined);
+  assert.equal(missing.logs.some((entry) => entry.operationDiagnostic?.stage === "cache-read"), false, "a missing pointer remains an ordinary miss");
+  assert.ok(missing.logs.some((entry) => entry.event === "succeeded"), "a missing cache file does not fail the owning operation");
+});
+
+test("cache write cancellation is not converted into a successful uncached result", async () => {
+  const controller = new AbortController();
+  const acquisition = new MutableAcquisition();
+  const storage = {
+    read: async () => undefined,
+    write: async () => {
+      controller.abort();
+      throw Object.assign(new Error("write interrupted"), { code: "EACCES" });
+    },
+  };
+
+  await assert.rejects(
+    new GitHubPullRequestCacheService({
+      acquisition,
+      storage,
+      freshnessMs: 60_000,
+      now: fixedDate(2_000),
+    }).acquire(request, undefined, controller.signal),
+    (error: unknown) => error instanceof DOMException && error.name === "AbortError",
+  );
+});
+
 test("mixed offline-eligible and API failures do not substitute cached data", async () => {
   const acquisition = new MutableAcquisition();
   const storage = new InMemoryGitHubPullRequestCacheStorage();
@@ -365,6 +572,50 @@ test("filesystem cache publishes metadata and redacted diff through one generati
     const persisted = (await Promise.all(jsonFiles.map((file) => readFile(file, "utf8")))).join("\n");
     assert.equal(persisted.includes("source-secret"), false);
     assert.equal(persisted.includes("test-token"), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cleanup failure after pointer publication retains the complete newly published exact generation", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "review-range-t403-cleanup-"));
+  try {
+    const files = new NodeAtomicTextFileStore(root);
+    let generation = 0;
+    let attemptedCleanup = false;
+    const storage = new NodeGitHubPullRequestCacheStorage({
+      cacheDirectory: root,
+      createGenerationId: () => `generation-${++generation}`,
+      atomicFileStore: {
+        readText: (filePath) => files.readText(filePath),
+        writeTextAtomically: (filePath, content, signal) => files.writeTextAtomically(filePath, content, signal),
+        deleteText: async () => {
+          attemptedCleanup = true;
+          throw Object.assign(new Error("cleanup path is private"), { code: "EACCES" });
+        },
+      },
+    });
+    const inMemory = new InMemoryGitHubPullRequestCacheStorage();
+    await new GitHubPullRequestCacheService({
+      acquisition: new MutableAcquisition(),
+      storage: inMemory,
+      freshnessMs: 60_000,
+      now: fixedDate(1_000),
+    }).acquire(request);
+    const entry = await inMemory.read(request);
+    assert.ok(entry);
+    await storage.write(entry);
+
+    await assert.rejects(storage.write({
+      ...entry,
+      metadata: { ...entry.metadata, title: "latest exact generation" },
+      updatedAt: "1970-01-01T00:00:02.000Z",
+      expiresAt: "1970-01-01T00:01:02.000Z",
+    }), (error: unknown) => typeof error === "object" && error !== null && "code" in error && error.code === "EACCES");
+
+    assert.equal(attemptedCleanup, true);
+    assert.equal((await storage.read(request))?.metadata.title, "latest exact generation",
+      "cleanup runs after atomic pointer publication, so its failure leaves the complete latest metadata/diff pair reachable");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -9,6 +9,7 @@ import {
   type GitHubPullRequestCacheStorage
 } from "../../application/github-pr-cache/index";
 import type { PullRequestDiffAcquisitionRequest } from "../../application/github-pr-diff/index";
+import { reportActiveOperationStageDiagnostic } from "../../application/operation-feedback/index";
 import {
   InProcessStorageRootLockCoordinator,
   NodeAtomicTextFileStore,
@@ -94,11 +95,12 @@ const relativePointerFile = (key: string): string => `github/${key}/latest.json`
 const absoluteCacheFile = (root: string, relativeFile: string): string =>
   path.join(root, ...relativeFile.split("/"));
 
-const parseJson = (text: string | undefined): unknown => {
+const parseJson = (text: string | undefined, reportParseFailure: (error: unknown) => void): unknown => {
   if (text === undefined) return undefined;
   try {
     return JSON.parse(text) as unknown;
-  } catch {
+  } catch (error) {
+    reportParseFailure(error);
     return undefined;
   }
 };
@@ -185,7 +187,7 @@ export class NodeGitHubPullRequestCacheStorage implements GitHubPullRequestCache
 
   public async read(
     request: PullRequestDiffAcquisitionRequest,
-    _feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
+    feedbackContext?: import("../../application/operation-feedback/index").OperationFeedbackContext,
     signal?: AbortSignal,
   ): Promise<GitHubPullRequestCacheEntry | undefined> {
     if (signal?.aborted) throw new DOMException("PR cache read was superseded.", "AbortError");
@@ -193,10 +195,13 @@ export class NodeGitHubPullRequestCacheStorage implements GitHubPullRequestCache
     const assertNotAborted = (): void => {
       if (signal?.aborted === true) throw new DOMException("PR cache read was superseded.", "AbortError");
     };
+    const reportParseFailure = (error: unknown): void => {
+      reportActiveOperationStageDiagnostic("cache-read", error, feedbackContext);
+    };
     const pointer = parsePointer(
       parseJson(await this.atomicFileStore.readText(
         absoluteCacheFile(this.cacheDirectory, relativePointerFile(key))
-      )),
+      ), reportParseFailure),
       key
     );
     assertNotAborted();
@@ -211,8 +216,8 @@ export class NodeGitHubPullRequestCacheStorage implements GitHubPullRequestCache
       )
     ]);
     assertNotAborted();
-    const metadataDocument = parseJson(metadataValue);
-    const diffDocument = parseJson(diffValue);
+    const metadataDocument = parseJson(metadataValue, reportParseFailure);
+    const diffDocument = parseJson(diffValue, reportParseFailure);
     if (!isObject(metadataDocument) || !isObject(diffDocument)) return undefined;
     if (
       !documentIdentityMatches(

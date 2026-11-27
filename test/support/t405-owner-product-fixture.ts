@@ -101,6 +101,7 @@ export async function createOwnerProductFixture(numbers: readonly number[] = [52
   });
   const remote = new Map([52, 53].map((number) => [number, { base: A, head: B, state: "open" }]));
   const unavailable = new Set<number>();
+  const networkFailures = new Map<number, Error>();
   const acquisitionCalls = { localCandidates: 0, repositoryContexts: 0, lifecycle: 0, diffRuntime: 0, progress: 0 };
   const listRepositoryContexts = repository.listRepositoryContexts.bind(repository);
   repository.listRepositoryContexts = async (repositoryId) => {
@@ -129,6 +130,8 @@ export async function createOwnerProductFixture(numbers: readonly number[] = [52
     const match = /\/pulls\/(\d+)(\/files)?$/u.exec(url.pathname);
     if (match !== null) {
       const number = Number(match[1]);
+      const networkFailure = networkFailures.get(number);
+      if (networkFailure !== undefined && match[2] === undefined) throw networkFailure;
       if (unavailable.has(number)) return json({ message: "temporarily unavailable" }, 503);
       const revision = remote.get(number);
       assert.ok(revision);
@@ -238,7 +241,7 @@ export async function createOwnerProductFixture(numbers: readonly number[] = [52
   await git("checkout", "--detach", B);
   await start();
   return {
-    A, B, C, D, repositoryRoot, repository, remote, unavailable, auth, publications, history, errors, registrations, opened, git,
+    A, B, C, D, repositoryRoot, repository, remote, unavailable, networkFailures, auth, publications, history, errors, registrations, opened, git,
     acquisitionCalls, candidatePicks, workspaceState,
     resetAcquisitionCalls: () => {
       acquisitionCalls.lifecycle = 0;

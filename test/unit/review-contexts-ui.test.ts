@@ -238,7 +238,7 @@ test("logs and reveals failures before rethrowing them", async () => {
   );
 
   assert.equal(host.logs.at(-1)?.event, "failed");
-  assert.equal(host.logs.at(-1)?.message, "Operation failed; details were redacted.");
+  assert.equal(host.logs.at(-1)?.message, "private repository authentication failed");
   assert.equal(host.revealCount, 1);
   assert.equal(host.statuses.at(-1), undefined);
 });
@@ -251,11 +251,11 @@ test("records a swallowed diagnostic failure without changing active status", ()
 
   assert.deepEqual(host.statuses, []);
   assert.deepEqual(host.logs.map((entry) => entry.event), ["started", "failed"]);
-  assert.equal(host.logs[1]?.message, "Operation failed; details were redacted.");
+  assert.equal(host.logs[1]?.message, "diff unavailable");
   assert.equal(host.revealCount, 1);
 });
 
-test("formats one-line Output entries without exposing a stack trace", () => {
+test("formats multiline local error evidence without inventing an error name", () => {
   assert.equal(
     formatOperationLogEntry({
       timestamp: "2026-08-18T00:00:00.000Z",
@@ -265,7 +265,7 @@ test("formats one-line Output entries without exposing a stack trace", () => {
       errorName: "Error",
       message: "first line\nsecond line"
     }),
-    "[2026-08-18T00:00:00.000Z] ERROR PR差分を取得 (25 ms): Error: first line second line"
+    "[2026-08-18T00:00:00.000Z] ERROR PR差分を取得 (25 ms): first line\nsecond line"
   );
 });
 

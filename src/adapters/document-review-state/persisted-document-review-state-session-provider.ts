@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { gitInspectionStartPath } from "../local-git/index";
+import { reportActiveOperationFailure } from "../../application/operation-feedback/index";
 import type { NonGitSnapshotTracker } from "../../application/non-git-snapshots/index";
 import {
   GitHistoryRewriteRecoveryCoordinator,
@@ -186,17 +187,37 @@ export class DocumentReviewStateSessionProvider {
           try {
             const nextContent = await this.readProvenContent(
               descriptor,
-              session.target
+              session.target,
+              true
             );
-            await this.replaceSnapshots(
+            const snapshotsPublished = await this.replaceSnapshots(
               coordinates,
               nextContent,
               transaction.next.contextState,
               transaction.next.globalState,
               session.target
             );
-          } catch {
-            await this.invalidateSnapshots(coordinates).catch(() => undefined);
+            if (!snapshotsPublished && session.target.contentHash !== undefined) {
+              throw new Error(
+                "Post-commit snapshot refresh could not prove content and state consistency; latest snapshots were invalidated."
+              );
+            }
+          } catch (error) {
+            let diagnosticError = error;
+            try {
+              await this.invalidateSnapshots(coordinates);
+            } catch (invalidationError) {
+              diagnosticError = new AggregateError(
+                [invalidationError],
+                "Post-commit snapshot refresh and invalidation failed.",
+                { cause: error }
+              );
+            }
+            try {
+              reportActiveOperationFailure("Document review snapshot refresh", diagnosticError);
+            } catch {
+              // Reporting is best-effort and must not turn a successful state commit into a failure.
+            }
           }
         })
       }
@@ -399,7 +420,8 @@ export class DocumentReviewStateSessionProvider {
 
   private async readProvenContent(
     descriptor: DocumentEditorReviewDescriptor,
-    target: Readonly<ReviewStateFileTarget>
+    target: Readonly<ReviewStateFileTarget>,
+    propagateReadError = false
   ): Promise<string | undefined> {
     if (
       this.revisionSource === undefined ||
@@ -425,7 +447,10 @@ export class DocumentReviewStateSessionProvider {
         return undefined;
       }
       return result.content;
-    } catch {
+    } catch (error) {
+      if (propagateReadError) {
+        throw error;
+      }
       return undefined;
     }
   }
@@ -436,19 +461,19 @@ export class DocumentReviewStateSessionProvider {
     contextState: DeepReadonly<ReviewContextState>,
     globalState: DeepReadonly<RepositoryGlobalState>,
     target: Readonly<ReviewStateFileTarget>
-  ): Promise<void> {
+  ): Promise<boolean> {
     if (
       content === undefined ||
       !stateMatchesTarget(contextState, globalState, target)
     ) {
       await this.invalidateSnapshots(coordinates);
-      return;
+      return false;
     }
     const contextFile = contextState.files[target.fileId];
     const globalFile = globalState.files[target.fileId];
     if (contextFile === undefined || globalFile === undefined) {
       await this.invalidateSnapshots(coordinates);
-      return;
+      return false;
     }
 
     const now = this.nowMilliseconds();
@@ -465,8 +490,17 @@ export class DocumentReviewStateSessionProvider {
         content,
         reviewedRanges: globalFile.reviewed
       }, now);
+      return true;
     } catch (error) {
-      await this.invalidateSnapshots(coordinates).catch(() => undefined);
+      try {
+        await this.invalidateSnapshots(coordinates);
+      } catch (invalidationError) {
+        throw new AggregateError(
+          [error],
+          "Snapshot save and invalidation failed.",
+          { cause: invalidationError }
+        );
+      }
       throw error;
     }
   }

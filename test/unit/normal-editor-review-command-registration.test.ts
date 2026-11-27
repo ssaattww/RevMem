@@ -202,7 +202,7 @@ test("handler failure is recorded as failed operation before the UI host reports
 
     assert.deepEqual(host.errors, ["操作を完了できませんでした。詳細は Review Range Output を確認してください。"]);
     assert.deepEqual(operationHost.logs.map((entry) => entry.event), ["started", "failed"]);
-    assert.equal(operationHost.logs.at(-1)?.message, "Operation failed; details were redacted.");
+    assert.equal(operationHost.logs.at(-1)?.message, "state commit failed");
     assert.equal(operationHost.revealCount, 1);
   } finally {
     setActiveOperationFeedback(undefined);
