@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { spawn, type ChildProcess } from "node:child_process";
 import { dirname, join, relative } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 
 /** One private worker launch that the parent runner can bound and terminate as a process tree. */
 export interface OwnedExtensionHostLaunchInput {
@@ -31,6 +32,7 @@ interface WorkerMessage {
 }
 
 const MAX_DIAGNOSTIC_OUTPUT = 16_384;
+const DIAGNOSTIC_TRUNCATION_MARKER = "\n<truncated middle>\n";
 const TERMINATION_GRACE_MS = 2_000;
 
 const requireTimeout = (timeoutMs: number): number => {
@@ -48,9 +50,45 @@ const redact = (value: string, paths: readonly string[]): string => {
       result = result.replaceAll(candidate, "<redacted-path>");
     }
   }
-  return result.length <= MAX_DIAGNOSTIC_OUTPUT
-    ? result
-    : `${result.slice(0, MAX_DIAGNOSTIC_OUTPUT)}\n<truncated>`;
+  if (result.length <= MAX_DIAGNOSTIC_OUTPUT) return result;
+
+  const available = MAX_DIAGNOSTIC_OUTPUT - DIAGNOSTIC_TRUNCATION_MARKER.length;
+  const headBudget = Math.ceil(available / 2);
+  const tailBudget = available - headBudget;
+  let headEnd = headBudget;
+  let tailStart = result.length - tailBudget;
+
+  // Keep a UTF-16 surrogate pair intact at both truncation boundaries.
+  const isHighSurrogate = (value: number): boolean => value >= 0xd800 && value <= 0xdbff;
+  const isLowSurrogate = (value: number): boolean => value >= 0xdc00 && value <= 0xdfff;
+  if (isHighSurrogate(result.charCodeAt(headEnd - 1)) && isLowSurrogate(result.charCodeAt(headEnd))) {
+    headEnd -= 1;
+  }
+  if (isHighSurrogate(result.charCodeAt(tailStart - 1)) && isLowSurrogate(result.charCodeAt(tailStart))) {
+    tailStart += 1;
+  }
+
+  return `${result.slice(0, headEnd)}${DIAGNOSTIC_TRUNCATION_MARKER}${result.slice(tailStart)}`;
+};
+
+/** Stops accepting bytes before finalizing split UTF-8 sequences into the diagnostic snapshot. */
+export const createWorkerOutputCapture = (
+  stream: ChildProcess["stdout"]
+): (() => string) => {
+  const decoder = new StringDecoder("utf8");
+  let output = "";
+  let finalized = false;
+  const onData = (chunk: Buffer): void => {
+    output += decoder.write(chunk);
+  };
+  stream?.on("data", onData);
+  return () => {
+    if (finalized) return output;
+    finalized = true;
+    stream?.removeListener("data", onData);
+    output += decoder.end();
+    return output;
+  };
 };
 
 const diagnosticDisplayPath = (diagnosticPath: string): string => {
@@ -132,10 +170,8 @@ export const runOwnedExtensionHostLaunch = async (
   });
   if (child.pid === undefined) throw new Error("Extension Host worker did not provide an owned PID.");
 
-  let stdout = "";
-  let stderr = "";
-  child.stdout?.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
-  child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+  const captureStdout = createWorkerOutputCapture(child.stdout);
+  const captureStderr = createWorkerOutputCapture(child.stderr);
   const closed = closeOf(child);
   const message = new Promise<WorkerMessage>((resolveMessage) => {
     child.on("message", (value: unknown) => {
@@ -196,6 +232,8 @@ export const runOwnedExtensionHostLaunch = async (
   if (closedResult === undefined) {
     workerError ??= "Owned worker did not close after process-tree termination.";
   }
+  const stdout = captureStdout();
+  const stderr = captureStderr();
   if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
 
   await mkdir(input.diagnosticDirectory, { recursive: true });
