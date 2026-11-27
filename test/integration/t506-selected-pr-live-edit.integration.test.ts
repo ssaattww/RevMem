@@ -94,3 +94,37 @@ for (const failSave of [false, true]) {
     assert.deepEqual(current.globalState.files.file?.reviewed, [{ startLine: 0, endLineExclusive: 1 }, { startLine: 2, endLineExclusive: 3 }]);
   });
 }
+
+test("T506 a selected PR document edit with no stored state restores only the Viewed display", async () => {
+  let viewed: string | undefined = "old";
+  let fresh: Promise<void> | undefined;
+  const controller = new GitHubViewedDisplayController(() => { viewed = undefined; });
+  const runtime = new DocumentReviewEditRuntime({
+    storageUris: { globalStorageUri: { fsPath: "/unused" }, storageUri: { fsPath: "/unused" } },
+    repository: {
+      load: async () => undefined,
+      commit: async () => assert.fail("no-op edit must not save"),
+    },
+    historyRecorder: { recordDocumentEditMapping: async () => assert.fail("no-op edit must not record history") },
+    gitInspector: { inspectRepository: async () => ({ kind: "repository", repository: { gitVersion: "2.50.0", rootPath: "/repo", repositoryId, branch: { kind: "branch", fullRef: "refs/heads/main" }, head } }) },
+    stableHash: { digest: hash },
+    beginReviewMutation: () => controller.beginLocalChange(),
+    onReviewMutationUnchanged: () => {
+      fresh = controller.read({
+        epoch: controller.invalidate(), enabled: true, isSourceCurrent: () => true,
+        run: async () => "fresh", publish: (value) => { viewed = value; }
+      });
+    }
+  } as never);
+  runtime.observe(snapshot(beforeText));
+  const result = runtime.apply({
+    after: snapshot(afterText),
+    changes: [{ range: { start: { line: 1, character: 0 }, end: { line: 1, character: 0 } }, rangeOffset: beforeText.indexOf("const second"), rangeLength: 0, text: "const inserted = 9;\n" }],
+    options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false },
+    selectedContext: { kind: "pull-request", repositoryId, repositoryRoot: "/repo", contextId, pullRequestNumber: 506, headRevision: head }
+  });
+  assert.equal(viewed, undefined);
+  assert.equal(await result, "no-op");
+  await fresh;
+  assert.equal(viewed, "fresh");
+});

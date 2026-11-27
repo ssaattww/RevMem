@@ -155,7 +155,7 @@ export interface ReviewRangeRuntimePort {
   readonly reviewHistoryRecorder: ReviewHistoryRecorder;
   /** Applies an explicit Current Context identity to commands and decorations. */
   setSelectedContext(selection: SelectedReviewContext | undefined): void;
-  setViewedReviewMutationGuard?(begin: () => (() => void) | undefined): void;
+  setViewedReviewMutationGuard?(begin: () => (() => void) | undefined, refreshUnchanged: () => void): void;
   /** Applies the immutable current-PR diff used by normal-editor decoration evidence. */
   setCurrentPullRequestDiff(snapshot: Readonly<PullRequestDiffSnapshot> | undefined): void;
   /** Re-renders visible editors after a selected-context change. */
@@ -564,6 +564,7 @@ export function activate(
 ): ReviewRangeRuntimePort | ReviewRangeExtensionTestApi {
   const reviewStateChanged = new vscode.EventEmitter<void>();
   let beginViewedReviewMutation: (() => (() => void) | undefined) | undefined;
+  let refreshUnchangedViewedReviewMutation: (() => void) | undefined;
   context.subscriptions.push(reviewStateChanged);
   const additionalReviewDiffRuntimes = new Set<ReviewDiffRuntimePort>();
   const matchingAdditionalReviewDiffRuntime = (
@@ -837,6 +838,7 @@ export function activate(
       {
         beginReviewMutation: () => beginViewedReviewMutation?.(),
         onReviewMutationApplied: () => reviewStateChanged.fire(),
+        onReviewMutationUnchanged: () => refreshUnchangedViewedReviewMutation?.(),
         deferAppliedDecorationRefresh: context.extensionMode === vscode.ExtensionMode.Test,
       }
     )
@@ -858,7 +860,10 @@ export function activate(
   const runtimePort: ReviewRangeRuntimePort = {
     reviewStateRepository: repository,
     reviewHistoryRecorder: historyRecorder,
-    setViewedReviewMutationGuard: (begin) => { beginViewedReviewMutation = begin; },
+    setViewedReviewMutationGuard: (begin, refreshUnchanged) => {
+      beginViewedReviewMutation = begin;
+      refreshUnchangedViewedReviewMutation = refreshUnchanged;
+    },
     setSelectedContext: (selection) => {
       selectedContext = selection;
     },

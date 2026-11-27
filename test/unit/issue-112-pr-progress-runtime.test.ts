@@ -1,3 +1,4 @@
+import { beginGitHubViewedCommand, GitHubViewedDisplayController } from "../../src/composition/pull-request/github-viewed-display-controller";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import Module, { createRequire } from "node:module";
@@ -759,3 +760,62 @@ test("legacy v1 PR diff documents retain pair, session, and review command routi
   });
   assert.equal(await service.markFileReviewed({ uri: modifiedUri }), "applied");
 });
+
+for (const scenario of ["cancelled", "failed"] as const) {
+  test(`PR difference reports a settled or failed Viewed operation (${scenario})`, async () => {
+    const repository = new MemoryRepository();
+    const lifecycle: string[] = [];
+    const opened: string[] = [];
+    let selected: "branch" | "pull-request" = "branch";
+    let viewed: string | undefined;
+    let refreshes = 0;
+    const controller = new GitHubViewedDisplayController(() => { viewed = undefined; });
+    let fresh: Promise<void> | undefined;
+    const startRead = () => controller.read({
+      epoch: controller.invalidate(), enabled: true, isSourceCurrent: () => selected === "pull-request",
+      run: async () => "fresh", publish: (state) => { viewed = state; }
+    });
+    const options = {
+      repository,
+      requestHistory: async () => { throw new Error("storage already committed, history failed"); },
+      diffHost: { parseUri: (value: string) => value, openDiff: async (_original: string, modified: string) => { opened.push(modified); } },
+      getExclusionPolicy: () => new ReviewFileExclusionPolicy({ userGlobs: [] }),
+      beginGitHubViewedLocalChange: () => {
+        lifecycle.push("start");
+        const end = beginGitHubViewedCommand(() => controller.beginLocalChange(), () => { refreshes++; fresh = startRead(); });
+        return (outcome: unknown) => { lifecycle.push(String(outcome)); end(outcome === "settled" ? "settled" : "failed"); };
+      }
+    };
+    const runtime = new PullRequestReviewRuntime<string>(options);
+    runtime.register({
+      repositoryId: REPOSITORY_ID, repositoryRoot: "/workspace/RevMem",
+      fileSystemPathSemantics: "posix", snapshot,
+      readTextContent: async (descriptor) => ({ kind: "found", content: descriptor.side === "original" ? "a\nb\nc" : "a\nd\nc" })
+    });
+    await runtime.openReviewDiff(CONTEXT_ID, FILE_ID);
+    const service = runtime.createCommandService<{ readonly uri: string }>({
+      getDocumentUri: (editor) => editor.uri,
+      getSide: () => "modified", getLineCount: () => 3, getSelections: () => [],
+      confirmWholeFileOperation: async () => {
+        assert.deepEqual(lifecycle, ["start"]);
+        selected = "pull-request";
+        await startRead();
+        assert.equal(viewed, undefined, "read must remain suppressed after switching to the PR before persistence");
+        return scenario !== "cancelled";
+      }
+    });
+    if (scenario === "cancelled") {
+      assert.equal(await service.markFileReviewed({ uri: opened[0]! }), "cancelled");
+      assert.deepEqual(lifecycle, ["start", "settled"]);
+      await fresh;
+      assert.equal(viewed, "fresh");
+      assert.equal(refreshes, 1);
+    } else {
+      await assert.rejects(service.markFileReviewed({ uri: opened[0]! }), /history failed/u);
+      assert.deepEqual(lifecycle, ["start", "failed"]);
+      assert.equal(viewed, undefined);
+      assert.equal(refreshes, 0);
+      assert.deepEqual(repository.current.contextState.files[FILE_ID]!.modifiedReviewed, [{ startLine: 0, endLineExclusive: 3 }]);
+    }
+  });
+}

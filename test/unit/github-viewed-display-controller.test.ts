@@ -146,3 +146,31 @@ test("normal-editor command guards an async owner change from workspace to PR", 
   await read(controller.invalidate());
   assert.equal(published, "fresh-viewed");
 });
+
+for (const outcome of ["cancelled", "no-op"] as const) {
+  test(`normal editor ${outcome} refreshes Viewed without normal review changes`, async () => {
+    let shown: string | undefined = "old";
+    let changes = 0;
+    let fresh: Promise<void> | undefined;
+    const controller = new GitHubViewedDisplayController(() => { shown = undefined; });
+    const noop = () => undefined;
+    const options = {
+      beginReviewMutation: () => controller.beginLocalChange(),
+      onReviewMutationApplied: () => { changes++; },
+      onReviewMutationUnchanged: () => {
+        fresh = controller.read({
+          epoch: controller.invalidate(), enabled: true, isSourceCurrent: () => true,
+          run: async () => "fresh", publish: (value) => { shown = value; }
+        });
+      }
+    };
+    const handler = createRefreshingNormalEditorReviewCommandHandlers({
+      markSelectionReviewed: noop, unmarkSelectionReviewed: noop, markFileReviewed: noop,
+      unmarkFileReviewed: async () => { assert.equal(shown, undefined); return outcome; }
+    }, { refreshVisibleEditors: () => { changes++; } }, options);
+    assert.equal(await handler.unmarkFileReviewed("file"), outcome);
+    await fresh;
+    assert.equal(shown, "fresh");
+    assert.equal(changes, 0);
+  });
+}

@@ -81,6 +81,7 @@ export interface RefreshingNormalEditorReviewCommandHandlerOptions {
   readonly deferAppliedDecorationRefresh?: boolean;
   readonly beginReviewMutation?: () => (() => void) | undefined;
   readonly onReviewMutationApplied?: () => void;
+  readonly onReviewMutationUnchanged?: () => void;
 }
 
 type CommandInvocation<Editor> = (editor: Editor) => void | Promise<unknown>;
@@ -109,6 +110,8 @@ export function createRefreshingNormalEditorReviewCommandHandlers<Editor>(
     if (result === "applied") {
       options.onReviewMutationApplied?.();
       if (!options.deferAppliedDecorationRefresh) await refresher.refreshVisibleEditors();
+    } else if (end && (result === "cancelled" || result === "no-op")) {
+      options.onReviewMutationUnchanged?.();
     }
     return result;
   };

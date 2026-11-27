@@ -1,5 +1,4 @@
-import { GitHubViewedDisplayController } from "./pull-request/github-viewed-display-controller";
-import { projectGitHubViewedCandidates } from "../ui/pr-progress/github-viewed-candidate-projection";
+import { beginGitHubViewedCommand, GitHubViewedDisplayController, publishGitHubViewedSelection } from "./pull-request/github-viewed-display-controller";
 import path from "node:path";
 import * as vscode from "vscode";
 
@@ -215,7 +214,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     selection?.kind === "pull-request" && matchesViewedSelection(selection) ? beginViewedMutation() : undefined;
   // The normal editor resolves its persistence owner asynchronously. A PR can
   // become selected after the command starts, so hold the guard across that gap.
-  runtimePort.setViewedReviewMutationGuard?.(beginViewedMutation);
+  const refreshViewedAfterSettledMutation = (): void => {
+    if (selectedContext?.kind === "pull-request" && readViewedGrants().length > 0) {
+      refreshPullRequestProgress();
+    }
+  };
+  runtimePort.setViewedReviewMutationGuard?.(beginViewedMutation, refreshViewedAfterSettledMutation);
   const acceptSelectedContext = (next: SelectedReviewContext | undefined): void => {
     if (selectedContext !== next) {
       invalidateGitHubViewed();
@@ -241,6 +245,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
     gitInspector: git,
     stableHash,
     beginReviewMutation: beginSelectedViewedMutation,
+    onReviewMutationUnchanged: refreshViewedAfterSettledMutation,
   });
   activeDocumentReviewEditRuntime = documentEditRuntime;
   const toEditSnapshot = (document: vscode.TextDocument): DocumentReviewEditSnapshot => {
@@ -632,16 +637,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
       vscode.workspace.getConfiguration("reviewRange")
     ),
     reportDerivedProjectionError: reportPullRequestProgressError,
-    beginGitHubViewedLocalChange: () => {
-      const end = beginSelectedViewedMutation(selectedContext);
-      return (applied: boolean) => {
-        end?.();
-        if (applied && readViewedGrants().length > 0) refreshPullRequestProgress();
-      };
-    },
+    // The diff document owns the write even while a different context is selected.
+    beginGitHubViewedLocalChange: () => beginGitHubViewedCommand(beginViewedMutation, refreshViewedAfterSettledMutation),
   } as PullRequestReviewRuntimeOptions<vscode.Uri> & {
     readonly reportDerivedProjectionError: (error: unknown) => void | Promise<void>;
-    readonly beginGitHubViewedLocalChange: () => (applied: boolean) => void;
+    readonly beginGitHubViewedLocalChange: () => (outcome: "settled" | "failed") => void;
   });
   const refreshPullRequestProgressForSelection = async (feedbackContext?: OperationFeedbackContext, owner?: CurrentContextRefreshContext, selection: SelectedReviewContext | undefined = selectedContext): Promise<void> => {
     // Existing immutable-PR fixtures stay pinned. Checkout fixtures explicitly
@@ -688,32 +688,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<unknow
         configured: grants, generation, isCurrent, signal,
       }),
       publish: (result, current) => {
-        if (result.kind === "unavailable") {
-          if (pullRequestReviewRuntime.progress.showGitHubViewedUnavailable(current)) {
-            runtimePort.refreshPullRequestProgressTree();
-          }
-          return;
-        }
-        const { viewer, read } = result;
-        const files = pullRequestReviewRuntime.progress.getChildren().flatMap(category =>
-          pullRequestReviewRuntime.progress.getChildren(category).filter(node => node.kind === "file"));
-        const candidates = projectGitHubViewedCandidates({
-          viewer, expectedViewerId: result.expectedViewerId, targetRepository: read.repository,
-          selectedPullRequest: {
-            nodeId: read.pullRequestNodeId, number: selection.pullRequestNumber,
-            state: "open", repository: read.repository, headSha: snapshot.headSha,
-            comparisonBaseSha: snapshot.baseSha, originalDiffId: snapshot.originalDiffId, generation,
-          },
-          progressSnapshot: {
-            contextId, repository: read.repository, pullRequestNumber: selection.pullRequestNumber,
-            headSha: snapshot.headSha, comparisonBaseSha: snapshot.baseSha, originalDiffId: snapshot.originalDiffId,
-            generation, complete: files.length === snapshot.files.length,
-          },
-          viewedRead: read, files,
-        });
-        if (pullRequestReviewRuntime.progress.replaceGitHubViewedCandidates(candidates, current)) {
-          runtimePort.refreshPullRequestProgressTree();
-        }
+        if (publishGitHubViewedSelection({
+          result, current, progress: pullRequestReviewRuntime.progress, contextId, number: selection.pullRequestNumber,
+          headSha: snapshot.headSha, baseSha: snapshot.baseSha, originalDiffId: snapshot.originalDiffId,
+          generation, fileCount: snapshot.files.length,
+        })) runtimePort.refreshPullRequestProgressTree();
       },
     }).catch(() => { /* The optional read never changes existing local review state. */ });
   };

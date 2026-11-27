@@ -78,6 +78,7 @@ interface DocumentReviewEditRuntimeOptions {
   readonly stableHash: StableHash;
   readonly now?: () => Date;
   readonly beginReviewMutation?: (selected?: SelectedReviewContext) => (() => void) | undefined;
+  readonly onReviewMutationUnchanged?: () => void;
 }
 
 type FileDisposition = "missing" | "before" | "after" | "stale";
@@ -187,6 +188,9 @@ export class DocumentReviewEditRuntime {
     const end = this.options.beginReviewMutation?.(input.selectedContext);
     const operation = previous.catch(() => undefined).then(() => this.persist(input)).finally(() => {
       end?.();
+    }).then((result) => {
+      if (end && result === "no-op") this.options.onReviewMutationUnchanged?.();
+      return result;
     });
     const tail = operation.then(() => undefined, () => undefined);
     this.tails.set(request.after.documentKey, tail);

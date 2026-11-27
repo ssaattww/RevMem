@@ -46,7 +46,7 @@ interface WorkingTreeOpenTarget {
 type WorkingTreeRuntimeOptions<Uri> = PullRequestReviewRuntimeOptions<Uri> & {
   readonly openWorkingTreeFile?: (target: WorkingTreeOpenTarget) => Promise<void>;
   readonly reportDerivedProjectionError?: (error: unknown) => void | Promise<void>;
-  readonly beginGitHubViewedLocalChange?: () => (applied: boolean) => void;
+  readonly beginGitHubViewedLocalChange?: () => (outcome: "settled" | "failed") => void;
 };
 
 interface ReviewProjectionProgressSource {
@@ -147,7 +147,7 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
       operation: () => Promise<DiffEditorReviewCommandResult>
     ): Promise<DiffEditorReviewCommandResult> => {
       const endViewedChange = this.beginGitHubViewedLocalChange?.();
-      let applied = false;
+      let settled = false;
       try {
         const result = await synchronizeAppliedPullRequestReview(
           await operation(),
@@ -155,10 +155,10 @@ export class PullRequestReviewRuntime<Uri> extends BasePullRequestReviewRuntime<
           () => this.projectionNotifier.notify(),
           this.reportDerivedProjectionError
         );
-        applied = result === "applied";
+        settled = true;
         return result;
       } finally {
-        endViewedChange?.(applied);
+        endViewedChange?.(settled ? "settled" : "failed");
       }
     };
     const markSelectionReviewed = service.markSelectionReviewed.bind(service);
