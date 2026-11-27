@@ -79,6 +79,8 @@ export interface RefreshingNormalEditorReviewCommandHandlerOptions {
    * owns the explicit refresh and drain observation boundary.
    */
   readonly deferAppliedDecorationRefresh?: boolean;
+  readonly beginReviewMutation?: () => (() => void) | undefined;
+  readonly onReviewMutationApplied?: () => void;
 }
 
 type CommandInvocation<Editor> = (editor: Editor) => void | Promise<unknown>;
@@ -97,9 +99,16 @@ export function createRefreshingNormalEditorReviewCommandHandlers<Editor>(
   const refreshAfterApplied = async (
     operation: () => void | Promise<unknown>
   ): Promise<unknown> => {
-    const result = await operation();
-    if (result === "applied" && !options.deferAppliedDecorationRefresh) {
-      await refresher.refreshVisibleEditors();
+    const end = options.beginReviewMutation?.();
+    let result: unknown;
+    try {
+      result = await operation();
+    } finally {
+      end?.();
+    }
+    if (result === "applied") {
+      options.onReviewMutationApplied?.();
+      if (!options.deferAppliedDecorationRefresh) await refresher.refreshVisibleEditors();
     }
     return result;
   };

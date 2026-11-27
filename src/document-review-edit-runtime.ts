@@ -77,6 +77,7 @@ interface DocumentReviewEditRuntimeOptions {
   readonly gitInspector: Pick<LocalGitAdapter, "inspectRepository">;
   readonly stableHash: StableHash;
   readonly now?: () => Date;
+  readonly beginReviewMutation?: (selected?: SelectedReviewContext) => (() => void) | undefined;
 }
 
 type FileDisposition = "missing" | "before" | "after" | "stale";
@@ -183,7 +184,10 @@ export class DocumentReviewEditRuntime {
         : { ...request.selectedContext }
     };
     const previous = this.tails.get(request.after.documentKey) ?? Promise.resolve();
-    const operation = previous.catch(() => undefined).then(() => this.persist(input));
+    const end = this.options.beginReviewMutation?.(input.selectedContext);
+    const operation = previous.catch(() => undefined).then(() => this.persist(input)).finally(() => {
+      end?.();
+    });
     const tail = operation.then(() => undefined, () => undefined);
     this.tails.set(request.after.documentKey, tail);
     void tail.finally(() => {

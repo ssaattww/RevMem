@@ -1,3 +1,4 @@
+import { GitHubViewedDisplayController } from "../../src/composition/pull-request/github-viewed-display-controller";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
@@ -37,26 +38,59 @@ const initial = (): ReviewStateCommit => {
   return { schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, contextState, globalState };
 };
 
-test("T506 maps a live edit into the accepted saved pull-request owner", async () => {
-  let current = initial();
-  const target: ReviewStateRepositoryTarget = { kind: "pull-request", repositoryId, contextId };
-  const runtime = new DocumentReviewEditRuntime({
-    storageUris: { globalStorageUri: { fsPath: "/unused" }, storageUri: { fsPath: "/unused" } },
-    repository: {
-      load: async (value: ReviewStateRepositoryTarget) => value.kind === target.kind && value.repositoryId === target.repositoryId && value.contextId === target.contextId ? current : undefined,
-      commit: async (transaction: Readonly<ReviewStateTransactionLike>) => { current = transaction.next as ReviewStateCommit; }
-    },
-    historyRecorder: { recordDocumentEditMapping: async () => undefined },
-    gitInspector: { inspectRepository: async () => ({ kind: "repository" as const, repository: { gitVersion: "2.50.0", rootPath: "/repo", repositoryId, branch: { kind: "branch" as const, fullRef: "refs/heads/main" }, head } }) },
-    stableHash: { digest: hash }, now: () => new Date("2026-08-17T00:01:00.000Z")
-  } as never);
-  runtime.observe(snapshot(beforeText));
-  assert.equal(await runtime.apply({
-    after: snapshot(afterText),
-    changes: [{ range: { start: { line: 1, character: 0 }, end: { line: 1, character: 0 } }, rangeOffset: beforeText.indexOf("const second"), rangeLength: 0, text: "const inserted = 9;\n" }],
-    options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false },
-    selectedContext: { kind: "pull-request", repositoryId, repositoryRoot: "/repo", contextId, pullRequestNumber: 506, headRevision: head }
-  }), "applied");
-  assert.deepEqual(current.contextState.files.file?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 1 }, { startLine: 2, endLineExclusive: 3 }]);
-  assert.deepEqual(current.globalState.files.file?.reviewed, [{ startLine: 0, endLineExclusive: 1 }, { startLine: 2, endLineExclusive: 3 }]);
-});
+for (const failSave of [false, true]) {
+  test(`T506 selected PR live edit invalidates Viewed before the actual storage request (fail=${failSave})`, async () => {
+    let current = initial();
+    let viewed: string | undefined;
+    let resolveRead!: (value: string) => void;
+    let signal: AbortSignal | undefined;
+    const controller = new GitHubViewedDisplayController(() => { viewed = undefined; });
+    const read = controller.read({
+      epoch: controller.invalidate(), enabled: true, isSourceCurrent: () => true,
+      run: (request) => {
+        signal = request.signal;
+        return new Promise<string>((resolve) => { resolveRead = resolve; });
+      },
+      publish: (state) => { viewed = state; }
+    });
+    viewed = "old-viewed";
+    const target: ReviewStateRepositoryTarget = { kind: "pull-request", repositoryId, contextId };
+    const runtime = new DocumentReviewEditRuntime({
+      storageUris: { globalStorageUri: { fsPath: "/unused" }, storageUri: { fsPath: "/unused" } },
+      repository: {
+        load: async (value: ReviewStateRepositoryTarget) => value.kind === target.kind && value.repositoryId === target.repositoryId && value.contextId === target.contextId ? current : undefined,
+        commit: async (transaction: Readonly<ReviewStateTransactionLike>) => {
+          assert.equal(viewed, undefined);
+          assert.equal(signal?.aborted, true);
+          resolveRead("late-viewed");
+          if (failSave) throw new Error("mock document save failure");
+          current = transaction.next as ReviewStateCommit;
+        }
+      },
+      historyRecorder: { recordDocumentEditMapping: async () => undefined },
+      gitInspector: { inspectRepository: async () => ({ kind: "repository" as const, repository: { gitVersion: "2.50.0", rootPath: "/repo", repositoryId, branch: { kind: "branch" as const, fullRef: "refs/heads/main" }, head } }) },
+      beginReviewMutation: () => controller.beginLocalChange(),
+      stableHash: { digest: hash }, now: () => new Date("2026-08-17T00:01:00.000Z")
+    } as never);
+    runtime.observe(snapshot(beforeText));
+    const apply = runtime.apply({
+      after: snapshot(afterText),
+      changes: [{ range: { start: { line: 1, character: 0 }, end: { line: 1, character: 0 } }, rangeOffset: beforeText.indexOf("const second"), rangeLength: 0, text: "const inserted = 9;\n" }],
+      options: { ignoreWhitespaceChanges: false, ignoreEolChanges: false },
+      selectedContext: { kind: "pull-request", repositoryId, repositoryRoot: "/repo", contextId, pullRequestNumber: 506, headRevision: head }
+    });
+    assert.equal(viewed, undefined);
+    if (failSave) {
+      await assert.rejects(apply, /mock document save failure/u);
+      await read;
+      assert.equal(viewed, undefined);
+      assert.deepEqual(current, initial());
+      return;
+    }
+    assert.equal(await apply, "applied");
+    await read;
+    assert.equal(viewed, undefined);
+    assert.deepEqual(current.contextState.files.file?.modifiedReviewed, [{ startLine: 0, endLineExclusive: 1 }, { startLine: 2, endLineExclusive: 3 }]);
+    assert.deepEqual(current.globalState.files.file?.reviewed, [{ startLine: 0, endLineExclusive: 1 }, { startLine: 2, endLineExclusive: 3 }]);
+  });
+}

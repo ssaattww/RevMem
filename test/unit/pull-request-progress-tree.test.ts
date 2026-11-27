@@ -570,3 +570,60 @@ test("rejects inconsistent snapshot and progress records before rendering", () =
     /originalDiffId|snapshot/i
   );
 });
+
+test("keeps GitHub Viewed separate and hides candidates when the captured selection is stale", () => {
+  const provider = new PullRequestProgressTreeDataProvider({
+    openDiff: async () => undefined,
+    openFile: async () => undefined
+  });
+  const completed = progressFile("done", "src/done.ts", {
+    reviewedLineCount: 3,
+    totalLineCount: 3,
+    progress: 1
+  });
+  provider.replaceSnapshot(snapshot([completed]));
+  const completedCategory = categories(provider).find(({ category }) => category === "completed")!;
+  const node = files(provider, completedCategory)[0]!;
+
+  assert.equal(provider.getGitHubViewedState(node), undefined);
+  assert.equal(provider.replaceGitHubViewedCandidates([{
+    fileId: "done",
+    path: "src/done.ts",
+    localCategory: "completed",
+    viewedState: "UNVIEWED", synchronizationEligible: false
+  }], () => true), true);
+  assert.equal(provider.getGitHubViewedState(node), "UNVIEWED");
+  assert.equal(provider.getEffectiveProgress().files[0]?.category, "completed");
+  assert.equal(provider.getEffectiveProgress().files[0]?.reviewedLineCount, 3);
+
+  assert.equal(provider.getGitHubViewedState(node), "UNVIEWED");
+  assert.equal(provider.replaceGitHubViewedCandidates([{
+    fileId: "done",
+    path: "src/done.ts",
+    localCategory: "completed",
+    viewedState: "VIEWED", synchronizationEligible: false
+  }], () => false), false);
+  assert.equal(provider.getGitHubViewedState(node), "UNVIEWED");
+  provider.replaceSnapshot(snapshot([completed]));
+  assert.equal(provider.getGitHubViewedState(node), undefined);
+
+  provider.clear();
+  assert.equal(provider.getGitHubViewedState(node), undefined);
+});
+
+test("current Viewed failure is labeled unavailable without altering local progress", () => {
+  const provider = new PullRequestProgressTreeDataProvider({
+    openDiff: async () => undefined, openFile: async () => undefined
+  });
+  provider.replaceSnapshot(snapshot([progressFile("file", "src/file.ts", {
+    reviewedLineCount: 3, totalLineCount: 3, progress: 1
+  })]));
+  const node = files(provider, categories(provider).find(({ category }) => category === "completed")!)[0]!;
+  let current = true;
+  assert.equal(provider.showGitHubViewedUnavailable(() => current), true);
+  assert.equal(provider.getGitHubViewedState(node), "unavailable");
+  assert.equal(provider.getEffectiveProgress().files[0]?.reviewedLineCount, 3);
+  current = false;
+  assert.equal(provider.getGitHubViewedState(node), undefined);
+  assert.equal(provider.showGitHubViewedUnavailable(() => false), false);
+});

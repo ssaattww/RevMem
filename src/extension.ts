@@ -155,6 +155,7 @@ export interface ReviewRangeRuntimePort {
   readonly reviewHistoryRecorder: ReviewHistoryRecorder;
   /** Applies an explicit Current Context identity to commands and decorations. */
   setSelectedContext(selection: SelectedReviewContext | undefined): void;
+  setViewedReviewMutationGuard?(begin: () => (() => void) | undefined): void;
   /** Applies the immutable current-PR diff used by normal-editor decoration evidence. */
   setCurrentPullRequestDiff(snapshot: Readonly<PullRequestDiffSnapshot> | undefined): void;
   /** Re-renders visible editors after a selected-context change. */
@@ -562,6 +563,7 @@ export function activate(
   context: vscode.ExtensionContext
 ): ReviewRangeRuntimePort | ReviewRangeExtensionTestApi {
   const reviewStateChanged = new vscode.EventEmitter<void>();
+  let beginViewedReviewMutation: (() => (() => void) | undefined) | undefined;
   context.subscriptions.push(reviewStateChanged);
   const additionalReviewDiffRuntimes = new Set<ReviewDiffRuntimePort>();
   const matchingAdditionalReviewDiffRuntime = (
@@ -826,31 +828,17 @@ export function activate(
     host,
     createRefreshingNormalEditorReviewCommandHandlers(
       {
-        markSelectionReviewed: async (editor) => {
-          const result = await commandService.markSelectionReviewed(editor);
-          if (result === "applied") reviewStateChanged.fire();
-          return result;
-        },
-        unmarkSelectionReviewed: async (editor) => {
-          const result = await commandService.unmarkSelectionReviewed(editor);
-          if (result === "applied") reviewStateChanged.fire();
-          return result;
-        },
-        markFileReviewed: async (editor) => {
-          const result = await commandService.markFileReviewed(editor);
-          if (result === "applied") reviewStateChanged.fire();
-          return result;
-        },
-        unmarkFileReviewed: async (editor) => {
-          const result = await commandService.unmarkFileReviewed(editor);
-          if (result === "applied") reviewStateChanged.fire();
-          return result;
-        }
+        markSelectionReviewed: (editor) => commandService.markSelectionReviewed(editor),
+        unmarkSelectionReviewed: (editor) => commandService.unmarkSelectionReviewed(editor),
+        markFileReviewed: (editor) => commandService.markFileReviewed(editor),
+        unmarkFileReviewed: (editor) => commandService.unmarkFileReviewed(editor),
       },
       decorationController,
-      context.extensionMode === vscode.ExtensionMode.Test
-        ? { deferAppliedDecorationRefresh: true }
-        : undefined
+      {
+        beginReviewMutation: () => beginViewedReviewMutation?.(),
+        onReviewMutationApplied: () => reviewStateChanged.fire(),
+        deferAppliedDecorationRefresh: context.extensionMode === vscode.ExtensionMode.Test,
+      }
     )
   );
   context.subscriptions.push(
@@ -870,6 +858,7 @@ export function activate(
   const runtimePort: ReviewRangeRuntimePort = {
     reviewStateRepository: repository,
     reviewHistoryRecorder: historyRecorder,
+    setViewedReviewMutationGuard: (begin) => { beginViewedReviewMutation = begin; },
     setSelectedContext: (selection) => {
       selectedContext = selection;
     },
