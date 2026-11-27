@@ -51,8 +51,8 @@
       "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d"
     },
     "ci_wait": {
-      "state": "not_required",
-      "required_for": "not_required"
+      "state": "ci_wait_pending",
+      "required_for": "merge_gate"
     },
     "final_publication": {
       "sequence": "not_applicable",
@@ -67,14 +67,14 @@
     },
     {
       "source": "repository_instruction",
-      "reference": "AGENTS.md",
+      "reference": "tasks/phases-status.md:16",
       "summary": "単体・統合テスト、構成の正負確認、対象CIを使う。予約は変更しない。"
     }
   ],
   "development_policy": {
-    "method": "単体・統合テスト、構成の正負確認、対象CIを使う。予約は変更しない。",
-    "testing_order": "既存の検証を使い、管理差分の追加後は新しい版の根拠と区別する。",
-    "governing_source": "AGENTS.md"
+    "method": "挙動変更はテスト駆動。",
+    "testing_order": "失敗するテストを先に追加し、実装後に単体・統合・Extension Host の該当試験で終了条件を確認。初回全体の失敗時系列は未確認。",
+    "governing_source": "tasks/phases-status.md:16"
   },
   "validation_plan": {
     "commands": [
@@ -179,143 +179,78 @@
   },
   "commands": [
     {
-      "command": "TypeScript --noEmit",
-      "purpose": "リポジトリ既定の検証",
-      "exit_code": "unknown",
+      "command": "焦点の4試験ファイルと TypeScript --noEmit",
+      "purpose": "同じ通常担当の隔離再実行",
+      "exit_code": 0,
       "result": "passed",
       "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
-      "evidence": "GitHub PR自動CI 46081171854 が対象技術版で成功。模擬 GitHub、T506、Unit、構造と製品ビルドを含む。",
-      "execution_environment": null,
+      "evidence": "43/43 と型検査成功。候補の親は初回凍結版。",
+      "execution_environment": {
+        "kind": "runtime_local",
+        "tool": "Codex Work",
+        "machine_id": null,
+        "connection": "available",
+        "os": "Linux",
+        "shell": null,
+        "working_directory": null,
+        "repository": "ssaattww/RevMem",
+        "branch": "task/issue-93-github-viewed-sync-design",
+        "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
+        "source_state": "snapshot",
+        "source_fingerprint": "12500880142b54d7c20bd302a9c185bd2a340b2a",
+        "ownership": "current_task",
+        "writable_paths": [],
+        "dependencies": [],
+        "evidence": [
+          "正本の対象版と対象の Git blob を確認。マシン名・環境固有パス・権限を引き継がない。"
+        ]
+      },
       "source_fingerprint": "12500880142b54d7c20bd302a9c185bd2a340b2a"
     },
     {
-      "command": "npm run lint",
-      "purpose": "リポジトリ既定の検証",
-      "exit_code": "unknown",
+      "command": "親側焦点試験、lint、typecheck:contracts、validate:architecture、validate:architecture:negative",
+      "purpose": "隔離修正の検証",
+      "exit_code": 0,
       "result": "passed",
       "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
-      "evidence": "GitHub PR自動CI 46081171854 が対象技術版で成功。模擬 GitHub、T506、Unit、構造と製品ビルドを含む。",
-      "execution_environment": null,
-      "source_fingerprint": "12500880142b54d7c20bd302a9c185bd2a340b2a"
-    },
-    {
-      "command": "npm run typecheck:contracts",
-      "purpose": "リポジトリ既定の検証",
-      "exit_code": "unknown",
-      "result": "passed",
-      "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
-      "evidence": "GitHub PR自動CI 46081171854 が対象技術版で成功。模擬 GitHub、T506、Unit、構造と製品ビルドを含む。",
-      "execution_environment": null,
-      "source_fingerprint": "12500880142b54d7c20bd302a9c185bd2a340b2a"
-    },
-    {
-      "command": "npm run validate:architecture",
-      "purpose": "リポジトリ既定の検証",
-      "exit_code": "unknown",
-      "result": "passed",
-      "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
-      "evidence": "GitHub PR自動CI 46081171854 が対象技術版で成功。模擬 GitHub、T506、Unit、構造と製品ビルドを含む。",
-      "execution_environment": null,
-      "source_fingerprint": "12500880142b54d7c20bd302a9c185bd2a340b2a"
-    },
-    {
-      "command": "npm run validate:architecture:negative",
-      "purpose": "リポジトリ既定の検証",
-      "exit_code": "unknown",
-      "result": "passed",
-      "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
-      "evidence": "GitHub PR自動CI 46081171854 が対象技術版で成功。模擬 GitHub、T506、Unit、構造と製品ビルドを含む。",
-      "execution_environment": null,
-      "source_fingerprint": "12500880142b54d7c20bd302a9c185bd2a340b2a"
-    },
-    {
-      "command": "対象4ファイルの焦点試験",
-      "purpose": "リポジトリ既定の検証",
-      "exit_code": "unknown",
-      "result": "passed",
-      "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
-      "evidence": "GitHub PR自動CI 46081171854 が対象技術版で成功。模擬 GitHub、T506、Unit、構造と製品ビルドを含む。",
-      "execution_environment": null,
+      "evidence": "68/68、静的検査、構造の正負検査。通常担当側の焦点43件とは別。",
+      "execution_environment": {
+        "kind": "runtime_local",
+        "tool": "Codex Work",
+        "machine_id": null,
+        "connection": "available",
+        "os": "Linux",
+        "shell": null,
+        "working_directory": null,
+        "repository": "ssaattww/RevMem",
+        "branch": "task/issue-93-github-viewed-sync-design",
+        "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
+        "source_state": "snapshot",
+        "source_fingerprint": "12500880142b54d7c20bd302a9c185bd2a340b2a",
+        "ownership": "current_task",
+        "writable_paths": [],
+        "dependencies": [],
+        "evidence": [
+          "正本の対象版と対象の Git blob を確認。マシン名・環境固有パス・権限を引き継がない。"
+        ]
+      },
       "source_fingerprint": "12500880142b54d7c20bd302a9c185bd2a340b2a"
     }
   ],
   "tests": [
     {
-      "name": "requirement and design conformance",
+      "name": "通常担当：対象4試験ファイル",
       "phase": "verification",
       "result": "passed",
       "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
-      "evidence": "初回独立指摘3件と直接影響に限定。今回の報告の指摘対応表を参照。"
+      "evidence": "43/43。TS --noEmit も別に確認。"
     },
     {
-      "name": "correctness and edge cases",
+      "name": "親側：対象焦点と構造検査",
       "phase": "verification",
       "result": "passed",
       "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
-      "evidence": "初回独立指摘3件と直接影響に限定。今回の報告の指摘対応表を参照。"
-    },
-    {
-      "name": "scope discipline and unrelated changes",
-      "phase": "verification",
-      "result": "passed",
-      "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
-      "evidence": "初回独立指摘3件と直接影響に限定。今回の報告の指摘対応表を参照。"
-    },
-    {
-      "name": "changed files and direct dependency impact",
-      "phase": "verification",
-      "result": "passed",
-      "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
-      "evidence": "初回独立指摘3件と直接影響に限定。今回の報告の指摘対応表を参照。"
-    },
-    {
-      "name": "API, data, configuration, workflow, and compatibility effects",
-      "phase": "verification",
-      "result": "passed",
-      "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
-      "evidence": "初回独立指摘3件と直接影響に限定。今回の報告の指摘対応表を参照。"
-    },
-    {
-      "name": "error handling and failure diagnostics",
-      "phase": "verification",
-      "result": "passed",
-      "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
-      "evidence": "初回独立指摘3件と直接影響に限定。今回の報告の指摘対応表を参照。"
-    },
-    {
-      "name": "security and secret handling where applicable",
-      "phase": "verification",
-      "result": "passed",
-      "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
-      "evidence": "初回独立指摘3件と直接影響に限定。今回の報告の指摘対応表を参照。"
-    },
-    {
-      "name": "tests and validation adequacy",
-      "phase": "verification",
-      "result": "passed",
-      "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
-      "evidence": "同一通常レビューの焦点43/43、親の焦点68/68、静的・正負検査を区別。"
-    },
-    {
-      "name": "current-HEAD CI evidence",
-      "phase": "verification",
-      "result": "passed",
-      "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
-      "evidence": "同一技術版の自動CI成功。管理記録を追加した版の結果と区別。"
-    },
-    {
-      "name": "report, tracking, and documentation accuracy",
-      "phase": "verification",
-      "result": "passed",
-      "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
-      "evidence": "初回独立指摘3件と直接影響に限定。今回の報告の指摘対応表を参照。"
-    },
-    {
-      "name": "regression and maintainability risks",
-      "phase": "verification",
-      "result": "passed",
-      "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
-      "evidence": "初回独立指摘3件と直接影響に限定。今回の報告の指摘対応表を参照。"
+      "evidence": "68/68、静的・型契約・構造検査（負例は想定11件）。"
     }
   ],
   "ci": {
@@ -324,7 +259,13 @@
     "run_id": 46081171854,
     "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
     "conclusion": "success",
-    "artifacts": []
+    "artifacts": [
+      {
+        "id": 15236424335,
+        "name": "review-range-user-validation-0.1.65-pre+2557e2e",
+        "purpose": "技術版のパッケージ。同じ対象自動CI 46081171854 の成果物メタデータを確認。"
+      }
+    ]
   },
   "implementation": {
     "outcome": "completed",
@@ -382,7 +323,7 @@
         ]
       }
     },
-    "verdict": "pass",
+    "verdict": "pass_with_held",
     "required_coverage": [
       {
         "criterion": "requirement and design conformance",
@@ -441,11 +382,46 @@
       }
     ],
     "independent_closure": {
-      "initial_independent_reviewed_head": null,
+      "initial_independent_reviewed_head": "53aac0142e553dd1b24b99e7eab22262bfd08ca9",
       "closure_reviewed_heads": [],
-      "reviewer_continuity": null,
-      "closure_scope": [],
-      "completeness_matrix": []
+      "reviewer_continuity": "初回独立担当のみ。現時点では通常の修正確認までで、独立解消版は未記録。",
+      "closure_scope": [
+        {
+          "finding_or_ci_delta": "I154-IFR-001"
+        },
+        {
+          "finding_or_ci_delta": "I154-IFR-002"
+        },
+        {
+          "finding_or_ci_delta": "I154-IFR-003"
+        },
+        {
+          "finding_or_ci_delta": "管理差分とその確定版での自動CI。"
+        }
+      ],
+      "completeness_matrix": [
+        {
+          "finding_id": "I154-IFR-001",
+          "required_action": "PR 差分の保存が始まったとき Branch が選択されていても、途中から PR が選ばれた場合に取得を開始せず、履歴保存に失敗したときは以前のオーバーレイを出さない。",
+          "production_path": "`src/composition/extension.ts:641`、`src/composition/pull-request/pull-request-review-runtime.ts:149–171`。操作開始時に無条件でガードを取得し、PR 差分の4操作が完了または失敗するまで保持。",
+          "actual_composition_fixture": "`test/unit/issue-112-pr-progress-runtime.test.ts:764–821` の Branch→PR、取得抑止と履歴失敗。実アカウントを使わない。",
+          "focused_evidence": "通常確認43/43・型成功。別の親側68/68、正式技術版の自動CI 46081171854 成功。"
+        },
+        {
+          "finding_id": "I154-IFR-002",
+          "required_action": "正常に取り消した、または変更がなかった場合、保存失敗と区別して現在世代の取得だけを行う。古い応答は採用しない。",
+          "production_path": "`src/ui/normal-editor/review-command-registration.ts:103–115`、`src/document-review-edit-runtime.ts:188–194` と PR 差分の正常終了分岐。従来の applied 通知を維持。",
+          "actual_composition_fixture": "単体・選択中 PR 編集の統合試験が正常取消・no-opの経路を検証。PR 差分の no-op の独立したテストケースはなく、取消と同じ正常終了分岐であることをコードで確認。",
+          "focused_evidence": "通常確認43/43・型成功。別の親側68/68、正式技術版の自動CI 46081171854 成功。"
+        },
+        {
+          "finding_id": "I154-IFR-003",
+          "required_action": "模擬認証・通信から本番の選択取得・表示を通し、失敗がローカル確認状態・履歴を更新する指令にならないことを示す。",
+          "production_path": "`src/composition/review-contexts/github-viewed-selection-reader.ts` の本番 reader と `publishGitHubViewedSelection` を、実行時と同じ接続で合成する。外部の実アカウントには接続しない。",
+          "actual_composition_fixture": "`test/unit/pull-request-progress-tree.test.ts:635–725` で正常、認証なし、HTTP 403、GraphQL エラー、通信失敗。GraphQL はクエリ、REST は GET。履歴の不変は製品の読取専用依存と模擬配列を検証しており、実ストレージの保存は通さない。",
+          "focused_evidence": "通常確認43/43・型成功。別の親側68/68、正式技術版の自動CI 46081171854 成功。"
+        }
+      ]
     },
     "validation_assessment": [
       {
@@ -504,20 +480,35 @@
         "evidence": "初回独立指摘3件と直接影響に限定。今回の報告の指摘対応表を参照。"
       }
     ],
-    "reserved_report_paths": [],
+    "reserved_report_paths": [
+      "reports/issue-154-pr151-independent-final-review-20261128.md"
+    ],
     "report_attestation": {
-      "allowed": "not_applicable",
+      "allowed": false,
       "reviewed_implementation_head": null,
-      "allowed_paths": [],
+      "allowed_paths": [
+        "reports/issue-154-pr151-independent-final-review-20261128.md"
+      ],
       "required_first_parent": null,
-      "maximum_commits_after_reviewed_head": null,
-      "forbidden_path_classes": [],
-      "no_later_commits_required": "not_applicable",
-      "validation_status": "not_applicable",
-      "validation_evidence": []
+      "maximum_commits_after_reviewed_head": 1,
+      "forbidden_path_classes": [
+        "executable",
+        "skill",
+        "design",
+        "workflow",
+        "configuration",
+        "tracking",
+        "handoff",
+        "product"
+      ],
+      "no_later_commits_required": true,
+      "validation_status": "pending",
+      "validation_evidence": [
+        "初回独立版は不合格。既存予約 revmem-154-pr151-final-20261128-v1 を保持し、同じ独立担当の解消合格までは報告コミット禁止。合格後はその確定版を第一親とする予約パスだけの1コミットと、同一版のCIを確認。"
+      ]
     },
     "summary": [
-      "現在の必須指摘は0件。正式独立レビューは未実施。"
+      "同じ通常修正確認の必須残数0。独立解消確認は未実施。"
     ]
   },
   "report": {
@@ -534,8 +525,75 @@
       "通常レビューと指摘解消の記録。"
     ]
   },
-  "findings": [],
-  "held": [],
+  "findings": [
+    {
+      "id": "I154-IFR-001",
+      "severity": "medium",
+      "origin": "introduced_by_change",
+      "location": "src/composition/extension.ts、pull-request-review-runtime.ts、diff-editor-review-command-service.ts",
+      "description": "PR 差分の保存が始まったとき Branch が選択されていても、途中から PR が選ばれた場合に取得を開始せず、履歴保存に失敗したときは以前のオーバーレイを出さない。",
+      "impact": "保存後に履歴処理が失敗した場合、古い表示が残り得る。",
+      "evidence": "初回凍結版での原文は source_payloads を参照。修正後の通常確認: `test/unit/issue-112-pr-progress-runtime.test.ts:764–821` の Branch→PR、取得抑止と履歴失敗。実アカウントを使わない。",
+      "required_action": "PR 差分の保存が始まったとき Branch が選択されていても、途中から PR が選ばれた場合に取得を開始せず、履歴保存に失敗したときは以前のオーバーレイを出さない。"
+    },
+    {
+      "id": "I154-IFR-002",
+      "severity": "medium",
+      "origin": "introduced_by_change",
+      "location": "github-viewed-display-controller.ts、composition/extension.ts、review-command-registration.ts",
+      "description": "正常に取り消した、または変更がなかった場合、保存失敗と区別して現在世代の取得だけを行う。古い応答は採用しない。",
+      "impact": "表示だけが消失し、そのまま残り得る。",
+      "evidence": "初回凍結版での原文は source_payloads を参照。修正後の通常確認: 単体・選択中 PR 編集の統合試験が正常取消・no-opの経路を検証。PR 差分の no-op の独立したテストケースはなく、取消と同じ正常終了分岐であることをコードで確認。",
+      "required_action": "正常に取り消した、または変更がなかった場合、保存失敗と区別して現在世代の取得だけを行う。古い応答は採用しない。"
+    },
+    {
+      "id": "I154-IFR-003",
+      "severity": "medium",
+      "origin": "introduced_by_change",
+      "location": "doc/design/issue-93-github-viewed-sync.md、取得アダプタ、pull-request-progress-tree.test.ts",
+      "description": "模擬認証・通信から本番の選択取得・表示を通し、失敗がローカル確認状態・履歴を更新する指令にならないことを示す。",
+      "impact": "更新禁止・取得不可・ローカル不変の製品結合の確認不足。",
+      "evidence": "初回凍結版での原文は source_payloads を参照。修正後の通常確認: `test/unit/pull-request-progress-tree.test.ts:635–725` で正常、認証なし、HTTP 403、GraphQL エラー、通信失敗。GraphQL はクエリ、REST は GET。履歴の不変は製品の読取専用依存と模擬配列を検証しており、実ストレージの保存は通さない。",
+      "required_action": "模擬認証・通信から本番の選択取得・表示を通し、失敗がローカル確認状態・履歴を更新する指令にならないことを示す。"
+    }
+  ],
+  "held": [
+    {
+      "item": "本人の実 GitHub アカウントでの認証と取得",
+      "reason": "許可済みの模擬入力の範囲",
+      "owner": "利用者環境",
+      "remaining_risk": "実認証の確認なし",
+      "verdict_impact": "通常修正確認では保留。独立解消判断を先取りしない。"
+    },
+    {
+      "item": "本人端末の VS Code 表示・操作",
+      "reason": "自動 Extension Host は実画面ではない",
+      "owner": "利用者環境",
+      "remaining_risk": "実際の操作確認なし",
+      "verdict_impact": "通常修正確認では保留。独立解消判断を先取りしない。"
+    },
+    {
+      "item": "外部 Viewed 更新後の実サービス上の更新時点",
+      "reason": "認証・実サービスを操作しない",
+      "owner": "利用者環境",
+      "remaining_risk": "外部反映時点未計測",
+      "verdict_impact": "通常修正確認では保留。独立解消判断を先取りしない。"
+    },
+    {
+      "item": "初回実装全体の失敗試験の時系列",
+      "reason": "当時の完全な記録を確定できない",
+      "owner": "過去の実装記録",
+      "remaining_risk": "初回全体の Red の独立証明なし",
+      "verdict_impact": "通常修正確認では保留。独立解消判断を先取りしない。"
+    },
+    {
+      "item": "PR 差分 no-op の個別ケースと実履歴保存",
+      "reason": "取消と同じ正常分岐、実保存でなく読み取り専用依存・模擬配列を検証",
+      "owner": "独立解消確認担当",
+      "remaining_risk": "直接試験範囲の限界",
+      "verdict_impact": "通常修正確認では保留。独立解消判断を先取りしない。"
+    }
+  ],
   "unexplored": [],
   "unknown": [
     {
@@ -550,7 +608,12 @@
     }
   ],
   "remaining_risks": [
-    "管理差分確認と候補版の検証、正式独立レビューが残る。"
+    "管理記録の版のCI、同じ独立担当による3件の正式な解消判断が未完了。",
+    "実認証の確認なし",
+    "実際の操作確認なし",
+    "外部反映時点未計測",
+    "初回全体の Red の独立証明なし",
+    "直接試験範囲の限界"
   ],
   "source_payloads": [
     {
@@ -564,6 +627,12 @@
       "output_contract_version": "unknown",
       "content_type": "text/markdown",
       "payload": "**通常修正確認：PASS。必須残数0件（3件解消）。**\n\n凍結元 `53aac0142e553dd1b24b99e7eab22262bfd08ca9` と、指定された既存11ファイルおよび新規1ファイルを照合しました。\n\n| 指摘 | 判定 | 製品コード・試験の根拠 |\n|---|---|---|\n| I154-IFR-001 | 解消 | `composition/extension.ts:641` で選択状態に依存せずガードを開始。`pull-request-review-runtime.ts:149–171` で4操作の完了・失敗まで保持。`issue-112-pr-progress-runtime.test.ts:764–821` でBranchからPRへの切替中の取得抑止と、保存後の履歴失敗時に表示を復元しないことを確認。 |\n| I154-IFR-002 | 解消 | `review-command-registration.ts:103–115` と `document-review-edit-runtime.ts:188–194` で正常な取消・no-opに専用の再取得経路を追加。PR差分操作も正常終了と例外を区別している。既存のapplied時の通知経路を維持し、3経路に対応する試験を確認。 |\n| I154-IFR-003 | 解消 | 本番の `createGitHubViewedSelectionReader` と `publishGitHubViewedSelection` を同じ構成試験から呼び出す。`pull-request-progress-tree.test.ts:635–725` で模擬認証、正常取得、認証不可、HTTP拒否、GraphQLエラー、通信失敗を確認。GraphQLはqueryのみで、ローカル保存・履歴更新を呼ぶ製品経路はない。 |\n\n### 検証結果\n\n- 対象4試験ファイルの再実行：**43/43成功**\n- TypeScript `--noEmit`：**成功**\n- 4試験ファイルすべてが通常の `test:unit` に登録済み。\n- 親側報告の68/68成功とは、今回の再実行結果を区別する。\n\n### 証拠の限界・保留\n\n- PR差分のno-opは取消と同じ正常終了分岐だが、追加試験では個別ケースとして実行していない。\n- 履歴不変は製品の読み取り専用依存関係からも確認した。ただし、模擬履歴配列の不変assertion自体は実際の履歴保存機構を通す試験ではない。\n- 実アカウント・実画面・公開後の正式CIは未確認。隔離候補にはGit管理情報がないため、指定外ファイルを含む全体差分の確定は公開時の照合事項とする。\n\n以上は通常の修正確認の判定であり、独立最終レビューの承認ではありません。書き込み、手動CI、実機操作は行っていません。"
+    },
+    {
+      "source_skill": "review-worker",
+      "output_contract_version": "unknown",
+      "content_type": "text/markdown",
+      "payload": "**通常管理差分：要修正。必須残数5件（管理記録のみ）。**\n\n正本の比較結果は以下のとおりです。\n\n- `53aac014… → 2557e2e5…`：指定された技術修正12ファイルのみ。\n- `2557e2e5… → 77b4cae4…`：報告・引継ぎ・作業記録・工程記録の4ファイルのみ。**製品・試験の追加変更なし。**\n- 技術版の自動CI [46081171854](https://github.com/ssaattww/RevMem/actions/runs/46081171854)：成功。\n- 報告の3件の対応表は、私の通常修正確認結果と整合。\n\n### 残る必須修正\n\n| 箇所 | 必要な修正 |\n|---|---|\n| 引継ぎL69–77 | 開発方針の根拠を `tasks/phases-status.md:16` に訂正し、失敗するテストを先に追加する方針を明記する。 |\n| L180–327 | 隔離候補での43/43・型検査、親側の68/68、正式技術版CIを型付き証拠でも分離する。実際の試験結果を11レビュー観点で代用しない。CI成果物も記録する（ID `15236424335`）。 |\n| L443–520、L569–603 | 初回独立レビューの凍結HEAD・3件の元の重大度と `origin: introduced_by_change`・既存予約・attestation禁止条件を型付きで保持する。通常修正確認と未実施の**独立解消確認**を区別する。 |\n| L538–553 | 空の `held` を修正。実アカウント・実画面・外部更新タイミング・初回Red証跡等の保留を引き継ぎ、PR差分no-op個別試験と実履歴保存試験の限界も明記する。 |\n| `tasks/tasks-status.md:8`、引継ぎL53–55・605–621 | 前回の凍結前工程を未完了のまま残さず更新する。今回の管理版についても、同一HEADの検証完了後に既存予約のまま独立解消確認へ進む順序を明記する。 |\n\n管理版の自動CI [46081915261](https://github.com/ssaattww/RevMem/actions/runs/46081915261) は確認時点で実行中でした。\n\n**技術修正3件の通常確認PASSは維持**します。今回の指摘は管理記録だけです。独立レビュー、書き込み、CI起動、実機操作は行っていません。"
     }
   ],
   "extensions": [
@@ -574,19 +643,19 @@
           {
             "id": "I154-IFR-001",
             "severity": "medium",
-            "origin": "independent_final_review",
+            "origin": "introduced_by_change",
             "closure": "`src/composition/extension.ts:641`、`src/composition/pull-request/pull-request-review-runtime.ts:149–171`。操作開始時に無条件でガードを取得し、PR 差分の4操作が完了または失敗するまで保持。 `test/unit/issue-112-pr-progress-runtime.test.ts:764–821` の Branch→PR、取得抑止と履歴失敗。実アカウントを使わない。"
           },
           {
             "id": "I154-IFR-002",
             "severity": "medium",
-            "origin": "independent_final_review",
+            "origin": "introduced_by_change",
             "closure": "`src/ui/normal-editor/review-command-registration.ts:103–115`、`src/document-review-edit-runtime.ts:188–194` と PR 差分の正常終了分岐。従来の applied 通知を維持。 単体・選択中 PR 編集の統合試験が正常取消・no-opの経路を検証。PR 差分の no-op の独立したテストケースはなく、取消と同じ正常終了分岐であることをコードで確認。"
           },
           {
             "id": "I154-IFR-003",
             "severity": "medium",
-            "origin": "independent_final_review",
+            "origin": "introduced_by_change",
             "closure": "`src/composition/review-contexts/github-viewed-selection-reader.ts` の本番 reader と `publishGitHubViewedSelection` を、実行時と同じ接続で合成する。外部の実アカウントには接続しない。 `test/unit/pull-request-progress-tree.test.ts:635–725` で正常、認証なし、HTTP 403、GraphQL エラー、通信失敗。GraphQL はクエリ、REST は GET。履歴の不変は製品の読取専用依存と模擬配列を検証しており、実ストレージの保存は通さない。"
           }
         ]
@@ -605,9 +674,10 @@
   "next_action": {
     "type": "external_owner",
     "target_skill": "development-orchestrator",
-    "mode": "pre_freeze_readiness",
+    "mode": "independent_closure_readiness",
     "summary": "現在の予約と初回の独立担当を維持し、3件の対応とCI差分の解消確認へ引き継ぐ。",
     "instructions": [
+      "この管理記録を載せた最新の正本と同じ SHA の自動 PR CI の成功を確認する。",
       "独立レビューの全観点の再走査を行わない。",
       "今回の3件と直接影響、CI差分だけをレビューする。",
       "今の予約を維持し、判定前には予約した報告ファイルへ書き込まない。"
