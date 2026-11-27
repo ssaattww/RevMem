@@ -142,3 +142,95 @@ test("startup rereads after the actual configuration listener is installed", asy
   assert.equal(store.writes, 2);
   assert.equal(refreshes, 1);
 });
+/**
+ * Models extHostMemento: update mutates its in-memory cache before its
+ * persistence promise can reject, and a later update persists the whole cache.
+ */
+class CacheFirstMemento {
+  private readonly cache = new Map<string, unknown>();
+  public readonly persisted = new Map<string, unknown>();
+  public failNextKey: string | undefined;
+
+  public get<T>(key: string): T | undefined {
+    return this.cache.get(key) as T | undefined;
+  }
+
+  public async update(key: string, value: unknown): Promise<void> {
+    if (value === undefined) this.cache.delete(key);
+    else this.cache.set(key, value);
+
+    if (this.failNextKey === key) {
+      this.failNextKey = undefined;
+      throw new Error("memento persistence failed");
+    }
+
+    this.persisted.clear();
+    for (const [cachedKey, cachedValue] of this.cache) {
+      this.persisted.set(cachedKey, structuredClone(cachedValue));
+    }
+  }
+}
+
+test("failed Global toggle is rolled back before a different Memento key persists", async () => {
+  const memento = new CacheFirstMemento();
+  const state = new GlobalLayerVisibilityState(memento, true);
+
+  // Default ON has no stored Global preference yet.
+  assert.equal(state.isEnabled(), true);
+  assert.equal(memento.get("reviewRange.globalLayerVisibility.v1"), undefined);
+
+  // The failed OFF update mutates the cache first.
+  memento.failNextKey = "reviewRange.globalLayerVisibility.v1";
+  await assert.rejects(
+    state.toggle(),
+    /memento persistence failed/u
+  );
+  assert.equal(state.isEnabled(), true);
+
+  // A Review Context update persists the entire Memento cache.
+  await memento.update("reviewRange.hiddenReviewContexts.v1", ["context-b"]);
+
+  // Reinitialization must see the original default ON, not failed OFF.
+  const restarted = new GlobalLayerVisibilityState(memento, true);
+  await restarted.reconcileStartup(
+    () => true,
+    () => assert.fail("unchanged setting must not refresh")
+  );
+  assert.equal(restarted.isEnabled(), true);
+  assert.equal(
+    memento.persisted.get("reviewRange.globalLayerVisibility.v1"),
+    undefined
+  );
+  assert.deepEqual(
+    memento.persisted.get("reviewRange.hiddenReviewContexts.v1"),
+    ["context-b"]
+  );
+});
+
+test("failed Global toggle restores the last stored value and preserves the original error", async () => {
+  const memento = new CacheFirstMemento();
+  await memento.update("reviewRange.globalLayerVisibility.v1", {
+    selected: true,
+    settingAtSave: true
+  });
+  const state = new GlobalLayerVisibilityState(memento, true);
+
+  memento.failNextKey = "reviewRange.globalLayerVisibility.v1";
+  await assert.rejects(
+    state.toggle(),
+    /memento persistence failed/u
+  );
+  assert.equal(state.isEnabled(), true);
+
+  await memento.update("reviewRange.hiddenReviewContexts.v1", ["context-b"]);
+  const restarted = new GlobalLayerVisibilityState(memento, true);
+  await restarted.reconcileStartup(
+    () => true,
+    () => assert.fail("unchanged setting must not refresh")
+  );
+  assert.equal(restarted.isEnabled(), true);
+  assert.deepEqual(
+    memento.persisted.get("reviewRange.globalLayerVisibility.v1"),
+    { selected: true, settingAtSave: true }
+  );
+});

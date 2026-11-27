@@ -60,7 +60,22 @@ export class GlobalLayerVisibilityState {
 
   private async save(selected: boolean, settingAtSave: boolean): Promise<void> {
     const next = { selected, settingAtSave };
-    await this.store.update(KEY, next);
+    const previous = this.store.get<unknown>(KEY);
+    try {
+      await this.store.update(KEY, next);
+    } catch (saveError) {
+      // Memento changes its cache before storage acknowledges the write.
+      // Restore that cache before returning the failure, so a later write
+      // to a different key does not carry this selection into storage.
+      try {
+        if (this.store.get<unknown>(KEY) !== previous) {
+          await this.store.update(KEY, previous);
+        }
+      } catch {
+        // Report the original failure. The in-memory UI remains unchanged.
+      }
+      throw saveError;
+    }
     this.state = next;
   }
 
