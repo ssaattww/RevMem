@@ -121,14 +121,19 @@ const startLockChild = (rootPath: string): OwnedLockChild => {
     const output = new Promise<string>((resolve, reject) => {
       child.once("error", (error) => { readyReject(error); reject(error); });
       child.once("close", (code, signal) => {
-      clearTimeout(timeout);
-      if (!acquired) readyReject(new Error("lock child exited before acquisition: " + String(code)));
-      if (code === 0) {
-        resolve(outputText.trim());
-      } else {
-        const details = [errorOutput.trim(), stdinError?.message].filter(Boolean).join("; ");
-        reject(new Error(`lock child exited ${String(code)}${signal === null ? "" : ` via ${signal}`}${details.length === 0 ? "" : `: ${details}`}`));
-      }
+        clearTimeout(timeout);
+        const diagnostics = [
+          outputText.trim() && `stdout: ${outputText.trim()}`,
+          errorOutput.trim() && `stderr: ${errorOutput.trim()}`,
+          stdinError && `stdin: ${stdinError.message}`
+        ].filter(Boolean).join("; ");
+        const termination = `exit ${String(code)}${signal == null ? "" : ` via ${signal}`}${diagnostics ? `: ${diagnostics}` : ""}`;
+        if (!acquired) readyReject(new Error(`lock child exited before acquisition: ${termination}`));
+        if (code === 0) {
+          resolve(outputText.trim());
+        } else {
+          reject(new Error(`lock child failed: ${termination}`));
+        }
       });
     });
     void output.catch(() => undefined);
