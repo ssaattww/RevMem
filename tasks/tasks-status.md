@@ -2,6 +2,11 @@
 
 > 更新ルール: このファイルは `task-breakdown-planner`、`task-consistency-manager`、または `progress-sync-manager` を通してのみ更新する。
 
+## Issue #126 / PR #155 ロック試験の失敗処理
+
+- I126-PRE-FREEZE（P4、残作業S）: 通常レビューの必須指摘0件。CI は初回版と診断追加版とも成功。動作と検証の[通常記録](../reports/issue-126-pr155-normal-consolidated-20261127.md)、通常引継ぎは `handoffs/issue-126-pr155-normal-review-closure-20261127.yaml`。依存は既存T604/T605/T606統合検証。管理版での確認を残す。
+- I126-INDEPENDENT: 未実施。管理版の検証後に別担当。終了条件は #126 のみ。Windowsでの新規実測、製品とT607の変更は対象外。
+
 ## Issue #146 PR #145 比較元不一致（2026-11-27）
 
 - I146-IMPL / I146-NORMAL-VERIFY (P4, S): 実装・対象回帰・通常再レビュー完了。technical_head `250d667b8d0e830632d047dbdcdfe4968418b82c`、対象101/101、通常再レビュー前回必須1件解消・新規必須0件（親担当提供）、自動push/PR CI 45962097811/45962103916 success。通常工程統合記録: [issue-146-pr145-normal-consolidated-20261127.md](../reports/issue-146-pr145-normal-consolidated-20261127.md)。記録HEAD `eda5220fd9e5151481e5f6c73e4a61063a3d1fce` の自動CI両方success。親判断: Skill変更不要、実装回帰として通常工程で閉鎖。所定検証構成は同技術HEAD CIで確認済み（ローカル一括全gateは未再実行）。通常引継ぎ記録追補commit_pending、後続HEADは外部引継ぎ。
