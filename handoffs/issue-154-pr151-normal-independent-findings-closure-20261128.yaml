@@ -25,14 +25,15 @@
     "working_directory": null,
     "repository": "ssaattww/RevMem",
     "branch": "task/issue-93-github-viewed-sync-design",
-    "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
+    "head_sha": "unknown",
     "source_state": "snapshot",
     "source_fingerprint": "12500880142b54d7c20bd302a9c185bd2a340b2a",
     "ownership": "current_task",
     "writable_paths": [],
     "dependencies": [],
     "evidence": [
-      "正本の対象版と対象の Git blob を確認。マシン名・環境固有パス・権限を引き継がない。"
+      "正本の対象版と対象の Git blob を確認。マシン名・環境固有パス・権限を引き継がない。",
+      "実行時は公開前の隔離ソースのため Git HEAD は unknown。後日、対象12ファイルの SHA-256 を照合し、正式技術版 2557e2e5b7a2a26cca872097f6a19547dd4bd80d の12 Git blob と対応付けた。"
     ]
   },
   "verification": {
@@ -68,7 +69,7 @@
     {
       "source": "repository_instruction",
       "reference": "tasks/phases-status.md:16",
-      "summary": "単体・統合テスト、構成の正負確認、対象CIを使う。予約は変更しない。"
+      "summary": "挙動実装は失敗するテストを先に追加し、実装後に関連する単体・統合・Extension Host 試験で確認する。"
     }
   ],
   "development_policy": {
@@ -183,8 +184,8 @@
       "purpose": "同じ通常担当の隔離再実行",
       "exit_code": 0,
       "result": "passed",
-      "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
-      "evidence": "43/43 と型検査成功。候補の親は初回凍結版。",
+      "head_sha": "unknown",
+      "evidence": "43/43 と型検査成功。候補の親は初回凍結版。 実行時は公開前の隔離ソースのため Git HEAD は unknown。後日、対象12ファイルの SHA-256 を照合し、正式技術版 2557e2e5b7a2a26cca872097f6a19547dd4bd80d の12 Git blob と対応付けた。",
       "execution_environment": {
         "kind": "runtime_local",
         "tool": "Codex Work",
@@ -195,7 +196,7 @@
         "working_directory": null,
         "repository": "ssaattww/RevMem",
         "branch": "task/issue-93-github-viewed-sync-design",
-        "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
+        "head_sha": "unknown",
         "source_state": "snapshot",
         "source_fingerprint": "12500880142b54d7c20bd302a9c185bd2a340b2a",
         "ownership": "current_task",
@@ -212,8 +213,8 @@
       "purpose": "隔離修正の検証",
       "exit_code": 0,
       "result": "passed",
-      "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
-      "evidence": "68/68、静的検査、構造の正負検査。通常担当側の焦点43件とは別。",
+      "head_sha": "unknown",
+      "evidence": "68/68、静的検査、構造の正負検査。通常担当側の焦点43件とは別。 実行時は公開前の隔離ソースのため Git HEAD は unknown。後日、対象12ファイルの SHA-256 を照合し、正式技術版 2557e2e5b7a2a26cca872097f6a19547dd4bd80d の12 Git blob と対応付けた。",
       "execution_environment": {
         "kind": "runtime_local",
         "tool": "Codex Work",
@@ -224,7 +225,7 @@
         "working_directory": null,
         "repository": "ssaattww/RevMem",
         "branch": "task/issue-93-github-viewed-sync-design",
-        "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
+        "head_sha": "unknown",
         "source_state": "snapshot",
         "source_fingerprint": "12500880142b54d7c20bd302a9c185bd2a340b2a",
         "ownership": "current_task",
@@ -242,15 +243,15 @@
       "name": "通常担当：対象4試験ファイル",
       "phase": "verification",
       "result": "passed",
-      "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
-      "evidence": "43/43。TS --noEmit も別に確認。"
+      "head_sha": "unknown",
+      "evidence": "43/43。TS --noEmit も別に確認。 実行時は公開前の隔離ソースのため Git HEAD は unknown。後日、対象12ファイルの SHA-256 を照合し、正式技術版 2557e2e5b7a2a26cca872097f6a19547dd4bd80d の12 Git blob と対応付けた。"
     },
     {
       "name": "親側：対象焦点と構造検査",
       "phase": "verification",
       "result": "passed",
-      "head_sha": "2557e2e5b7a2a26cca872097f6a19547dd4bd80d",
-      "evidence": "68/68、静的・型契約・構造検査（負例は想定11件）。"
+      "head_sha": "unknown",
+      "evidence": "68/68、静的・型契約・構造検査（負例は想定11件）。 実行時は公開前の隔離ソースのため Git HEAD は unknown。後日、対象12ファイルの SHA-256 を照合し、正式技術版 2557e2e5b7a2a26cca872097f6a19547dd4bd80d の12 Git blob と対応付けた。"
     }
   ],
   "ci": {
