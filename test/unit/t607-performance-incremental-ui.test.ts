@@ -22,7 +22,7 @@ import { ReviewFileExclusionPolicy } from "../../src/core/file-exclusion/index";
 import { NormalEditorReviewCommandService } from "../../src/application/review-commands/index";
 import { calculatePullRequestDiffProgress, calculatePullRequestDiffProgressCooperatively, type PullRequestDiffSnapshot } from "../../src/core/pr-progress/index";
 import { calculateGlobalUnderstandingFileProgressCooperatively } from "../../src/application/global-understanding/cooperative-global-understanding-calculation";
-import { OperationFeedback, setActiveOperationFeedback } from "../../src/application/operation-feedback/index";
+import { OperationCancelledError, OperationFeedback, setActiveOperationFeedback, type OperationFeedbackContext } from "../../src/application/operation-feedback/index";
 import {
   PullRequestProgressTreeDataProvider,
   type PullRequestProgressTreeSnapshot
@@ -362,32 +362,55 @@ test("T607 never publishes a stale Tree stage after its generation is invalidate
 
 test("T607 production VS Code Global runtime fences partial publication on invalidate and dispose", async () => {
   const commands = new Map<string, (...args: unknown[]) => Promise<void>>();
-  let provider: { getChildren(node?: { readonly kind: string }): readonly { readonly kind: string }[] } | undefined;
+  type GlobalTestNode = { readonly kind: string; readonly count?: number; readonly path?: string };
+  type GlobalTestProvider = {
+    getChildren(node?: GlobalTestNode): readonly GlobalTestNode[];
+    onDidChangeTreeData(listener: (event?: unknown) => void): { dispose(): void };
+  };
+  let provider: GlobalTestProvider | undefined;
   let registered: { refresh(): Promise<void>; invalidate(): void; dispose(): void } | undefined;
   let staleNode: unknown;
   let interrupted = false;
+  let treeFires = 0;
+  let treeSubscriberNotifications = 0;
+  let subscribedFireCount = 0;
+  const observedTreeRows: Array<readonly GlobalTestNode[]> = [];
   let statusShows = 0;
   const signals: AbortSignal[] = [];
   const opened: unknown[] = [];
   const reported: unknown[] = [];
   const vscode = {
     EventEmitter: class {
-      public readonly event = () => undefined;
-      public fire(): void {
-        if (interrupted || registered === undefined || provider === undefined) return;
-        const group = provider.getChildren().find((node) => node.kind === "files-group");
-        staleNode = group === undefined ? undefined : provider.getChildren(group).find((node) => node.kind === "file");
-        interrupted = true;
-        registered.invalidate();
-        registered.dispose();
+      private readonly listeners = new Set<(event?: unknown) => void>();
+      public readonly event = (listener: (event?: unknown) => void) => {
+        this.listeners.add(listener);
+        return { dispose: () => this.listeners.delete(listener) };
+      };
+      public fire(event?: unknown): void {
+        treeFires += 1;
+        if (this.listeners.size > 0) subscribedFireCount += 1;
+        for (const listener of this.listeners) { treeSubscriberNotifications += 1; listener(event); }
       }
-      public dispose(): void {}
+      public dispose(): void { this.listeners.clear(); }
     },
     TreeItem: class {}, ThemeIcon: class {}, TreeItemCollapsibleState: { None: 0, Expanded: 1 },
     StatusBarAlignment: { Left: 1 },
     window: {
       createStatusBarItem: () => ({ name: "", command: "", text: "", tooltip: undefined, show(): void { statusShows += 1; }, hide(): void {}, dispose(): void {} }),
-      registerTreeDataProvider: (_id: string, next: typeof provider) => { provider = next; return { dispose(): void {} }; }
+      registerTreeDataProvider: (_id: string, next: typeof provider) => {
+        provider = next;
+        const subscription = next?.onDidChangeTreeData(() => {
+          const rows = next.getChildren();
+          observedTreeRows.push(rows);
+          if (interrupted || registered === undefined || provider === undefined) return;
+          const group = rows.find((node) => node.kind === "files-group");
+          staleNode = group === undefined ? undefined : provider.getChildren(group).find((node) => node.kind === "file");
+          interrupted = true;
+          registered.invalidate();
+          registered.dispose();
+        });
+        return { dispose: () => subscription?.dispose() };
+      }
     },
     commands: { registerCommand: (id: string, callback: (...args: unknown[]) => Promise<void>) => { commands.set(id, callback); return { dispose(): void {} }; } },
     workspace: { onDidChangeConfiguration: () => ({ dispose(): void {} }) }
@@ -408,8 +431,13 @@ test("T607 production VS Code Global runtime fences partial publication on inval
       openFile: async (target) => { opened.push(target); },
       reportError: async (error) => { reported.push(error); }
     });
-    await registered.refresh();
-    assert.equal(interrupted, true, "the VS Code Tree runtime observed one actual partial publication before invalidation");
+    await assert.rejects(registered.refresh(), OperationCancelledError);
+    assert.equal(interrupted, true, "the actual Tree subscriber invalidates the owner after observing its partial projection");
+    assert.ok(treeFires >= 2, "partial publication and the ensuing clear call EventEmitter.fire");
+    assert.equal(treeSubscriberNotifications, subscribedFireCount, "every fire with a live subscription is delivered exactly once");
+    const partial = observedTreeRows.findIndex((rows) => rows.some((node) => node.kind === "files-group"));
+    assert.notEqual(partial, -1, "the subscriber observes the partial projection");
+    assert.ok(observedTreeRows.slice(partial + 1).every((rows) => rows.length === 0), "later notifications are intentional clears");
     assert.equal(signals[0]?.aborted, true, "invalidation and disposal abort the registered refresh owner");
     assert.equal(statusShows, 0, "a generation invalidated during Tree publication cannot emit a stale terminal presentation");
     await commands.get(runtime.OPEN_GLOBAL_UNDERSTANDING_FILE_COMMAND_ID)!(staleNode);
@@ -422,65 +450,145 @@ test("T607 production VS Code Global runtime fences partial publication on inval
 
 test("T607 production Global runtime supersedes old/new refreshes and gives each feedback operation one terminal", async () => {
   const commands = new Map<string, (...args: unknown[]) => Promise<void>>();
-  let provider: { getChildren(node?: { readonly kind: string }): readonly { readonly kind: string }[] } | undefined;
+  type GlobalTestNode = { readonly kind: string; readonly count?: number; readonly path?: string };
+  type GlobalTestProvider = {
+    getChildren(node?: GlobalTestNode): readonly GlobalTestNode[];
+    onDidChangeTreeData(listener: (event?: unknown) => void): { dispose(): void };
+  };
+  let provider: GlobalTestProvider | undefined;
   const signals: AbortSignal[] = [];
   const deferred = <T>() => { let resolve!: (value: T) => void; return { promise: new Promise<T>((complete) => { resolve = complete; }), resolve }; };
   const old = deferred<GlobalUnderstandingTreeSnapshot>();
   const invalidated = deferred<GlobalUnderstandingTreeSnapshot>();
   const disposed = deferred<GlobalUnderstandingTreeSnapshot>();
   let call = 0;
-  const logs: Array<{ readonly event: string }> = [];
+  const logs: Array<{ readonly event: string; readonly operationId?: number }> = [];
   const opened: unknown[] = [];
   const reported: unknown[] = [];
+  const treeFiresAfterDispose: boolean[] = [];
+  const treeNotifications: Array<{ readonly fileCount: number; readonly filePaths: readonly string[]; readonly rows: readonly GlobalTestNode[] }> = [];
+  let treeEmitterDisposed = false;
+  let treeSubscriberNotifications = 0;
   const vscode = {
-    EventEmitter: class { public readonly event = () => undefined; public fire(): void {} public dispose(): void {} },
+    EventEmitter: class {
+      private readonly listeners = new Set<(event?: unknown) => void>();
+      public readonly event = (listener: (event?: unknown) => void) => { this.listeners.add(listener); return { dispose: () => this.listeners.delete(listener) }; };
+      public fire(event?: unknown): void {
+        treeFiresAfterDispose.push(treeEmitterDisposed);
+        if (treeEmitterDisposed) return;
+        for (const listener of this.listeners) { treeSubscriberNotifications += 1; listener(event); }
+      }
+      public dispose(): void { treeEmitterDisposed = true; }
+    },
     TreeItem: class {}, ThemeIcon: class {}, TreeItemCollapsibleState: { None: 0, Expanded: 1 }, StatusBarAlignment: { Left: 1 },
     window: {
       createStatusBarItem: () => ({ name: "", command: "", text: "", tooltip: undefined, show(): void {}, hide(): void {}, dispose(): void {} }),
-      registerTreeDataProvider: (_id: string, next: typeof provider) => { provider = next; return { dispose(): void {} }; }
+      registerTreeDataProvider: (_id: string, next: typeof provider) => {
+        provider = next;
+        const subscription = next?.onDidChangeTreeData(() => {
+          const rows = next.getChildren();
+          const files = rows.find((node) => node.kind === "files-group");
+          treeNotifications.push({ rows, fileCount: files?.count ?? 0, filePaths: files === undefined ? [] : next.getChildren(files).flatMap((node) => node.path === undefined ? [] : [node.path]) });
+        });
+        return { dispose: () => subscription?.dispose() };
+      }
     },
     commands: { registerCommand: (id: string, callback: (...args: unknown[]) => Promise<void>) => { commands.set(id, callback); return { dispose(): void {} }; } },
     workspace: { onDidChangeConfiguration: () => ({ dispose(): void {} }) }
   };
   const runtime = loadWithVscode<typeof import("../../src/ui/global-understanding/vscode-global-understanding-runtime.js")>("../../src/ui/global-understanding/vscode-global-understanding-runtime.js", vscode);
-  const feedback = new OperationFeedback({ showBusy(): void {}, clearBusy(): void {}, appendLog(entry): void { logs.push({ event: entry.event }); }, revealLog(): void {} });
-  const current = snapshot(129);
+  const feedback = new OperationFeedback({ showBusy(): void {}, clearBusy(): void {}, appendLog(entry): void { logs.push({ event: entry.event, operationId: entry.operationId }); }, revealLog(): void {} });
+  const identify = (value: GlobalUnderstandingTreeSnapshot, owner: string): GlobalUnderstandingTreeSnapshot => ({ ...value, progress: { ...value.progress, files: value.progress.files.map((file) => ({ ...file, path: `${owner}/${file.path}` })) } });
+  const current = identify(snapshot(129), "current");
+  const staleOld = identify(snapshot(130), "stale-old");
+  const staleInvalidated = identify(snapshot(131), "stale-invalidated");
+  const staleDisposed = identify(snapshot(132), "stale-disposed");
   const withTargets = (value: GlobalUnderstandingTreeSnapshot): GlobalUnderstandingTreeSnapshot => ({ ...value, fileOpenTargets: value.progress.files.map((file) => ({ kind: "working-tree" as const, repositoryId: "repo", contextId: "context", revisionId: "revision", repositoryPath: file.path, filePath: `/repo/${file.path}` })) });
   setActiveOperationFeedback(feedback);
   try {
     const registered = runtime.registerGlobalUnderstandingRuntime({ subscriptions: [] } as never, {
-      source: { recalculate: async (signal) => { signals.push(signal!); return call++ === 0 ? old.promise : call === 2 ? withTargets(current) : call === 3 ? invalidated.promise : disposed.promise; } },
+      source: { recalculate: async (signal) => {
+        signals.push(signal!);
+        const request = call++;
+        return request === 0 ? old.promise : request === 1 ? withTargets(current) : request === 2 ? invalidated.promise : disposed.promise;
+      } },
       readGlobalLayerEnabled: () => false, writeGlobalLayerEnabled: async () => undefined, refreshDecorations: async () => undefined,
       openFile: async (target) => { opened.push(target); }, reportError: async (error) => { reported.push(error); }
     });
     const oldRefresh = registered.refresh();
+    const oldCancelled = assert.rejects(oldRefresh, OperationCancelledError);
     await new Promise((resolve) => setImmediate(resolve));
+    const firesBeforeCurrent = treeFiresAfterDispose.length;
+    const notificationsBeforeCurrent = treeNotifications.length;
     const newRefresh = registered.refresh();
     await newRefresh;
     assert.equal(signals[0]?.aborted, true, "the new production refresh aborts the old owner before old publication");
-    old.resolve(withTargets(current));
-    await oldRefresh;
+    const acceptedCurrent = treeNotifications.slice(notificationsBeforeCurrent).find((entry) => entry.fileCount === 129 && entry.filePaths.some((filePath) => filePath.startsWith("current/")));
+    assert.ok(treeFiresAfterDispose.length > firesBeforeCurrent, "the accepted generation calls EventEmitter.fire");
+    assert.ok(acceptedCurrent, "the actual subscriber sees all rows from the accepted current input");
+    assert.equal(treeSubscriberNotifications, treeNotifications.length, "Tree fires are distinct from real subscriber callbacks");
+    const firesAfterCurrent = treeFiresAfterDispose.length;
+    const notificationsAfterCurrent = treeNotifications.length;
+    old.resolve(withTargets(staleOld));
+    await oldCancelled;
+    assert.equal(treeFiresAfterDispose.length, firesAfterCurrent, "resolving stale-old input adds no fire");
+    assert.equal(treeNotifications.length, notificationsAfterCurrent, "resolving stale-old input adds no subscriber notification");
     const group = provider!.getChildren().find((node) => node.kind === "files-group");
     const staleNode = provider!.getChildren(group).find((node) => node.kind === "file");
+    const firesBeforeInvalidate = treeFiresAfterDispose.length;
+    const notificationsBeforeInvalidate = treeNotifications.length;
     const invalidateRefresh = registered.refresh();
+    const invalidatedCancelled = assert.rejects(invalidateRefresh, OperationCancelledError);
     await new Promise((resolve) => setImmediate(resolve));
     registered.invalidate();
     assert.equal(signals[2]?.aborted, true, "invalidate-only aborts its distinct in-flight refresh");
-    invalidated.resolve(withTargets(current));
-    await invalidateRefresh;
+    assert.equal(treeFiresAfterDispose.length, firesBeforeInvalidate + 1, "invalidate emits one intentional clear fire");
+    assert.equal(treeNotifications.length, notificationsBeforeInvalidate + 1, "the subscriber observes the invalidate clear");
+    assert.equal(treeNotifications.at(-1)?.rows.length, 0, "the clear notification contains no rows");
+    const firesAfterInvalidate = treeFiresAfterDispose.length;
+    const notificationsAfterInvalidate = treeNotifications.length;
+    invalidated.resolve(withTargets(staleInvalidated));
+    await invalidatedCancelled;
+    assert.equal(treeFiresAfterDispose.length, firesAfterInvalidate, "resolving stale-invalidated input adds no fire after clear");
+    assert.equal(treeNotifications.length, notificationsAfterInvalidate, "stale-invalidated input adds no subscriber notification after clear");
     await commands.get(runtime.OPEN_GLOBAL_UNDERSTANDING_FILE_COMMAND_ID)!(staleNode);
     assert.equal(opened.length, 0, "an old node cannot open after invalidate-only clears the production model");
     assert.equal(reported.length, 1);
     const disposeRefresh = registered.refresh();
+    const disposedCancelled = assert.rejects(disposeRefresh, OperationCancelledError);
     await new Promise((resolve) => setImmediate(resolve));
+    const firesBeforeDispose = treeFiresAfterDispose.length;
+    const notificationsBeforeDispose = treeNotifications.length;
     registered.dispose();
     assert.equal(signals[3]?.aborted, true, "dispose aborts a distinct in-flight refresh");
-    disposed.resolve(withTargets(current));
-    await disposeRefresh;
-    const starts = logs.filter((entry) => entry.event === "started").length;
-    const terminals = logs.filter((entry) => entry.event === "succeeded" || entry.event === "failed").length;
-    assert.equal(starts, 5, "four refreshes plus the stale-node command each enter the shared production feedback boundary");
-    assert.equal(terminals, starts, "every relevant production operation has exactly one feedback terminal");
+    assert.ok(treeFiresAfterDispose.length > firesBeforeDispose, "dispose emits its intentional clear fire");
+    assert.ok(treeNotifications.length > notificationsBeforeDispose, "the subscriber observes dispose's intentional clear");
+    assert.ok(treeNotifications.slice(notificationsBeforeDispose).every((entry) => entry.rows.length === 0), "dispose notifications are clears rather than stale rows");
+    const firesAfterDispose = treeFiresAfterDispose.length;
+    const notificationsAfterDispose = treeNotifications.length;
+    disposed.resolve(withTargets(staleDisposed));
+    await disposedCancelled;
+    assert.equal(treeFiresAfterDispose.length, firesAfterDispose, "stale-disposed input adds no fire after dispose");
+    assert.equal(treeNotifications.length, notificationsAfterDispose, "stale-disposed input adds no subscriber notification after dispose");
+    assert.equal(treeFiresAfterDispose.some((afterDispose) => afterDispose), false, "no Tree fire is attempted after emitter disposal");
+    const lifecycle = logs.filter((entry) => ["started", "succeeded", "failed", "cancelled"].includes(entry.event));
+    const eventsByOperation = new Map<number, string[]>();
+    for (const entry of lifecycle) {
+      assert.equal(typeof entry.operationId, "number", `Global ${entry.event} event must retain its operation ID`);
+      const operationId = entry.operationId as number;
+      const events = eventsByOperation.get(operationId) ?? [];
+      events.push(entry.event);
+      eventsByOperation.set(operationId, events);
+    }
+    const starts = lifecycle.filter((entry) => entry.event === "started");
+    assert.equal(starts.length, 5, "four refreshes plus the stale-node command enter the feedback boundary");
+    assert.equal(eventsByOperation.size, starts.length, "each operation is indexed by its actual operation ID");
+    for (const events of eventsByOperation.values()) {
+      assert.equal(events.length, 2, "duplicate start or terminal events are rejected");
+      assert.equal(events[0], "started", "each ID starts exactly once");
+      assert.match(events[1]!, /^(succeeded|failed|cancelled)$/u, "each ID has one valid terminal");
+    }
+    assert.deepEqual(starts.map((entry) => eventsByOperation.get(entry.operationId as number)?.[1]), ["cancelled", "succeeded", "cancelled", "failed", "cancelled"], "old/new/invalidate/command/dispose outcomes retain their operation-ID classification");
   } finally { setActiveOperationFeedback(undefined); }
 });
 
@@ -836,23 +944,48 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
   assert.ok(globalBatches.every((entry) => entry.count <= 128), "Global snapshot, order, and opened-evidence copy share the <=128 scheduler");
 
   class Memento { private readonly values = new Map<string, unknown>(); public get<T>(name: string, fallback?: T): T | undefined { return this.values.get(name) as T | undefined ?? fallback; } public async update(name: string, value: unknown): Promise<void> { this.values.set(name, value); } }
-  let provider: { getChildren(): readonly unknown[] } | undefined;
+  type ReviewContextsTestProvider = { getChildren(): readonly unknown[]; onDidChangeTreeData(listener: () => void): { dispose(): void } };
+  let provider: ReviewContextsTestProvider | undefined;
   let enabled = false;
   let phase: "pending" | "success" = "pending";
   let refreshCurrent: (() => Promise<void>) | undefined;
+  const listRefresh: { current?: (feedbackContext?: OperationFeedbackContext) => Promise<void> } = {};
   let cachePublishes = 0;
   const writeSignals: AbortSignal[] = [];
   const errors: unknown[] = [];
   const commands = new Map<string, (...args: unknown[]) => Promise<void>>();
   const contextBatches: Array<{ readonly kind: string; readonly count: number }> = [];
-  const feedbackLogs: Array<{ readonly event: string }> = [];
-  let disposeDuringLateProjection = false;
+  const feedbackLogs: Array<{ readonly event: string; readonly operationId?: number }> = [];
+  const treeFiresAfterDispose: boolean[] = [];
+  const treeNotifications: Array<readonly unknown[]> = [];
+  let treeEmitterDisposed = false;
+  let treeSubscriberNotifications = 0;
+  const pullRequestRequests: string[] = [];
+  let progressPreparations = 0;
+  let disposeAtLateSortedContext = false;
+  let lateProgressPrepared = false;
+  let lateSortedCheckpointTriggered = false;
+  let lateDisposeTriggered = false;
   let registeredRef: { refresh(): Promise<void>; dispose(): void } | undefined;
   const vscode = {
-    EventEmitter: class { public readonly event = () => undefined; public fire(): void {} public dispose(): void {} }, TreeItem: class {}, ThemeIcon: class {}, TreeItemCollapsibleState: { None: 0, Expanded: 1 },
+    EventEmitter: class {
+      private readonly listeners = new Set<() => void>();
+      public readonly event = (listener: () => void) => { this.listeners.add(listener); return { dispose: () => this.listeners.delete(listener) }; };
+      public fire(): void {
+        const afterDispose = treeEmitterDisposed;
+        treeFiresAfterDispose.push(afterDispose);
+        if (afterDispose) return;
+        for (const listener of this.listeners) { treeSubscriberNotifications += 1; listener(); }
+      }
+      public dispose(): void { treeEmitterDisposed = true; }
+    }, TreeItem: class {}, ThemeIcon: class {}, TreeItemCollapsibleState: { None: 0, Expanded: 1 },
     commands: { registerCommand: (id: string, handler: (...args: unknown[]) => Promise<void>) => { commands.set(id, handler); return { dispose(): void {} }; } },
-    window: { activeTextEditor: undefined, createTreeView: (_id: string, value: { treeDataProvider: typeof provider }) => { provider = value.treeDataProvider; return { dispose(): void {} }; }, showErrorMessage: async (error: unknown) => { errors.push(error); } },
-    workspace: { getConfiguration: () => ({ get: () => undefined }) }, authentication: { getSession: async () => ({ accessToken: "fixture-token" }) }
+    window: { activeTextEditor: undefined, createTreeView: (_id: string, value: { treeDataProvider: typeof provider }) => {
+      provider = value.treeDataProvider;
+      const subscription = provider?.onDidChangeTreeData(() => { treeNotifications.push(provider?.getChildren() ?? []); });
+      return { dispose: () => subscription?.dispose() };
+    }, showErrorMessage: async (error: unknown) => { errors.push(error); } },
+    workspace: { getConfiguration: () => ({ get: () => undefined }), textDocuments: [], workspaceFolders: [{ uri: { scheme: "file", path: repositoryRoot, fsPath: repositoryRoot } }] }, authentication: { getSession: async () => ({ accessToken: "fixture-token" }) }
   };
   const saved = Array.from({ length: 256 }, (_, index): ReviewContextState => ({
     schemaVersion: REVIEW_RANGE_SCHEMA_VERSION, contextId: `saved-${index}`, kind: "workspace", repositoryId: "repo-t607", displayName: `saved-${index}`,
@@ -866,18 +999,25 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input) => {
     const url = String(input);
+    pullRequestRequests.push(url);
+    if (url.includes("/compare/")) return new Response(JSON.stringify({ merge_base_commit: { sha: "a".repeat(40) } }), { status: 200 });
     if (url.includes("/files")) return new Response(JSON.stringify([{ filename: "f-0.ts", status: "modified", additions: 1, deletions: 0, patch: "@@ -0,0 +1 @@\n+opened" }]), { status: 200 });
     return new Response(JSON.stringify({ number: 79, title: "T607", html_url: "https://example.invalid/79", state: "open", merged_at: null, changed_files: 1, base: { sha: "a".repeat(40) }, head: { sha: revision } }), { status: 200 });
   };
   const t405 = loadWithVscode<typeof import("../../src/composition/review-contexts/review-contexts-runtime.js")>("../../src/composition/review-contexts/review-contexts-runtime.js", vscode);
-  const feedback = new OperationFeedback({ showBusy(): void {}, clearBusy(): void {}, appendLog(entry): void { feedbackLogs.push({ event: entry.event }); }, revealLog(): void {} });
+  const feedback = new OperationFeedback({ showBusy(): void {}, clearBusy(): void {}, appendLog(entry): void { feedbackLogs.push({ event: entry.event, operationId: entry.operationId }); }, revealLog(): void {} });
   setActiveOperationFeedback(feedback);
   try {
     const registered = t405.registerT405ReviewContextsRuntime({
       context: { globalStorageUri: { fsPath: path.join(root, "global") }, storageUri: { fsPath: path.join(root, "workspace") }, workspaceState: new Memento(), subscriptions: [] } as never,
       git: createNodeLocalGitAdapter(), enumerateCurrentContexts: async () => enabled ? [branch] : [],
-      refreshDecorations: async () => undefined, refreshCurrentContext: async () => undefined, registerPullRequestReviewDiff: () => undefined, openPullRequestReviewDiff: async () => undefined,
-      getPullRequestReviewProgress: async () => ({ reviewedLineCount: 0, totalLineCount: 1, progress: 0 }),
+      refreshDecorations: async () => undefined, refreshCurrentContext: async (context) => { await listRefresh.current?.(context); }, registerPullRequestReviewDiff: () => undefined, openPullRequestReviewDiff: async () => undefined,
+      getPullRequestReviewProgress: async () => {
+        const progress = { reviewedLineCount: 0, totalLineCount: 1, progress: 0 };
+        progressPreparations += 1;
+        if (disposeAtLateSortedContext) lateProgressPrepared = true;
+        return progress;
+      },
       reviewStateRepository: { load: async () => undefined, loadGlobal: async () => undefined, listRepositoryContexts: async () => [...saved, pullRequest], commit: async () => undefined, create: async () => undefined },
       reviewHistoryRecorder: { recordContextCreated: async () => undefined, recordRevisionMapping: async () => undefined },
       createPullRequestCacheStorage: () => ({ read: async () => undefined, write: async (_entry: unknown, _feedback: unknown, signal?: AbortSignal) => { writeSignals.push(signal!); if (phase === "pending") { phase = "success"; await refreshCurrent?.(); } if (signal?.aborted) throw new DOMException("superseded", "AbortError"); cachePublishes += 1; } }),
@@ -886,31 +1026,78 @@ test("T607 IFR002 runs the actual Global source/recalculator and Review Contexts
         yieldControl: () => undefined,
         accountBatch: (entry) => {
           contextBatches.push(entry);
-          if (disposeDuringLateProjection && entry.kind === "sorted-context") registeredRef?.dispose();
+          if (disposeAtLateSortedContext && lateProgressPrepared && !lateSortedCheckpointTriggered && entry.kind === "sorted-context") {
+            lateSortedCheckpointTriggered = true;
+            lateDisposeTriggered = true;
+            registeredRef?.dispose();
+          }
         }
       }
     });
     registeredRef = registered;
+    listRefresh.current = registered.refreshListOnly;
     await new Promise<void>((resolve) => setImmediate(resolve));
     enabled = true;
     refreshCurrent = () => registered.refresh();
+    const firesBeforeAcceptedGeneration = treeFiresAfterDispose.length;
+    const notificationsBeforeAcceptedGeneration = treeNotifications.length;
     await registered.refresh();
     assert.ok(writeSignals.length > 0, `the actual T405 source reaches PR-HEAD cache mutation: ${errors.map(String).join(" | ")}`);
     assert.equal(writeSignals[0]?.aborted, true, "the actual T405 source aborts PR-HEAD cache mutation before publication");
     assert.equal(cachePublishes, 1, "only the accepted generation owns the PR cache publish");
     assert.equal(provider?.getChildren().length, 258, "the actual T405 source projects more than 128 saved contexts into the registered Review Contexts Tree");
+    assert.ok(treeFiresAfterDispose.length > firesBeforeAcceptedGeneration, "the accepted generation calls EventEmitter.fire");
+    const acceptedNotification = treeNotifications.slice(notificationsBeforeAcceptedGeneration).find((rows) => rows.length === 258);
+    assert.ok(acceptedNotification, "the actual subscribed Tree observes the accepted 258-row projection");
+    assert.equal(treeSubscriberNotifications, treeNotifications.length, "emitter fire and subscriber callback counts are separately observed");
+    const acceptedRows = provider?.getChildren() ?? [];
+    acceptedRows.forEach((row, index) => assert.strictEqual(row, acceptedNotification[index], `accepted notification row ${index} is the provider row object`));
     assert.ok(commands.has("reviewRange.refreshReviewContexts"), "the controller/tree command composition is the extension registration path, not a fabricated source load");
     assert.ok(contextBatches.some((entry) => entry.kind === "materialized-context"), "candidate materialization is accounted before the bounded merge sort");
     assert.ok(contextBatches.some((entry) => entry.kind === "sorted-context"));
     assert.ok(contextBatches.every((entry) => entry.count <= 128), "saved-context collection, projection, and merge sort share the <=128 scheduler");
-    const cacheBeforeDispose = cachePublishes;
-    disposeDuringLateProjection = true;
+    const acceptedRowsBeforeDispose = provider?.getChildren() ?? [];
+    assert.equal(acceptedRowsBeforeDispose.length, 258, "capture the accepted projection before the final generation");
+    const firesBeforeLateGeneration = treeFiresAfterDispose.length;
+    const notificationsBeforeLateGeneration = treeNotifications.length;
+    const requestsBeforeLateGeneration = pullRequestRequests.length;
+    const progressBeforeLateGeneration = progressPreparations;
+    const writeStartsBeforeLateGeneration = writeSignals.length;
+    const cacheSavesBeforeLateGeneration = cachePublishes;
+    disposeAtLateSortedContext = true;
     await registered.refresh();
-    assert.equal(cachePublishes, cacheBeforeDispose, "dispose during late projection cannot transfer deferred cache ownership");
-    assert.equal(provider?.getChildren().length, 0, "disposed late projection publishes no stale Tree rows");
-    const starts = feedbackLogs.filter((entry) => entry.event === "started").length;
-    const terminals = feedbackLogs.filter((entry) => entry.event === "succeeded" || entry.event === "failed" || entry.event === "cancelled").length;
-    assert.equal(terminals, starts, "every actual Review Contexts feedback operation emits exactly one terminal");
+    assert.equal(lateProgressPrepared, true, "the final generation reaches PR progress preparation before the sort checkpoint");
+    assert.equal(lateSortedCheckpointTriggered, true, "dispose is invoked at a later sorted-context checkpoint");
+    assert.equal(lateDisposeTriggered, true, "the final generation is disposed by that checkpoint");
+    assert.equal(treeEmitterDisposed, true, "the progress hook actually disposes the provider emitter");
+    const lateRequests = pullRequestRequests.slice(requestsBeforeLateGeneration);
+    assert.ok(lateRequests.some((url) => url.includes("/pulls/79")), "the final generation reaches PR detail fetch");
+    assert.ok(lateRequests.some((url) => url.includes("/files")), "the final generation reaches changed-file acquisition");
+    assert.ok(progressPreparations > progressBeforeLateGeneration, "the final generation prepares PR progress");
+    assert.equal(treeFiresAfterDispose.length, firesBeforeLateGeneration, "the final generation adds no publication fire");
+    assert.equal(treeNotifications.length, notificationsBeforeLateGeneration, "the final generation adds no subscriber notification");
+    assert.ok(treeFiresAfterDispose.every((value) => !value), "no fire was attempted after disposal");
+    assert.equal(writeSignals.length, writeStartsBeforeLateGeneration, "the final generation starts no cache write");
+    assert.equal(cachePublishes, cacheSavesBeforeLateGeneration, "the final generation saves no cache entry");
+    const rowsAfterDispose = provider?.getChildren() ?? [];
+    assert.equal(rowsAfterDispose.length, acceptedRowsBeforeDispose.length, "dispose retains the last accepted projection");
+    rowsAfterDispose.forEach((row, index) => {
+      assert.strictEqual(row, acceptedRowsBeforeDispose[index], `dispose retains accepted row object ${index}`);
+    });
+    const activity = feedbackLogs.filter(({ event }) => ["started", "succeeded", "failed", "cancelled"].includes(event));
+    const byId = new Map<number, string[]>();
+    for (const { event, operationId } of activity) {
+      assert.notEqual(operationId, undefined, "operation events include an ID");
+      const events = byId.get(operationId!) ?? [];
+      events.push(event);
+      byId.set(operationId!, events);
+    }
+    assert.ok(byId.size > 0, "the actual runtime records feedback operations");
+    for (const events of byId.values()) {
+      assert.equal(events.length, 2, "one start and one terminal per operation");
+      assert.equal(events[0], "started");
+      assert.match(events[1]!, /^(succeeded|failed|cancelled)$/u);
+    }
   } finally { setActiveOperationFeedback(undefined); globalThis.fetch = originalFetch; }
 });
 
